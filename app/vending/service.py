@@ -89,11 +89,13 @@ class VendingService:
     def products(self,machine_id):
         self.machine(machine_id)
         with self.db.connect() as c:
-            return [dict(r) for r in c.execute(
+            rows = c.execute(
                 "SELECT product_id,name,price,stock,enabled,slot,capacity,servo_channel "
                 "FROM vending_products WHERE machine_id=? ORDER BY slot,product_id",
                 (machine_id,)
-            ).fetchall()]
+            ).fetchall()
+        # SQLite stores enabled as 0/1; the public API contract is a JSON boolean.
+        return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
 
     def upsert_product(self,machine_id,product_id,name,price,stock,enabled=True,slot=None,capacity=None,servo_channel=None):
         self.machine(machine_id)
