@@ -38,6 +38,10 @@ def test_vending_api_payment_and_dispense():
             done = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-NVM-Device-Key":"vm-secret"})
             assert done.status_code == 200
             assert done.json()["status"] == "completed"
+            # A retry after a lost HTTP response is idempotent.
+            retry = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-NVM-Device-Key":"vm-secret"})
+            assert retry.status_code == 200
+            assert retry.json()["status"] == "completed"
             assert client.get("/api/v1/accounts/a1/balance").json()["balance"] == 5000
             assert client.get("/api/v1/vending/v1/products").json()["products"][0]["stock"] == 0
         finally:
