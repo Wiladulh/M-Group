@@ -870,8 +870,21 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/deposits")
     def cashier_deposit(q:CashierDepositRequest,x_nvm_device_key: str | None = Header(default=None),x_nvm_device_id: str | None = Header(default=None)):
-        if not x_nvm_device_id: raise HTTPException(400,"device_id_required")
-        require_device(x_nvm_device_id,x_nvm_device_key)
+        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
+        device_id = x_nvm_device_id
+        if not device_id:
+            if not x_nvm_device_key:
+                raise HTTPException(401, "device_auth_required")
+            digest = hashlib.sha256(x_nvm_device_key.encode("utf-8")).hexdigest()
+            with db.connect() as c:
+                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
+            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
+            if not matches:
+                raise HTTPException(403, "invalid_device_key")
+            if matches[0]["status"] != "active":
+                raise HTTPException(403, "device_not_active")
+            device_id = matches[0]["device_id"]
+        require_device(device_id,x_nvm_device_key)
         if not verify_operator_pin(q.operator_pin): raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key: raise HTTPException(400,"idempotency_key_required")
         if not isinstance(q.amount,int) or q.amount<=0: raise HTTPException(400,"amount_must_be_positive_integer")
@@ -895,9 +908,9 @@ def build_router(db, app_settings=None):
             c.execute("""INSERT INTO cashier_deposits
                 (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                (tid,x_nvm_device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
+                (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
             c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={x_nvm_device_id}"))
+                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
             c.commit()
         return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
