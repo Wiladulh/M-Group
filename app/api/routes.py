@@ -30,6 +30,14 @@ class PaymentRequest(BaseModel):
 
 class PinRequest(BaseModel):
     pin: str
+    operator_id: str = "admin"
+
+class MemberCorrectionRequest(BaseModel):
+    original_transaction_id: str
+    corrected_amount: int
+    reason: str
+    idempotency_key: str
+    operator_id: str
 
 class MemberCreateRequest(BaseModel):
     name: str
@@ -360,9 +368,36 @@ def build_router(db, app_settings=None):
         return result
 
     @r.post("/members/{member_id}/pin")
-    def set_member_pin(member_id,q:PinRequest):
-        try:return identity.set_pin(member_id,q.pin)
-        except ValueError as e:raise HTTPException(400,str(e))
+    def set_member_pin(member_id,q:PinRequest,x_nvm_admin_token: str | None = Header(default=None)):
+        require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
+        try:
+            result = identity.set_pin(member_id,q.pin,q.operator_id.strip())
+            with db.connect() as c:
+                c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                          ("member_pin_reset","member",member_id,f"operator={q.operator_id.strip()};result=success"))
+                c.commit()
+            return result
+        except ValueError as e:
+            raise HTTPException(404 if str(e)=="member_not_found" else 400,str(e))
+
+    @r.post("/members/{member_id}/topup-corrections")
+    def member_topup_correction(member_id,q:MemberCorrectionRequest,
+                                 x_nvm_admin_token: str | None = Header(default=None)):
+        require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
+        try:
+            return financial.correct_credit(member_id,q.original_transaction_id,q.corrected_amount,
+                                            q.reason,q.idempotency_key,q.operator_id)
+        except ValueError as e:
+            code=str(e)
+            status=404 if code=="original_topup_not_found_for_member" else 409 if code in {
+                "original_transaction_already_corrected","idempotency_key_conflict",
+                "insufficient_balance_for_correction","original_transaction_not_correctable"
+            } else 400
+            raise HTTPException(status,code)
 
     @r.get("/devices")
     def devices_list(include_deleted: bool = False, x_nvm_admin_token: str | None = Header(default=None)):
