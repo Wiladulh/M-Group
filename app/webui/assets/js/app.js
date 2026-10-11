@@ -50,7 +50,7 @@ async function loadMemberList(){
   const {r,d}=await json('/api/v1/members',{headers:{'X-NVM-Admin-Token':token}});
   if(r.ok){
     const rows=d.members||[];
-    $('members').innerHTML=rows.length?table(rows,['member_id','name','nik','address','status','registration_date']):'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
+    $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Ganti NFC</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
     const sel=$('nfcMemberId');
     if(sel){
       const current=sel.value;
@@ -61,6 +61,50 @@ async function loadMemberList(){
   }
 }
 $('memberForm').onsubmit=async e=>{e.preventDefault();await loadMembers()};
+$('members').addEventListener('click',async e=>{
+  const b=e.target.closest('button[data-member-action]');if(!b)return;
+  const memberId=b.dataset.memberId,action=b.dataset.memberAction,token=$('memberAdminToken').value.trim();
+  if(!token){$('memberAuthResult').textContent='Admin Token wajib diisi';return}
+  try{
+    if(action==='edit'){
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{headers:{'X-NVM-Admin-Token':token}});
+      if(!r.ok)throw new Error(d.detail||'Gagal membaca anggota');
+      const m=d;$('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
+      $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
+      $('memberSex').value=m.sex||'';$('memberRt').value=m.rt||'';$('memberRw').value=m.rw||'';$('memberVillage').value=m.village||'';
+      $('memberDistrict').value=m.district||'';$('memberCity').value=m.city_regency||'';$('memberProvince').value=m.province||'';
+      $('memberReligion').value=m.religion||'';$('memberMarital').value=m.marital_status||'';$('memberOccupation').value=m.occupation||'';
+      $('memberCitizenship').value=m.citizenship||'WNI';$('memberPhone').value=m.phone||'';$('memberEmail').value=m.email||'';
+      $('memberRegistrationDate').value=m.registration_date||'';$('memberStatus').value=m.status||'active';
+      $('memberAuthResult').textContent='Mode edit: '+memberId+'. Simpan perubahan melalui tombol Simpan Member.';
+      $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
+    }else if(action==='pin'){
+      const operator_id=prompt('ID petugas yang melakukan reset PIN:');if(!operator_id)return;
+      const pin=prompt('Masukkan PIN transaksi baru (4–6 digit):');if(!pin)return;
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({pin,operator_id})});
+      if(!r.ok)throw new Error(d.detail||'Reset PIN gagal');
+      $('memberAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
+    }else if(action==='nfc'){
+      const cashier=$('nfcCashierDevice').value;if(!cashier)throw new Error('Pilih Cashier aktif terlebih dahulu');
+      const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({cashier_device_id:cashier,operator_id})});
+      if(!r.ok)throw new Error(d.detail||'Gagal memulai penggantian NFC');
+      $('nfcRegistrationResult').textContent='Penggantian kartu dimulai. Silakan scan kartu baru pada Cashier terpilih.';
+      pollNfcRegistration(memberId,d.session_id);
+    }else if(action==='correction'){
+      const operator_id=prompt('ID petugas yang melakukan koreksi:');if(!operator_id)return;
+      const original_transaction_id=prompt('Referensi/ID transaksi Top Up asli:');if(!original_transaction_id)return;
+      const corrected_amount=Number(prompt('Nominal Top Up yang benar (rupiah):'));if(!Number.isSafeInteger(corrected_amount)||corrected_amount<=0)throw new Error('Nominal koreksi tidak valid');
+      const reason=prompt('Alasan koreksi (minimal 5 karakter):');if(!reason)return;
+      const idempotency_key='member-correction-'+crypto.randomUUID();
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
+      if(!r.ok)throw new Error(d.detail||'Koreksi Top Up gagal');
+      $('memberAuthResult').textContent='Koreksi tercatat. Nominal sebelum: '+money(d.original_amount)+'; sesudah: '+money(d.corrected_amount)+'.';
+      await load();
+    }
+  }catch(err){$('memberAuthResult').textContent=err.message}
+});
+
 let nfcPollTimer=null;
 async function loadNfcCashiers(){
   const token=$('memberAdminToken')?.value.trim();
