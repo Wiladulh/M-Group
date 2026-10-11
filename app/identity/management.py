@@ -34,7 +34,7 @@ class MemberManagementService:
                 return None
             cards = c.execute(
                 """
-                SELECT card_id,member_id,credential_id,card_uid,status,created_at,revoked_at
+                SELECT card_id,member_id,credential_id,CASE WHEN length(card_uid)>4 THEN substr(card_uid,1,2)||'••••'||substr(card_uid,-2) ELSE '••••' END AS card_uid,status,created_at,revoked_at
                 FROM member_nfc_cards WHERE member_id=? ORDER BY created_at DESC
                 """,
                 (member_id,),
