@@ -721,6 +721,8 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/nfc-replacement/start")
     def nfc_replacement_start(member_id,q:NfcRegistrationStartRequest,x_nvm_admin_token: str | None = Header(default=None)):
         require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
