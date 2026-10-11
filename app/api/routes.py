@@ -30,6 +30,16 @@ class PaymentRequest(BaseModel):
 
 class PinRequest(BaseModel):
     pin: str
+    operator_id: str = "admin"
+    reason: str = "member_request"
+    identity_verified: bool = False
+
+class MemberCorrectionRequest(BaseModel):
+    original_transaction_id: str
+    corrected_amount: int
+    reason: str
+    idempotency_key: str
+    operator_id: str
 
 class MemberCreateRequest(BaseModel):
     name: str
@@ -157,6 +167,7 @@ class VendingDispenseRequest(BaseModel):
 
 class NfcRegistrationStartRequest(BaseModel):
     cashier_device_id: str
+    operator_id: str = "admin"
 
 class NfcRegistrationCompleteRequest(BaseModel):
     session_id: str
@@ -360,9 +371,40 @@ def build_router(db, app_settings=None):
         return result
 
     @r.post("/members/{member_id}/pin")
-    def set_member_pin(member_id,q:PinRequest):
-        try:return identity.set_pin(member_id,q.pin)
-        except ValueError as e:raise HTTPException(400,str(e))
+    def set_member_pin(member_id,q:PinRequest,x_nvm_admin_token: str | None = Header(default=None)):
+        require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
+        if not q.identity_verified:
+            raise HTTPException(400,"member_identity_verification_required")
+        if len(q.reason.strip()) < 5:
+            raise HTTPException(400,"reset_reason_required")
+        try:
+            result = identity.set_pin(member_id,q.pin,q.operator_id.strip())
+            with db.connect() as c:
+                c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                          ("member_pin_reset","member",member_id,f"operator={q.operator_id.strip()};identity_verified=yes;reason={q.reason.strip()};result=success"))
+                c.commit()
+            return result
+        except ValueError as e:
+            raise HTTPException(404 if str(e)=="member_not_found" else 400,str(e))
+
+    @r.post("/members/{member_id}/topup-corrections")
+    def member_topup_correction(member_id,q:MemberCorrectionRequest,
+                                 x_nvm_admin_token: str | None = Header(default=None)):
+        require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
+        try:
+            return financial.correct_credit(member_id,q.original_transaction_id,q.corrected_amount,
+                                            q.reason,q.idempotency_key,q.operator_id)
+        except ValueError as e:
+            code=str(e)
+            status=404 if code=="original_topup_not_found_for_member" else 409 if code in {
+                "original_transaction_already_corrected","idempotency_key_conflict",
+                "insufficient_balance_for_correction","original_transaction_not_correctable"
+            } else 400
+            raise HTTPException(status,code)
 
     @r.get("/devices")
     def devices_list(include_deleted: bool = False, x_nvm_admin_token: str | None = Header(default=None)):
@@ -682,6 +724,28 @@ def build_router(db, app_settings=None):
             c.commit()
         return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending"}
 
+    @r.post("/members/{member_id}/nfc-replacement/start")
+    def nfc_replacement_start(member_id,q:NfcRegistrationStartRequest,x_nvm_admin_token: str | None = Header(default=None)):
+        require_admin(x_nvm_admin_token)
+        if not q.operator_id.strip():
+            raise HTTPException(400,"operator_id_required")
+        member=members.get(member_id)
+        if not member or member.get("status")!="active":
+            raise HTTPException(404,"member_not_found")
+        with db.connect() as c:
+            device=c.execute("SELECT device_id,device_type,status FROM device_registry WHERE device_id=?",(q.cashier_device_id,)).fetchone()
+            if not device or device["device_type"]!="esp32-cashier" or device["status"]!="active":
+                raise HTTPException(409,"cashier_not_active")
+            pending=c.execute("SELECT session_id FROM nfc_registration_sessions WHERE device_id=? AND status='scan_pending' AND expires_at>CURRENT_TIMESTAMP",(q.cashier_device_id,)).fetchone()
+            if pending:
+                raise HTTPException(409,"cashier_registration_busy")
+            session_id="nfc-replace-"+uuid4().hex
+            c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,device_id,status,expires_at) VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))",(session_id,member_id,q.cashier_device_id))
+            c.execute("INSERT INTO nfc_replacement_intents(session_id,member_id,operator_id) VALUES(?,?,?)",(session_id,member_id,q.operator_id.strip()))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:device={q.cashier_device_id}"))
+            c.commit()
+        return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending","operation":"replacement"}
+
     @r.get("/members/{member_id}/nfc-registration/{session_id}")
     def nfc_registration_status(member_id,session_id,x_nvm_admin_token: str | None = Header(default=None)):
         require_admin(x_nvm_admin_token)
@@ -728,28 +792,41 @@ def build_router(db, app_settings=None):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
                 c.commit()
                 raise HTTPException(409,"registration_session_expired")
+            replacement=c.execute("SELECT operator_id FROM nfc_replacement_intents WHERE session_id=? AND member_id=?",(q.session_id,session["member_id"])).fetchone()
             duplicate=c.execute(
                 "SELECT member_id FROM member_nfc_cards WHERE UPPER(card_uid)=? AND status='active'",
                 (card_uid,)
             ).fetchone()
-            if duplicate and duplicate["member_id"]!=session["member_id"]:
+            if duplicate:
                 raise HTTPException(409,"nfc_card_already_registered")
             credential_id="nfc-"+card_uid.replace(":","").replace("-","").lower()
             cred=c.execute("SELECT member_id FROM identity_credentials WHERE credential_id=?",(credential_id,)).fetchone()
             if cred and cred["member_id"]!=session["member_id"]:
                 raise HTTPException(409,"credential_already_registered")
-        identity.set_pin(session["member_id"],q.pin)
+        if replacement:
+            if not identity.verify_pin(session["member_id"],q.pin):
+                raise HTTPException(403,"invalid_member_pin_for_card_replacement")
+        else:
+            identity.set_pin(session["member_id"],q.pin)
         try:
             with db.connect() as c:
+                if replacement:
+                    old_credentials=c.execute("SELECT credential_id FROM member_nfc_cards WHERE member_id=? AND status='active'",(session["member_id"],)).fetchall()
+                    c.execute("UPDATE member_nfc_cards SET status='revoked',revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND status='active'",(session["member_id"],))
+                    for old_credential in old_credentials:
+                        if old_credential["credential_id"]:
+                            c.execute("UPDATE identity_credentials SET status='inactive',enabled=0 WHERE credential_id=?",(old_credential["credential_id"],))
+                    old_ids=",".join(x["credential_id"] for x in old_credentials if x["credential_id"])
+                    c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                              ("nfc_replacement","member",session["member_id"],f"old_credentials={old_ids or 'none'};new_credential={credential_id};operator={replacement['operator_id']};result=success"))
                 c.execute(
-                    "INSERT OR IGNORE INTO identity_credentials(credential_id,member_id,credential_type,status) VALUES(?,?, 'nfc','active')",
+                    "INSERT INTO identity_credentials(credential_id,member_id,credential_type,status) VALUES(?,?, 'nfc','active')",
                     (credential_id,session["member_id"])
                 )
-                if not duplicate:
-                    c.execute(
-                        "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) VALUES(?,?,?,?, 'active')",
-                        ("nfc-"+uuid4().hex,session["member_id"],credential_id,card_uid)
-                    )
+                c.execute(
+                    "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) VALUES(?,?,?,?, 'active')",
+                    ("nfc-"+uuid4().hex,session["member_id"],credential_id,card_uid)
+                )
                 c.execute(
                     """UPDATE nfc_registration_sessions
                        SET status='completed',card_uid=?,credential_id=?,completed_at=CURRENT_TIMESTAMP
