@@ -31,6 +31,8 @@ class PaymentRequest(BaseModel):
 class PinRequest(BaseModel):
     pin: str
     operator_id: str = "admin"
+    reason: str = "member_request"
+    identity_verified: bool = False
 
 class MemberCorrectionRequest(BaseModel):
     original_transaction_id: str
@@ -373,11 +375,15 @@ def build_router(db, app_settings=None):
         require_admin(x_nvm_admin_token)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
+        if not q.identity_verified:
+            raise HTTPException(400,"member_identity_verification_required")
+        if len(q.reason.strip()) < 5:
+            raise HTTPException(400,"reset_reason_required")
         try:
             result = identity.set_pin(member_id,q.pin,q.operator_id.strip())
             with db.connect() as c:
                 c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                          ("member_pin_reset","member",member_id,f"operator={q.operator_id.strip()};result=success"))
+                          ("member_pin_reset","member",member_id,f"operator={q.operator_id.strip()};identity_verified=yes;reason={q.reason.strip()};result=success"))
                 c.commit()
             return result
         except ValueError as e:
