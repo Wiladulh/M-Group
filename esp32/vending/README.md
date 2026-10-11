@@ -29,3 +29,15 @@ RC522 SPI:
 Change constants in NvmVending.ino for the actual ESP32-S3 board and wiring.
 
 The UID is converted to nfc-<lowercase hexadecimal UID>. The NVM server remains authoritative for credential, account, balance, stock, transaction, and refund state.
+
+
+## Server configuration
+
+Set `WIFI_SSID`, `WIFI_PASSWORD`, `NVM_BASE_URL`, `DEVICE_ID`, and `NVM_DEVICE_KEY` in `NvmVending.ino`.
+
+- `NVM_BASE_URL` must be the NVM server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+- NVM defaults to `NVM_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `NVM_HOST=0.0.0.0 NVM_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
+- Provision `DEVICE_ID` with type `esp32-s3-vending` and use the returned device key. Register a vending machine in NVM with its `device_id` pointing to this device; the machine ID may be different from the device ID.
+- The product API returns `enabled` as a JSON boolean. The firmware uses product ID, name, price, stock, enabled state, and servo channel from that response.
+
+Firmware CI validates compilation only; NFC reads, Wi-Fi reachability, servo behavior, dispensing feedback, and real transaction reconciliation still require physical-device tests.

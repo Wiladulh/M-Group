@@ -9,7 +9,8 @@
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
-const char* NVM_BASE_URL="http://192.168.1.24:8080";
+// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
+const char* NVM_BASE_URL="http://192.168.1.10:8011";
 const char* DEVICE_ID="cashier-01";
 const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -29,9 +30,11 @@ unsigned long lastHeartbeat=0,paymentSequence=0,depositSequence=0;
 bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
-bool pendingPayment=false;
+bool pendingPayment=false,pendingDeposit=false;
 String pendingCredential="",pendingSeq="";
 long pendingAmount=0;
+String pendingDepositCredential="",pendingDepositSeq="";
+long pendingDepositAmount=0;
 void savePendingPayment(const String& credential,long amount,const String& seq){
   cashierPrefs.putBool("pay_pending",true); cashierPrefs.putString("pay_cred",credential);
   cashierPrefs.putLong("pay_amount",amount); cashierPrefs.putString("pay_seq",seq);
@@ -42,9 +45,19 @@ void clearPendingPayment(){
   cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq");
   pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq="";
 }
+void savePendingDeposit(const String& credential,long amount,const String& seq){
+  cashierPrefs.putBool("dep_pending",true); cashierPrefs.putString("dep_cred",credential);
+  cashierPrefs.putLong("dep_amount",amount); cashierPrefs.putString("dep_seq",seq);
+  pendingDeposit=true; pendingDepositCredential=credential; pendingDepositAmount=amount; pendingDepositSeq=seq;
+}
+void clearPendingDeposit(){
+  cashierPrefs.putBool("dep_pending",false); cashierPrefs.remove("dep_cred");
+  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq");
+  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
+}
 
 void lcdShow(String a,String b="");
-String readKeyDigits(const char* title,bool masked);
+String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits);
 long readCashierAmount();
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin);
 void cashierTopup(const String& credential,long amount,const String& seq,const String& operatorPin,const String& memberPin);
@@ -130,12 +143,12 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
     long bal=p>=0?reply.substring(p+10).toInt():0;
     lcdShow("SUKSES","Terpotong Rp."+String(amount)); delay(1200);
     lcdShow("Saldo sisa","Rp."+String(bal)); delay(2200);
-  }else if(code==403){
-    lcdShow("GAGAL",reply.indexOf("invalid_pin")>=0?"PIN salah":"Tidak diizinkan"); delay(1800);
+  }else if(code==403 && reply.indexOf("invalid_pin")>=0){
+    lcdShow("GAGAL","PIN salah"); delay(1800);
+  }else if(code==401 || code==403){
+    lcdShow("GAGAL","Device/akses"); delay(1800);
   }else if(code==409){
     lcdShow("GAGAL",reply.indexOf("insufficient_balance")>=0?"Saldo tidak cukup":"Transaksi ditolak"); delay(1800);
-  }else if(code==401 || code==403){
-    lcdShow("GAGAL","Device auth"); delay(1800);
   }else if(code==404){
     lcdShow("GAGAL","Device/API"); delay(1800);
   }else if(code==422){
@@ -149,14 +162,23 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
 
 void cashierTopup(const String& credential,long amount,const String& seq,const String& operatorPin,const String& memberPin){
   if(amount<=0){lcdShow("GAGAL","Nominal invalid");delay(1500);return;}
+  savePendingDeposit(credential,amount,seq);
   String body="{\"credential_id\":\""+credential+"\",\"amount\":"+String(amount)+
               ",\"operator_pin\":\""+operatorPin+"\",\"member_pin\":\""+memberPin+
               "\",\"idempotency_key\":\""+String(DEVICE_ID)+":deposit:"+seq+"\"}";
-  int code=0; String reply=postJson("/api/v1/cashier/deposits",body,code);
-  Serial.printf("TOPUP %d %s\n",code,reply.c_str());
-  if(code==200){ lcdShow("Topup Success","Rp."+String(amount)); delay(1800); }
-  else if(code==403){ lcdShow("Topup Gagal","PIN salah"); delay(1800); }
-  else { lcdShow("Topup Gagal","Server "+String(code)); delay(1800); }
+  int code=0; String reply="";
+  for(int attempt=1;attempt<=2;attempt++){
+    if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;continue;}
+    reply=postJson("/api/v1/cashier/deposits",body,code);
+    Serial.printf("TOPUP attempt=%d code=%d %s\n",attempt,code,reply.c_str());
+    if(code>0 && code<500)break;
+    delay(250);
+  }
+  if(code<=0 || code>=500){lcdShow("HASIL BELUM ADA","Ulangi Topup");return;}
+  clearPendingDeposit();
+  if(code>=200 && code<300){lcdShow("Topup Success","Rp."+String(amount));delay(1800);}
+  else if(reply.indexOf("invalid_pin")>=0 || reply.indexOf("invalid_operator_pin")>=0){lcdShow("Topup Gagal","PIN salah");delay(1800);}
+  else {lcdShow("Topup Gagal","HTTP "+String(code));delay(1800);}
 }
 
 void scanTopup(const String& operatorPin){
@@ -167,8 +189,8 @@ void scanTopup(const String& operatorPin){
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN:");
-  String memberPin=readKeyDigits("PIN:",true);
-  ++depositSequence;
+  String memberPin=readKeyDigits("PIN:",true,4,6);
+  ++depositSequence; cashierPrefs.putULong("dep_seq_counter",depositSequence);
   cashierTopup(credential,amount,String(depositSequence),operatorPin,memberPin);
   delay(700);
 }
@@ -179,7 +201,7 @@ void registrationScan(const String& session){
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN 4 digit:");
-  String pin=readKeyDigits("PIN 4 digit:",true);
+  String pin=readKeyDigits("PIN 4 digit:",true,4,4);
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply=postJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration/complete",body,code);
   Serial.printf("NFC REG %d %s\n",code,reply.c_str());
@@ -208,7 +230,7 @@ void scanCard(){
   cashierPrefs.putULong("pay_seq_counter",paymentSequence);
   lcdShow("Kartu diterima","Masukkan PIN");
   Serial.printf("CARD READ reader=%s credential=%s\\n",card.name(),credential.c_str());
-  String pin=readKeyDigits("PIN (#=OK):",true);
+  String pin=readKeyDigits("PIN (#=OK):",true,4,6);
   Serial.printf("CARD %s -> %s amount=%ld\n",card.name(),credential.c_str(),paymentAmount);
   cashierPayment(credential,paymentAmount,String(paymentSequence),pin);
   delay(700);
@@ -221,7 +243,7 @@ void lcdShow(String a,String b){
   lcd.setCursor(0,1); lcd.print(b.substring(0,16));
 }
 
-String readKeyDigits(const char* title,bool masked){
+String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits){
   String s="";
   auto renderInput=[&](){
     String v="";
@@ -232,11 +254,11 @@ String readKeyDigits(const char* title,bool masked){
   Serial.printf("INPUT START %s (digits; *=backspace; #=confirm)\\n",title);
   while(true){
     char k=nvmKeypad.getKey();
-    if(k>='0'&&k<='9'&&s.length()<6){
+    if(k>='0'&&k<='9'&&s.length()<maxDigits){
       s+=k; renderInput();
     }else if(k=='*'&&!s.isEmpty()){
       s.remove(s.length()-1); renderInput();
-    }else if(k=='#'&&!s.isEmpty()){
+    }else if(k=='#'&&s.length()>=minDigits){
       Serial.printf("INPUT CONFIRMED %s length=%u\\n",title,(unsigned)s.length());
       return s;
     }
@@ -245,14 +267,25 @@ String readKeyDigits(const char* title,bool masked){
 }
 
 long readCashierAmount(){
-  return readKeyDigits("Nominal:",false).toInt();
+  return readKeyDigits("Nominal:",false,1,6).toInt();
 }
 
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("nvm-cashier",false);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
+  depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
+  pendingDeposit=cashierPrefs.getBool("dep_pending",false);
+  if(pendingDeposit){
+    pendingDepositCredential=cashierPrefs.getString("dep_cred","");
+    pendingDepositAmount=cashierPrefs.getLong("dep_amount",0);
+    pendingDepositSeq=cashierPrefs.getString("dep_seq","");
+    if(!pendingDepositCredential.length() || pendingDepositAmount<=0 || !pendingDepositSeq.length()){
+      Serial.println("FATAL: pending deposit metadata invalid; inspect device before new deposits");
+      while(true) delay(1000);
+    }
+  }
   if(pendingPayment){
     pendingCredential=cashierPrefs.getString("pay_cred","");
     pendingAmount=cashierPrefs.getLong("pay_amount",0);
@@ -281,8 +314,15 @@ void loop(){
   // The PIN is re-entered and is never persisted in NVS.
   if(pendingPayment){
     lcdShow("PAYMENT PENDING","PIN utk ulangi");
-    String pin=readKeyDigits("PIN utk ulangi",true);
+    String pin=readKeyDigits("PIN utk ulangi",true,4,6);
     cashierPayment(pendingCredential,pendingAmount,pendingSeq,pin);
+    return;
+  }
+  if(pendingDeposit){
+    lcdShow("TOPUP PENDING","Ulangi PIN");
+    String operatorPin=readKeyDigits("PIN Operator:",true,4,6);
+    String memberPin=readKeyDigits("PIN Anggota:",true,4,6);
+    cashierTopup(pendingDepositCredential,pendingDepositAmount,pendingDepositSeq,operatorPin,memberPin);
     return;
   }
   static unsigned long lastRegistrationPoll=0;
@@ -301,7 +341,7 @@ void loop(){
     paymentAmount=0;
   }else{
     lcdShow("Topup","PIN Operator:");
-    String operatorPin=readKeyDigits("PIN Operator:",true);
+    String operatorPin=readKeyDigits("PIN Operator:",true,4,6);
     lcdShow("Topup","Nominal:");
     scanTopup(operatorPin);
   }

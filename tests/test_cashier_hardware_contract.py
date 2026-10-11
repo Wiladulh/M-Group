@@ -44,4 +44,4 @@ def test_reader_uid_buffer_and_keypad_feedback_contract():
     assert "lcdShow(\"NFC ERROR\",\"Cek koneksi\")" in CASHIER
     assert "lcdShow(\"NFC ERROR\",\"Cek reader\")" in CASHIER
     assert "if(k=='*'&&!s.isEmpty())" in CASHIER
-    assert "else if(k=='#'&&!s.isEmpty())" in CASHIER
+    assert "else if(k=='#'&&s.length()>=minDigits)" in CASHIER

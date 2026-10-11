@@ -5,6 +5,8 @@
 #include <Adafruit_PN532.h>
 #include <MFRC522.h>
 
+static constexpr uint8_t NVM_MAX_UID_LENGTH = 10;
+
 enum NvmReaderType { NVM_READER_NONE, NVM_READER_PN532, NVM_READER_RC522 };
 
 class NvmCardReader {
@@ -42,12 +44,16 @@ public:
   }
 
   bool readUID(uint8_t* uid, uint8_t& len) {
-    if (type == NVM_READER_PN532)
-      return pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len, 50);
+    len = 0;
+    if (type == NVM_READER_PN532) {
+      if (!pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len, 50)) return false;
+      if (len > NVM_MAX_UID_LENGTH) len = NVM_MAX_UID_LENGTH;
+      return len > 0;
+    }
 
     if (type == NVM_READER_RC522) {
       if (!rc522.PICC_IsNewCardPresent() || !rc522.PICC_ReadCardSerial()) return false;
-      len = rc522.uid.size > 7 ? 7 : rc522.uid.size;
+      len = rc522.uid.size > NVM_MAX_UID_LENGTH ? NVM_MAX_UID_LENGTH : rc522.uid.size;
       for (uint8_t i=0; i<len; ++i) uid[i] = rc522.uid.uidByte[i];
       rc522.PICC_HaltA();
       rc522.PCD_StopCrypto1();

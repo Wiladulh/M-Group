@@ -55,7 +55,14 @@ Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `NVM_BASE_URL`, `DEVICE_ID`, and `NVM_DEVICE_KEY` in `NvmCashier.ino`. Provision the device key on the NVM server before testing the cashier. Set the member PIN through the NVM member PIN API and ensure the NFC credential is active and linked to an active member with an active savings account.
+Set `WIFI_SSID`, `WIFI_PASSWORD`, `NVM_BASE_URL`, `DEVICE_ID`, and `NVM_DEVICE_KEY` in `NvmCashier.ino`.
+
+- `NVM_BASE_URL` must be the NVM server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+- NVM defaults to `NVM_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `NVM_HOST=0.0.0.0 NVM_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
+- Provision the device using the exact `DEVICE_ID` and paste the returned key into `NVM_DEVICE_KEY`. The key must be active in the server registry.
+- Configure the operator top-up PIN through the authenticated NVM API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
+
+The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
 
 
 ## CSH-07 offline integration test
