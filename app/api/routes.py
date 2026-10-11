@@ -783,11 +783,12 @@ def build_router(db, app_settings=None):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
                 c.commit()
                 raise HTTPException(409,"registration_session_expired")
+            replacement=c.execute("SELECT operator_id FROM nfc_replacement_intents WHERE session_id=? AND member_id=?",(q.session_id,session["member_id"])).fetchone()
             duplicate=c.execute(
                 "SELECT member_id FROM member_nfc_cards WHERE UPPER(card_uid)=? AND status='active'",
                 (card_uid,)
             ).fetchone()
-            if duplicate and duplicate["member_id"]!=session["member_id"]:
+            if duplicate:
                 raise HTTPException(409,"nfc_card_already_registered")
             credential_id="nfc-"+card_uid.replace(":","").replace("-","").lower()
             cred=c.execute("SELECT member_id FROM identity_credentials WHERE credential_id=?",(credential_id,)).fetchone()
@@ -796,15 +797,23 @@ def build_router(db, app_settings=None):
         identity.set_pin(session["member_id"],q.pin)
         try:
             with db.connect() as c:
+                if replacement:
+                    old_credentials=c.execute("SELECT credential_id FROM member_nfc_cards WHERE member_id=? AND status='active'",(session["member_id"],)).fetchall()
+                    c.execute("UPDATE member_nfc_cards SET status='revoked',revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND status='active'",(session["member_id"],))
+                    for old_credential in old_credentials:
+                        if old_credential["credential_id"]:
+                            c.execute("UPDATE identity_credentials SET status='inactive',enabled=0 WHERE credential_id=?",(old_credential["credential_id"],))
+                    old_ids=",".join(x["credential_id"] for x in old_credentials if x["credential_id"])
+                    c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                              ("nfc_replacement","member",session["member_id"],f"old_credentials={old_ids or 'none'};new_credential={credential_id};operator={replacement['operator_id']};result=success"))
                 c.execute(
-                    "INSERT OR IGNORE INTO identity_credentials(credential_id,member_id,credential_type,status) VALUES(?,?, 'nfc','active')",
+                    "INSERT INTO identity_credentials(credential_id,member_id,credential_type,status) VALUES(?,?, 'nfc','active')",
                     (credential_id,session["member_id"])
                 )
-                if not duplicate:
-                    c.execute(
-                        "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) VALUES(?,?,?,?, 'active')",
-                        ("nfc-"+uuid4().hex,session["member_id"],credential_id,card_uid)
-                    )
+                c.execute(
+                    "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) VALUES(?,?,?,?, 'active')",
+                    ("nfc-"+uuid4().hex,session["member_id"],credential_id,card_uid)
+                )
                 c.execute(
                     """UPDATE nfc_registration_sessions
                        SET status='completed',card_uid=?,credential_id=?,completed_at=CURRENT_TIMESTAMP
