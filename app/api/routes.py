@@ -933,7 +933,7 @@ def build_router(db, app_settings=None):
             c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
                       ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
             c.commit()
-        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_nvm_device_key: str | None = Header(default=None)):
