@@ -12,7 +12,8 @@ class MemberManagementService:
         with self.db.connect() as c:
             rows = c.execute(
                 f"""
-                SELECT member_id,name,status,nik,address,birth_place,birth_date,sex,rt,rw,village,district,city_regency,province,religion,marital_status,occupation,citizenship,phone,email,registration_date,created_at,deleted_at
+                SELECT member_id,name,status,nik,address,birth_place,birth_date,sex,rt,rw,village,district,city_regency,province,religion,marital_status,occupation,citizenship,phone,email,registration_date,created_at,deleted_at,
+                       COALESCE((SELECT c.status FROM member_nfc_cards c WHERE c.member_id=identity_members.member_id AND c.status='active' ORDER BY c.created_at DESC LIMIT 1),'unregistered') AS nfc_credential_status
                 FROM identity_members
                 {where}
                 ORDER BY created_at DESC
