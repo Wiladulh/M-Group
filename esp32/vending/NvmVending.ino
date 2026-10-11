@@ -9,7 +9,8 @@
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
-const char* NVM_BASE_URL="http://192.168.1.24:8080";
+// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
+const char* NVM_BASE_URL="http://192.168.1.10:8011";
 const char* DEVICE_ID="vm-01";
 const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
 
@@ -40,7 +41,12 @@ struct Product{String id,name;long price;int stock;bool enabled;int servo_channe
 Product productsList[16];
 
 String request(const String& method,const String& path,const String& body,int& code){
-  HTTPClient http; http.begin(String(NVM_BASE_URL)+path); http.addHeader("Content-Type","application/json");http.addHeader("X-NVM-Device-Key",NVM_DEVICE_KEY);
+  HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(8000);
+  http.begin(String(NVM_BASE_URL)+path);
+  http.addHeader("Content-Type","application/json");
+  http.addHeader("X-NVM-Device-Key",NVM_DEVICE_KEY);
   if(method=="GET")code=http.GET();else if(method=="POST")code=http.POST(body);else code=-1;
   String out=code>0?http.getString():"";http.end();return out;
 }
@@ -56,21 +62,27 @@ void showMessage(const String&a,const String&b="",const String&c=""){
   display.println(a);if(b.length())display.println(b);if(c.length())display.println(c);display.display();
 }
 void heartbeat(){
+  if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;String body="{\"device_type\":\"esp32-s3-vending\",\"status\":\"active\"}";
   String reply=request("POST",String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
 }
-void connectWifi(){
-  WiFi.mode(WIFI_STA);WiFi.begin(WIFI_SSID,WIFI_PASSWORD);Serial.print("WiFi");
-  while(WiFi.status()!=WL_CONNECTED){delay(500);Serial.print(".");}
+bool connectWifi(unsigned long timeoutMs=10000){
+  WiFi.mode(WIFI_STA);WiFi.setAutoReconnect(true);WiFi.begin(WIFI_SSID,WIFI_PASSWORD);Serial.print("WiFi");
+  unsigned long started=millis();
+  while(WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs){delay(250);Serial.print(".");}
+  if(WiFi.status()!=WL_CONNECTED){Serial.println("\nWiFi unavailable; retry later");return false;}
   Serial.printf("\nIP %s\n",WiFi.localIP().toString().c_str());
+  return true;
 }
 void parseProducts(const String&json){
   productCount=0;int pos=0;
   while(productCount<16){
-    int p=json.indexOf("\"product_id\":\"",pos);if(p<0)break;int s=p+15,e=json.indexOf('"',s);if(e<0)break;
+    const String productPrefix="\"product_id\":\"";
+    int p=json.indexOf(productPrefix,pos);if(p<0)break;int s=p+productPrefix.length(),e=json.indexOf('"',s);if(e<0)break;
     Product&x=productsList[productCount];x.id=json.substring(s,e);
-    int n=json.indexOf("\"name\":\"",e),ns=n<0?-1:n+9,ne=ns<0?-1:json.indexOf('"',ns);x.name=(ns>=0&&ne>=0)?json.substring(ns,ne):x.id;
+    const String namePrefix="\"name\":\"";
+    int n=json.indexOf(namePrefix,e),ns=n<0?-1:n+namePrefix.length(),ne=ns<0?-1:json.indexOf('"',ns);x.name=(ns>=0&&ne>=0)?json.substring(ns,ne):x.id;
     int q=json.indexOf("\"price\":",e);x.price=q>=0?jsonLong(json.substring(q),"price"):0;
     q=json.indexOf("\"stock\":",e);x.stock=q>=0?jsonLong(json.substring(q),"stock"):0;
     q=json.indexOf("\"enabled\":",e);x.enabled=q>=0&&json.substring(q,q+20).indexOf("true")>=0;
@@ -105,7 +117,7 @@ bool dispense(const String&tx,int servoChannel){
 }
 void scanCard(){
   if(!readerReady||!productCount)return;Product&x=productsList[selectedIndex];if(!x.enabled||x.stock<=0)return;
-  uint8_t uid[7]={0},len=0;if(!card.readUID(uid,len))return;
+  uint8_t uid[NVM_MAX_UID_LENGTH]={0},len=0;if(!card.readUID(uid,len))return;
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   String tx=beginTransaction(x.id,credential,String(millis()));
@@ -119,10 +131,12 @@ void setup(){
   pinMode(BUTTON_UP,INPUT_PULLUP);pinMode(BUTTON_DOWN,INPUT_PULLUP);pinMode(BUTTON_SELECT,INPUT_PULLUP);
   Wire.begin(I2C_SDA,I2C_SCL);displayReady=display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR);
   for(int i=0;i<SERVO_COUNT;i++){dispensers[i].setPeriodHertz(50);dispensers[i].attach(SERVO_PINS[i],500,2400);dispensers[i].write(10);}
-  showMessage("NVM VENDING","Starting...");connectWifi();heartbeat();readerReady=card.begin(I2C_SDA,I2C_SCL);products();
+  showMessage("NVM VENDING","Starting...");
+  if(connectWifi()){heartbeat();products();}
+  readerReady=card.begin(I2C_SDA,I2C_SCL);
 }
 void loop(){
-  if(WiFi.status()!=WL_CONNECTED){showMessage("SERVER ERROR","WiFi disconnected");connectWifi();return;}
+  if(WiFi.status()!=WL_CONNECTED){showMessage("SERVER ERROR","WiFi disconnected");connectWifi(3000);delay(100);return;}
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
   if(digitalRead(BUTTON_UP)==LOW){if(productCount)selectedIndex=(selectedIndex+productCount-1)%productCount;products();delay(250);}
   if(digitalRead(BUTTON_DOWN)==LOW){if(productCount)selectedIndex=(selectedIndex+1)%productCount;products();delay(250);}
