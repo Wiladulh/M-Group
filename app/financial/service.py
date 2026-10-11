@@ -166,6 +166,18 @@ class FinancialService:
                    FROM financial_transactions t JOIN financial_accounts a ON a.account_id=t.account_id
                    WHERE t.transaction_id=?""", (original_transaction_id,)
             ).fetchone()
+            if not original:
+                deposit = c.execute(
+                    "SELECT transaction_id,member_id,account_id,amount,idempotency_key,status FROM cashier_deposits WHERE transaction_id=?",
+                    (original_transaction_id,)
+                ).fetchone()
+                if deposit and deposit["status"] == "completed" and deposit["member_id"] == member_id:
+                    original = c.execute(
+                        """SELECT t.transaction_id,t.account_id,t.transaction_type,t.amount,t.status,a.member_id
+                           FROM financial_transactions t JOIN financial_accounts a ON a.account_id=t.account_id
+                           WHERE t.idempotency_key=?""",
+                        ("cashier-deposit:" + deposit["idempotency_key"],)
+                    ).fetchone()
             if not original or original["member_id"] != member_id:
                 raise ValueError("original_topup_not_found_for_member")
             if original["transaction_type"] != "credit" or original["status"] != "completed":
