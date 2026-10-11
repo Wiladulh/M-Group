@@ -803,7 +803,11 @@ def build_router(db, app_settings=None):
             cred=c.execute("SELECT member_id FROM identity_credentials WHERE credential_id=?",(credential_id,)).fetchone()
             if cred and cred["member_id"]!=session["member_id"]:
                 raise HTTPException(409,"credential_already_registered")
-        identity.set_pin(session["member_id"],q.pin)
+        if replacement:
+            if not identity.verify_pin(session["member_id"],q.pin):
+                raise HTTPException(403,"invalid_member_pin_for_card_replacement")
+        else:
+            identity.set_pin(session["member_id"],q.pin)
         try:
             with db.connect() as c:
                 if replacement:
