@@ -9,7 +9,8 @@
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
-const char* NVM_BASE_URL="http://192.168.1.24:8080";
+// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
+const char* NVM_BASE_URL="http://192.168.1.10:8011";
 const char* DEVICE_ID="cashier-01";
 const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -29,9 +30,11 @@ unsigned long lastHeartbeat=0,paymentSequence=0,depositSequence=0;
 bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
-bool pendingPayment=false;
+bool pendingPayment=false,pendingDeposit=false;
 String pendingCredential="",pendingSeq="";
 long pendingAmount=0;
+String pendingDepositCredential="",pendingDepositSeq="";
+long pendingDepositAmount=0;
 void savePendingPayment(const String& credential,long amount,const String& seq){
   cashierPrefs.putBool("pay_pending",true); cashierPrefs.putString("pay_cred",credential);
   cashierPrefs.putLong("pay_amount",amount); cashierPrefs.putString("pay_seq",seq);
@@ -42,9 +45,19 @@ void clearPendingPayment(){
   cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq");
   pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq="";
 }
+void savePendingDeposit(const String& credential,long amount,const String& seq){
+  cashierPrefs.putBool("dep_pending",true); cashierPrefs.putString("dep_cred",credential);
+  cashierPrefs.putLong("dep_amount",amount); cashierPrefs.putString("dep_seq",seq);
+  pendingDeposit=true; pendingDepositCredential=credential; pendingDepositAmount=amount; pendingDepositSeq=seq;
+}
+void clearPendingDeposit(){
+  cashierPrefs.putBool("dep_pending",false); cashierPrefs.remove("dep_cred");
+  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq");
+  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
+}
 
 void lcdShow(String a,String b="");
-String readKeyDigits(const char* title,bool masked);
+String readKeyDigits(const char* title,bool masked,uint8_t minDigits=4,uint8_t maxDigits=6);
 long readCashierAmount();
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin);
 void cashierTopup(const String& credential,long amount,const String& seq,const String& operatorPin,const String& memberPin);
