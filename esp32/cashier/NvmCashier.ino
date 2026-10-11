@@ -162,14 +162,23 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
 
 void cashierTopup(const String& credential,long amount,const String& seq,const String& operatorPin,const String& memberPin){
   if(amount<=0){lcdShow("GAGAL","Nominal invalid");delay(1500);return;}
+  savePendingDeposit(credential,amount,seq);
   String body="{\"credential_id\":\""+credential+"\",\"amount\":"+String(amount)+
               ",\"operator_pin\":\""+operatorPin+"\",\"member_pin\":\""+memberPin+
               "\",\"idempotency_key\":\""+String(DEVICE_ID)+":deposit:"+seq+"\"}";
-  int code=0; String reply=postJson("/api/v1/cashier/deposits",body,code);
-  Serial.printf("TOPUP %d %s\n",code,reply.c_str());
-  if(code==200){ lcdShow("Topup Success","Rp."+String(amount)); delay(1800); }
-  else if(code==403){ lcdShow("Topup Gagal","PIN salah"); delay(1800); }
-  else { lcdShow("Topup Gagal","Server "+String(code)); delay(1800); }
+  int code=0; String reply="";
+  for(int attempt=1;attempt<=2;attempt++){
+    if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;continue;}
+    reply=postJson("/api/v1/cashier/deposits",body,code);
+    Serial.printf("TOPUP attempt=%d code=%d %s\n",attempt,code,reply.c_str());
+    if(code>0 && code<500)break;
+    delay(250);
+  }
+  if(code<=0 || code>=500){lcdShow("HASIL BELUM ADA","Ulangi Topup");return;}
+  clearPendingDeposit();
+  if(code>=200 && code<300){lcdShow("Topup Success","Rp."+String(amount));delay(1800);}
+  else if(reply.indexOf("invalid_pin")>=0 || reply.indexOf("invalid_operator_pin")>=0){lcdShow("Topup Gagal","PIN salah");delay(1800);}
+  else {lcdShow("Topup Gagal","HTTP "+String(code));delay(1800);}
 }
 
 void scanTopup(const String& operatorPin){
