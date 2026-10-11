@@ -208,6 +208,10 @@ class VendingService:
 
     def dispense(self,transaction_id,success=True):
         tx=self.get(transaction_id)
+        # The device may retry after the server committed the result but the
+        # HTTP response was lost. Return the terminal transaction without
+        # decrementing stock or issuing a second refund.
+        if tx["status"] in {"completed", "refunded"}: return tx
         if tx["status"]!="authorized": raise ValueError("transaction_not_authorized")
         if not success: return self._fail_and_refund(tx)
         with self.db.connect() as c:
