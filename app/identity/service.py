@@ -16,7 +16,7 @@ class IdentityService:
             "sha256", pin.encode(), salt.encode(), cls.PIN_ITERATIONS
         ).hex()
 
-    def set_pin(self, member_id, pin):
+    def set_pin(self, member_id, pin, actor_id="system"):
         if not isinstance(pin, str) or not pin.isdigit() or not 4 <= len(pin) <= 6:
             raise ValueError("pin_must_be_4_to_6_digits")
         salt = secrets.token_hex(16)
@@ -35,7 +35,7 @@ class IdentityService:
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
                 "VALUES(?,?,?,?)",
-                ("identity", "member", member_id, "pin_updated"),
+                ("identity", "member", member_id, f"pin_updated:operator={actor_id}"),
             )
             c.commit()
         return {"member_id": member_id, "status": "pin_set"}
