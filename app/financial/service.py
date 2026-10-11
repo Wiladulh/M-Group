@@ -144,3 +144,71 @@ class FinancialService:
 
     def debit(self, account_id, amount, reference=None, idempotency_key=None):
         return self._post(account_id, amount, "debit", reference, idempotency_key)
+
+
+    def correct_credit(self, member_id, original_transaction_id, corrected_amount, reason, idempotency_key, operator_id):
+        if not isinstance(corrected_amount, int) or isinstance(corrected_amount, bool) or corrected_amount <= 0:
+            raise ValueError("corrected_amount_must_be_positive_integer")
+        if not isinstance(reason, str) or len(reason.strip()) < 5:
+            raise ValueError("correction_reason_required")
+        if not isinstance(idempotency_key, str) or len(idempotency_key.strip()) < 8:
+            raise ValueError("idempotency_key_required")
+        if not isinstance(operator_id, str) or not operator_id.strip():
+            raise ValueError("operator_id_required")
+        with self.db.connect() as c:
+            prior = c.execute("SELECT correction_id,original_transaction_id,member_id,account_id,original_amount,corrected_amount,adjustment_amount,reason,operator_id,created_at FROM financial_corrections WHERE idempotency_key=?", (idempotency_key,)).fetchone()
+            if prior:
+                if prior["member_id"] != member_id or prior["original_transaction_id"] != original_transaction_id or prior["corrected_amount"] != corrected_amount:
+                    raise ValueError("idempotency_key_conflict")
+                return {**dict(prior), "replayed": True}
+            original = c.execute(
+                """SELECT t.transaction_id,t.account_id,t.transaction_type,t.amount,t.status,a.member_id
+                   FROM financial_transactions t JOIN financial_accounts a ON a.account_id=t.account_id
+                   WHERE t.transaction_id=?""", (original_transaction_id,)
+            ).fetchone()
+            if not original or original["member_id"] != member_id:
+                raise ValueError("original_topup_not_found_for_member")
+            if original["transaction_type"] != "credit" or original["status"] != "completed":
+                raise ValueError("original_transaction_not_correctable")
+            if c.execute("SELECT 1 FROM financial_corrections WHERE original_transaction_id=?", (original_transaction_id,)).fetchone():
+                raise ValueError("original_transaction_already_corrected")
+            original_amount = int(original["amount"])
+            delta = corrected_amount - original_amount
+            balance = int(c.execute(
+                "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) FROM financial_ledger WHERE account_id=?",
+                (original["account_id"],)
+            ).fetchone()[0])
+            if delta < 0 and balance < -delta:
+                raise ValueError("insufficient_balance_for_correction")
+            correction_id = "corr-" + uuid4().hex
+            adjustment_tx_id = "fin-" + uuid4().hex
+            if delta:
+                tx_type = "credit" if delta > 0 else "debit"
+                c.execute(
+                    """INSERT INTO financial_transactions(transaction_id,account_id,transaction_type,amount,reference,idempotency_key,status)
+                       VALUES(?,?,?,?,?,?, 'completed')""",
+                    (adjustment_tx_id, original["account_id"], tx_type, abs(delta),
+                     "member-correction:" + original_transaction_id, "correction:" + idempotency_key)
+                )
+                c.execute(
+                    "INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES(?,?,?,?)",
+                    (original["account_id"], tx_type, abs(delta), adjustment_tx_id)
+                )
+            c.execute(
+                """INSERT INTO financial_corrections(correction_id,original_transaction_id,member_id,account_id,
+                   original_amount,corrected_amount,adjustment_amount,reason,idempotency_key,operator_id)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (correction_id, original_transaction_id, member_id, original["account_id"],
+                 original_amount, corrected_amount, delta, reason.strip(), idempotency_key.strip(), operator_id.strip())
+            )
+            c.execute(
+                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                ("financial_correction", "member", member_id,
+                 f"correction_id={correction_id};original_transaction_id={original_transaction_id};before={original_amount};after={corrected_amount};adjustment={delta};operator={operator_id.strip()};reason={reason.strip()}")
+            )
+            c.commit()
+            return {"correction_id": correction_id, "original_transaction_id": original_transaction_id,
+                    "member_id": member_id, "account_id": original["account_id"],
+                    "original_amount": original_amount, "corrected_amount": corrected_amount,
+                    "adjustment_amount": delta, "reason": reason.strip(), "operator_id": operator_id.strip(),
+                    "replayed": False}
