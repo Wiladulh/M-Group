@@ -26,6 +26,7 @@ def test_vending_api_payment_and_dispense():
             products = client.get("/api/v1/vending/v1/products")
             assert products.status_code == 200
             assert products.json()["products"][0]["stock"] == 1
+            assert products.json()["products"][0]["enabled"] is True
             tx = client.post("/api/v1/vending/v1/transactions", json={
                 "product_id":"water","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-api-1"} , headers={"X-NVM-Device-Key":"vm-secret"})
