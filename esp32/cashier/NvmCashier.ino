@@ -57,7 +57,7 @@ void clearPendingDeposit(){
 }
 
 void lcdShow(String a,String b="");
-String readKeyDigits(const char* title,bool masked,uint8_t minDigits=4,uint8_t maxDigits=6);
+String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits);
 long readCashierAmount();
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin);
 void cashierTopup(const String& credential,long amount,const String& seq,const String& operatorPin,const String& memberPin);
@@ -189,7 +189,7 @@ void scanTopup(const String& operatorPin){
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN:");
-  String memberPin=readKeyDigits("PIN:",true);
+  String memberPin=readKeyDigits("PIN:",true,4,6);
   ++depositSequence; cashierPrefs.putULong("dep_seq_counter",depositSequence);
   cashierTopup(credential,amount,String(depositSequence),operatorPin,memberPin);
   delay(700);
@@ -230,7 +230,7 @@ void scanCard(){
   cashierPrefs.putULong("pay_seq_counter",paymentSequence);
   lcdShow("Kartu diterima","Masukkan PIN");
   Serial.printf("CARD READ reader=%s credential=%s\\n",card.name(),credential.c_str());
-  String pin=readKeyDigits("PIN (#=OK):",true);
+  String pin=readKeyDigits("PIN (#=OK):",true,4,6);
   Serial.printf("CARD %s -> %s amount=%ld\n",card.name(),credential.c_str(),paymentAmount);
   cashierPayment(credential,paymentAmount,String(paymentSequence),pin);
   delay(700);
@@ -314,14 +314,14 @@ void loop(){
   // The PIN is re-entered and is never persisted in NVS.
   if(pendingPayment){
     lcdShow("PAYMENT PENDING","PIN utk ulangi");
-    String pin=readKeyDigits("PIN utk ulangi",true);
+    String pin=readKeyDigits("PIN utk ulangi",true,4,6);
     cashierPayment(pendingCredential,pendingAmount,pendingSeq,pin);
     return;
   }
   if(pendingDeposit){
     lcdShow("TOPUP PENDING","Ulangi PIN");
-    String operatorPin=readKeyDigits("PIN Operator:",true);
-    String memberPin=readKeyDigits("PIN Anggota:",true);
+    String operatorPin=readKeyDigits("PIN Operator:",true,4,6);
+    String memberPin=readKeyDigits("PIN Anggota:",true,4,6);
     cashierTopup(pendingDepositCredential,pendingDepositAmount,pendingDepositSeq,operatorPin,memberPin);
     return;
   }
