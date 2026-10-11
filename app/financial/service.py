@@ -158,7 +158,14 @@ class FinancialService:
         with self.db.connect() as c:
             prior = c.execute("SELECT correction_id,original_transaction_id,member_id,account_id,original_amount,corrected_amount,adjustment_amount,reason,operator_id,created_at FROM financial_corrections WHERE idempotency_key=?", (idempotency_key,)).fetchone()
             if prior:
-                if prior["member_id"] != member_id or prior["original_transaction_id"] != original_transaction_id or prior["corrected_amount"] != corrected_amount:
+                prior_original = prior["original_transaction_id"]
+                matches = prior["member_id"] == member_id and prior_original == original_transaction_id and prior["corrected_amount"] == corrected_amount
+                if not matches:
+                    deposit = c.execute("SELECT idempotency_key,member_id,status FROM cashier_deposits WHERE transaction_id=?", (original_transaction_id,)).fetchone()
+                    if deposit and deposit["member_id"] == member_id and deposit["status"] == "completed":
+                        resolved = c.execute("SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?", ("cashier-deposit:" + deposit["idempotency_key"],)).fetchone()
+                        matches = bool(resolved and resolved["transaction_id"] == prior_original and prior["corrected_amount"] == corrected_amount)
+                if not matches:
                     raise ValueError("idempotency_key_conflict")
                 return {**dict(prior), "replayed": True}
             original = c.execute(
