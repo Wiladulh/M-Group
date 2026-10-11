@@ -211,6 +211,22 @@ def build_router(db, app_settings=None):
         return True
 
 
+    def resolve_vending_machine(identifier: str):
+        """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
+        with db.connect() as c:
+            row = c.execute(
+                """SELECT machine_id FROM vending_machines
+                   WHERE machine_id=? OR device_id=?
+                   ORDER BY CASE WHEN machine_id=? THEN 0 ELSE 1 END LIMIT 1""",
+                (identifier, identifier, identifier),
+            ).fetchone()
+        if not row:
+            raise HTTPException(404, "machine_not_found")
+        try:
+            return vending.machine(row["machine_id"])
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+
     @r.get("/health")
     def health(): return {"status": "ok", "service": "nvm"}
 
@@ -643,9 +659,14 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id):
-        try:return {"machine":vending.machine(machine_id),"products":vending.products(machine_id)}
-        except ValueError as e:raise HTTPException(404,str(e))
+    def vending_products(machine_id, x_nvm_device_key: str | None = Header(default=None)):
+        machine = resolve_vending_machine(machine_id)
+        # WebUI reads may omit a device key; firmware requests are authenticated.
+        if x_nvm_device_key:
+            if not machine.get("device_id"):
+                raise HTTPException(403, "machine_device_not_configured")
+            require_device(machine["device_id"], x_nvm_device_key)
+        return {"machine": machine, "products": vending.products(machine["machine_id"])}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(machine_id,product_id,q:VendingProductRequest):
@@ -656,10 +677,10 @@ def build_router(db, app_settings=None):
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_nvm_device_key: str | None = Header(default=None)):
         try:
-            machine=vending.machine(machine_id)
+            machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_nvm_device_key)
-            return vending.begin(machine_id,q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
+            return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.post("/vending/transactions/{transaction_id}/authorize")
