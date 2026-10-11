@@ -80,13 +80,16 @@ $('members').addEventListener('click',async e=>{
       $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='pin'){
       const operator_id=prompt('ID petugas yang melakukan reset PIN:');if(!operator_id)return;
+      if(!confirm('Pastikan identitas anggota sudah diverifikasi sesuai prosedur NVM. Lanjut reset PIN?'))return;
       const pin=prompt('Masukkan PIN transaksi baru (4–6 digit):');if(!pin)return;
-      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({pin,operator_id})});
+      const reason=prompt('Alasan reset PIN:');if(!reason)return;
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
       if(!r.ok)throw new Error(d.detail||'Reset PIN gagal');
       $('memberAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
     }else if(action==='nfc'){
       const cashier=$('nfcCashierDevice').value;if(!cashier)throw new Error('Pilih Cashier aktif terlebih dahulu');
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
+      if(!confirm('Kartu NFC lama anggota ini akan dinonaktifkan setelah kartu baru berhasil dipindai. Lanjutkan?'))return;
       const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({cashier_device_id:cashier,operator_id})});
       if(!r.ok)throw new Error(d.detail||'Gagal memulai penggantian NFC');
       $('nfcRegistrationResult').textContent='Penggantian kartu dimulai. Silakan scan kartu baru pada Cashier terpilih.';
@@ -96,7 +99,8 @@ $('members').addEventListener('click',async e=>{
       const original_transaction_id=prompt('Referensi/ID transaksi Top Up asli:');if(!original_transaction_id)return;
       const corrected_amount=Number(prompt('Nominal Top Up yang benar (rupiah):'));if(!Number.isSafeInteger(corrected_amount)||corrected_amount<=0)throw new Error('Nominal koreksi tidak valid');
       const reason=prompt('Alasan koreksi (minimal 5 karakter):');if(!reason)return;
-      const idempotency_key='member-correction-'+crypto.randomUUID();
+      if(!confirm('Konfirmasi koreksi transaksi Top Up '+original_transaction_id+' ke nominal '+money(corrected_amount)+'?'))return;
+      const idempotency_key='member-correction-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
       const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
       if(!r.ok)throw new Error(d.detail||'Koreksi Top Up gagal');
       $('memberAuthResult').textContent='Koreksi tercatat. Nominal sebelum: '+money(d.original_amount)+'; sesudah: '+money(d.corrected_amount)+'.';
