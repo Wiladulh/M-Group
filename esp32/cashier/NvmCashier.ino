@@ -341,7 +341,7 @@ void loop(){
     paymentAmount=0;
   }else{
     lcdShow("Topup","PIN Operator:");
-    String operatorPin=readKeyDigits("PIN Operator:",true);
+    String operatorPin=readKeyDigits("PIN Operator:",true,4,6);
     lcdShow("Topup","Nominal:");
     scanTopup(operatorPin);
   }
