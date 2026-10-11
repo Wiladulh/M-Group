@@ -28,7 +28,7 @@ def test_cashier_payment_requires_active_registered_device():
                     "VALUES('member-account-01','credit',10000,'seed')"
                 )
 
-            assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234"}).status_code == 200
+            assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234", "operator_id": "test-admin"}, headers={"X-NVM-Admin-Token": "admin-secret"}).status_code == 200
 
             q = {
                 "device_id": "cashier-01",
