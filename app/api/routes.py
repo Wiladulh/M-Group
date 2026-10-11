@@ -211,6 +211,22 @@ def build_router(db, app_settings=None):
         return True
 
 
+    def resolve_vending_machine(identifier: str):
+        """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
+        with db.connect() as c:
+            row = c.execute(
+                """SELECT machine_id FROM vending_machines
+                   WHERE machine_id=? OR device_id=?
+                   ORDER BY CASE WHEN machine_id=? THEN 0 ELSE 1 END LIMIT 1""",
+                (identifier, identifier, identifier),
+            ).fetchone()
+        if not row:
+            raise HTTPException(404, "machine_not_found")
+        try:
+            return vending.machine(row["machine_id"])
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+
     @r.get("/health")
     def health(): return {"status": "ok", "service": "nvm"}
 
@@ -643,9 +659,14 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id):
-        try:return {"machine":vending.machine(machine_id),"products":vending.products(machine_id)}
-        except ValueError as e:raise HTTPException(404,str(e))
+    def vending_products(machine_id, x_nvm_device_key: str | None = Header(default=None)):
+        machine = resolve_vending_machine(machine_id)
+        # WebUI reads may omit a device key; firmware requests are authenticated.
+        if x_nvm_device_key:
+            if not machine.get("device_id"):
+                raise HTTPException(403, "machine_device_not_configured")
+            require_device(machine["device_id"], x_nvm_device_key)
+        return {"machine": machine, "products": vending.products(machine["machine_id"])}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(machine_id,product_id,q:VendingProductRequest):
@@ -656,10 +677,10 @@ def build_router(db, app_settings=None):
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_nvm_device_key: str | None = Header(default=None)):
         try:
-            machine=vending.machine(machine_id)
+            machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_nvm_device_key)
-            return vending.begin(machine_id,q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
+            return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.post("/vending/transactions/{transaction_id}/authorize")
@@ -870,8 +891,21 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/deposits")
     def cashier_deposit(q:CashierDepositRequest,x_nvm_device_key: str | None = Header(default=None),x_nvm_device_id: str | None = Header(default=None)):
-        if not x_nvm_device_id: raise HTTPException(400,"device_id_required")
-        require_device(x_nvm_device_id,x_nvm_device_key)
+        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
+        device_id = x_nvm_device_id
+        if not device_id:
+            if not x_nvm_device_key:
+                raise HTTPException(401, "device_auth_required")
+            digest = hashlib.sha256(x_nvm_device_key.encode("utf-8")).hexdigest()
+            with db.connect() as c:
+                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
+            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
+            if not matches:
+                raise HTTPException(403, "invalid_device_key")
+            if matches[0]["status"] != "active":
+                raise HTTPException(403, "device_not_active")
+            device_id = matches[0]["device_id"]
+        require_device(device_id,x_nvm_device_key)
         if not verify_operator_pin(q.operator_pin): raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key: raise HTTPException(400,"idempotency_key_required")
         if not isinstance(q.amount,int) or q.amount<=0: raise HTTPException(400,"amount_must_be_positive_integer")
@@ -895,11 +929,11 @@ def build_router(db, app_settings=None):
             c.execute("""INSERT INTO cashier_deposits
                 (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                (tid,x_nvm_device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
+                (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
             c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={x_nvm_device_id}"))
+                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
             c.commit()
-        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_nvm_device_key: str | None = Header(default=None)):
