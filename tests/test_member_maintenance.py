@@ -117,7 +117,7 @@ def test_nfc_replacement_revokes_old_credential():
             assert replacement.status_code == 200
             second = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
                                  headers={"X-NVM-Device-Key": "cash-key"},
-                                 json={"session_id": replacement.json()["session_id"], "card_uid": "04:AA:BB:CC:02", "pin": "5678"})
+                                 json={"session_id": replacement.json()["session_id"], "card_uid": "04:AA:BB:CC:02", "pin": "1234"})
             assert second.status_code == 200
             new_credential = second.json()["credential_id"]
             with client.app.state.db.connect() as c:
