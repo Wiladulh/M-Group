@@ -25,7 +25,7 @@ def test_cashier_heartbeat_and_nfc_payment():
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
 
-            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin"}, headers={"X-NVM-Admin-Token": "admin-secret"}).status_code == 200
+            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": true, "reason": "test identity verified"}, headers={"X-NVM-Admin-Token": "admin-secret"}).status_code == 200
             h = client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
