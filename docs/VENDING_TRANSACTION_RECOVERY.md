@@ -3,6 +3,7 @@
 ## Transaction contract
 
 - Every vending attempt uses a device-scoped idempotency key: `<device-id>:<persistent-sequence>`.
+- The complete create request (product, NFC credential, sequence, and servo channel) is persisted in NVS before the first HTTP request. If the response is lost or the device reboots, it retries with the same sequence/idempotency key; it must not create a fresh vend until the pending request resolves.
 - The firmware stores the transaction ID and current phase in NVS before authorization and before servo actuation.
 - If the authorization response is ambiguous, the device queries `GET /api/v1/vending/transactions/{transaction_id}` with `X-NVM-Device-Key` before deciding what to do.
 - The status endpoint only returns a transaction to the device registered to its machine. Missing/invalid device credentials are rejected.
