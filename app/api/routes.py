@@ -666,7 +666,22 @@ def build_router(db, app_settings=None):
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_nvm_device_key)
-        return {"machine": machine, "products": vending.products(machine["machine_id"])}
+        catalog = vending.products(machine["machine_id"])
+        # Preserve base price while exposing the exact NFC/local amount shown
+        # by the current firmware. QRIS remains a separately configured,
+        # inactive payment path.
+        for item in catalog:
+            item["base_price"] = item["price"]
+            item["effective_price"] = item["price"]
+            item["discount_amount"] = 0
+            item["promo_id"] = None
+            promo = promos.resolve(machine["machine_id"], item["product_id"], "NFC", "local")
+            if promo:
+                discount, _ = promos.calculate(item["price"], promo["discount_percent"])
+                item["discount_amount"] = discount
+                item["effective_price"] = item["price"] - discount
+                item["promo_id"] = promo["promo_id"]
+        return {"machine": machine, "products": catalog}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(machine_id,product_id,q:VendingProductRequest):
@@ -682,6 +697,21 @@ def build_router(db, app_settings=None):
             require_device(machine["device_id"],x_nvm_device_key)
             return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
+
+    @r.get("/vending/transactions/{transaction_id}")
+    def vending_transaction_status(transaction_id, x_nvm_device_key: str | None = Header(default=None)):
+        """Authenticated reconciliation endpoint for ambiguous device requests."""
+        try:
+            tx = vending.get(transaction_id)
+            machine = vending.machine(tx["machine_id"])
+            if not machine.get("device_id"):
+                raise HTTPException(403, "machine_device_not_configured")
+            require_device(machine["device_id"], x_nvm_device_key)
+            return tx
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise HTTPException(404 if str(e) == "transaction_not_found" else 400, str(e))
 
     @r.post("/vending/transactions/{transaction_id}/authorize")
     def vending_authorize(transaction_id,x_nvm_device_key: str | None = Header(default=None)):

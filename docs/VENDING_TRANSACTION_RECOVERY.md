@@ -1,0 +1,33 @@
+# Vending transaction recovery and verification boundaries
+
+## Transaction contract
+
+- Every vending attempt uses a device-scoped idempotency key: `<device-id>:<persistent-sequence>`.
+- The firmware stores the transaction ID and current phase in NVS before authorization and before servo actuation.
+- If the authorization response is ambiguous, the device queries `GET /api/v1/vending/transactions/{transaction_id}` with `X-NVM-Device-Key` before deciding what to do.
+- The status endpoint only returns a transaction to the device registered to its machine. Missing/invalid device credentials are rejected.
+- The server rejects reuse of an idempotency key for a different machine/product/credential/payment method/provider.
+- Dispense reports and refunds are retryable. Server-side state transitions prevent concurrent duplicate stock decrements; refunds use a stable ledger idempotency key.
+- If power is lost after the firmware persists the `dispensing` phase but before it can confirm the report, the firmware will not run the servo again. It reports the result as uncertain/failed and requests reconciliation/refund. This avoids double dispensing, but without a physical sensor it can conservatively refund a product that may already have fallen.
+
+## IR product-drop validation
+
+The five product slots share one output chute, so the firmware supports one IR break-beam pair across that chute. The receiver output connects to ESP32-S3 GPIO 1 by default (`PRODUCT_DROP_SENSOR_PIN`); connect sensor ground to ESP32 ground and power the module according to its datasheet. The receiver output must never exceed 3.3 V at the ESP32-S3 GPIO. If the selected receiver has inverted output polarity, change `PRODUCT_SENSOR_BLOCKED_LEVEL` in `esp32/vending/NvmVending.ino` after confirming its actual behavior.
+
+Before moving a servo, firmware requires the beam to be clear. It then opens the selected servo and monitors the beam for up to four seconds, requiring a blocked-then-clear passage. Only a detected passage is reported as successful dispensing. If no complete passage is detected, firmware reports failure so the server can reconcile/refund; it does not automatically actuate the servo again. The result is persisted before the server report, so report retries do not repeat physical dispensing.
+
+A confirmed beam passage proves the product crossed the sensor point, not that the customer received it. Physical sensor polarity, placement, package sizes, and the four-second timeout must be verified on the real machine before production use.
+
+## Catalog and promo
+
+The product API keeps `price` / `base_price` as the configured base price and exposes `effective_price`, `discount_amount`, and `promo_id` for the NFC/local path currently used by firmware. The device refreshes its catalog periodically and after a completed vend. QRIS remains inactive until its provider integration is implemented.
+
+## Device enrollment
+
+Manual provisioning remains the official installation procedure for this release. An administrator provisions a device through the authenticated provisioning endpoint and places the returned device key into protected device configuration. The public handshake endpoint is not automatic enrollment: firmware must not self-authorize or activate itself merely by presenting a MAC address. Automatic enrollment would require a separate secure commissioning flow.
+
+## Verification levels
+
+- Automated API tests verify contract, authorization, idempotency, stock/refund state, and transaction status recovery.
+- Firmware CI/build verifies compilation only when the relevant toolchain job is present.
+- Physical PASS requires a real device test covering response loss, reboot before/after servo actuation, low stock, server outage, and refund reconciliation. Without a sensor, product delivery remains unverified.
