@@ -683,6 +683,21 @@ def build_router(db, app_settings=None):
             return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
+    @r.get("/vending/transactions/{transaction_id}")
+    def vending_transaction_status(transaction_id, x_nvm_device_key: str | None = Header(default=None)):
+        """Authenticated reconciliation endpoint for ambiguous device requests."""
+        try:
+            tx = vending.get(transaction_id)
+            machine = vending.machine(tx["machine_id"])
+            if not machine.get("device_id"):
+                raise HTTPException(403, "machine_device_not_configured")
+            require_device(machine["device_id"], x_nvm_device_key)
+            return tx
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise HTTPException(404 if str(e) == "transaction_not_found" else 400, str(e))
+
     @r.post("/vending/transactions/{transaction_id}/authorize")
     def vending_authorize(transaction_id,x_nvm_device_key: str | None = Header(default=None)):
         try:
