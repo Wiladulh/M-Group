@@ -10,9 +10,13 @@
 - Dispense reports and refunds are retryable. Server-side state transitions prevent concurrent duplicate stock decrements; refunds use a stable ledger idempotency key.
 - If power is lost after the firmware persists the `dispensing` phase but before it can confirm the report, the firmware will not run the servo again. It reports the result as uncertain/failed and requests reconciliation/refund. This avoids double dispensing, but without a physical sensor it can conservatively refund a product that may already have fallen.
 
-## What a successful dispense means
+## IR product-drop validation
 
-The current hardware has no product-drop sensor. A successful firmware report means the configured servo movement sequence completed; it does **not** prove that a product physically reached the customer. API consumers and audit views must not present this as sensor-confirmed delivery. Adding a suitable drop sensor is a separate hardware revision.
+The five product slots share one output chute, so the firmware supports one IR break-beam pair across that chute. The receiver output connects to ESP32-S3 GPIO 1 by default (`PRODUCT_DROP_SENSOR_PIN`); connect sensor ground to ESP32 ground and power the module according to its datasheet. The receiver output must never exceed 3.3 V at the ESP32-S3 GPIO. If the selected receiver has inverted output polarity, change `PRODUCT_SENSOR_BLOCKED_LEVEL` in `esp32/vending/NvmVending.ino` after confirming its actual behavior.
+
+Before moving a servo, firmware requires the beam to be clear. It then opens the selected servo and monitors the beam for up to four seconds, requiring a blocked-then-clear passage. Only a detected passage is reported as successful dispensing. If no complete passage is detected, firmware reports failure so the server can reconcile/refund; it does not automatically actuate the servo again. The result is persisted before the server report, so report retries do not repeat physical dispensing.
+
+A confirmed beam passage proves the product crossed the sensor point, not that the customer received it. Physical sensor polarity, placement, package sizes, and the four-second timeout must be verified on the real machine before production use.
 
 ## Catalog and promo
 
