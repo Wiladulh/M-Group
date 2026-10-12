@@ -139,8 +139,8 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   }
   clearPendingPayment();
   if(code==200){
-    int p=reply.indexOf("\"balance\":");
-    long bal=p>=0?reply.substring(p+10).toInt():0;
+    int p=reply.indexOf("\"balance_after\":");
+    long bal=p>=0?reply.substring(p+16).toInt():0;
     lcdShow("SUKSES","Terpotong Rp."+String(amount)); delay(1200);
     lcdShow("Saldo sisa","Rp."+String(bal)); delay(2200);
   }else if(code==403 && reply.indexOf("invalid_pin")>=0){
