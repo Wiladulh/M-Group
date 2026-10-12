@@ -46,6 +46,12 @@ int selectedIndex=0,productCount=0;
 bool pendingTransaction=false;
 String pendingTransactionId="",pendingTransactionPhase="";
 int pendingServoChannel=0;
+// Persist the complete create request before sending it. If the HTTP response is lost,
+// retry the identical idempotency key instead of starting a new vend.
+bool pendingCreateRequest=false;
+String pendingCreateProduct="",pendingCreateCredential="";
+unsigned long pendingCreateSequence=0;
+int pendingCreateServo=0;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
 Product productsList[16];
@@ -100,6 +106,22 @@ void parseProducts(const String&json){
     if(x.servo_channel<1||x.servo_channel>SERVO_COUNT)x.servo_channel=productCount+1;
     pos=e+1;productCount++;
   }
+}
+void clearPendingCreateRequest(){
+  vendingPrefs.putBool("create_pending",false);
+  vendingPrefs.remove("create_product");vendingPrefs.remove("create_credential");
+  vendingPrefs.remove("create_seq");vendingPrefs.remove("create_servo");
+  pendingCreateRequest=false;pendingCreateProduct="";pendingCreateCredential="";
+  pendingCreateSequence=0;pendingCreateServo=0;
+}
+void savePendingCreateRequest(const String&product,const String&credential,unsigned long seq,int servoChannel){
+  vendingPrefs.putString("create_product",product);
+  vendingPrefs.putString("create_credential",credential);
+  vendingPrefs.putULong("create_seq",seq);
+  vendingPrefs.putInt("create_servo",servoChannel);
+  vendingPrefs.putBool("create_pending",true);
+  pendingCreateRequest=true;pendingCreateProduct=product;pendingCreateCredential=credential;
+  pendingCreateSequence=seq;pendingCreateServo=servoChannel;
 }
 void clearPendingTransaction(){
   vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");
@@ -204,8 +226,10 @@ void scanCard(){
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
-  String tx=beginTransaction(x.id,credential,String(vendingSequence));
-  if(!tx.length()){showMessage("TRANSACTION UNKNOWN","Check server");delay(1200);return;}
+  savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel);
+  String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
+  if(!tx.length()){showMessage("CREATE PENDING","Retry same request");delay(1200);return;}
+  clearPendingCreateRequest();
   savePendingTransaction(tx,"created",x.servo_channel);
   if(!authorize(tx)){showMessage("PAYMENT PENDING","Checking status");delay(800);return;}
   savePendingTransaction(tx,"authorized",x.servo_channel);
@@ -222,6 +246,14 @@ void setup(){
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
   if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
+  pendingCreateRequest=vendingPrefs.getBool("create_pending",false);
+  if(pendingCreateRequest){
+    pendingCreateProduct=vendingPrefs.getString("create_product","");
+    pendingCreateCredential=vendingPrefs.getString("create_credential","");
+    pendingCreateSequence=vendingPrefs.getULong("create_seq",0);
+    pendingCreateServo=vendingPrefs.getInt("create_servo",0);
+    if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
+  }
   pendingDispenseReport=vendingPrefs.getBool("disp_pending",false);
   if(pendingDispenseReport){
     pendingDispenseTx=vendingPrefs.getString("disp_tx","");
@@ -242,6 +274,16 @@ void loop(){
     showMessage("RESULT PENDING","Retry server report");
     reportDispense(pendingDispenseTx,pendingDispenseSuccess);
     delay(250);return;
+  }
+  if(pendingCreateRequest){
+    showMessage("CREATE PENDING","Retry same request");
+    String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
+    if(tx.length()){
+      const int servoChannel=pendingCreateServo;
+      clearPendingCreateRequest();
+      savePendingTransaction(tx,"created",servoChannel);
+    }
+    delay(500);return;
   }
   if(pendingTransaction){
     int code=0;String status=request("GET","/api/v1/vending/transactions/"+pendingTransactionId,"",code);
