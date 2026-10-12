@@ -35,7 +35,7 @@ NvmCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC522_S
 Adafruit_SSD1306 display(128,64,&Wire,-1);
 Servo dispensers[SERVO_COUNT];
 Preferences vendingPrefs;
-unsigned long lastHeartbeat=0,vendingSequence=0;
+unsigned long lastHeartbeat=0,lastCatalogRefresh=0,vendingSequence=0;
 bool readerReady=false,displayReady=false,pendingDispenseReport=false,pendingDispenseSuccess=true;
 String pendingDispenseTx="";
 int selectedIndex=0,productCount=0;
@@ -216,6 +216,7 @@ void loop(){
     if(code<200||code>=300){showMessage("TX STATUS UNKNOWN","Retrying server");delay(500);return;}
     String state=jsonString(status,"status");
     if(state=="completed"||state=="refunded"||state=="failed"){clearPendingTransaction();showMessage("TX RESOLVED",state);delay(500);return;}
+    if(state=="refunding"){reportDispense(pendingTransactionId,false);showMessage("REFUND RECOVERY","Checking server");delay(500);return;}
     if(state=="pending"){
       if(!authorize(pendingTransactionId)){showMessage("PAYMENT PENDING","Retry status");delay(500);return;}
       savePendingTransaction(pendingTransactionId,"authorized",pendingServoChannel);state="authorized";
@@ -233,6 +234,7 @@ void loop(){
     showMessage("TX NEEDS REVIEW",state);delay(500);return;
   }
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
+  if(millis()-lastCatalogRefresh>=60000UL){lastCatalogRefresh=millis();products();}
   if(digitalRead(BUTTON_UP)==LOW){if(productCount)selectedIndex=(selectedIndex+productCount-1)%productCount;products();delay(250);}
   if(digitalRead(BUTTON_DOWN)==LOW){if(productCount)selectedIndex=(selectedIndex+1)%productCount;products();delay(250);}
   if(digitalRead(BUTTON_SELECT)==LOW){showMessage("READY",productCount?productsList[selectedIndex].name:"No product","Tap NFC card");delay(250);}
