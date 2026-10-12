@@ -96,3 +96,8 @@ CSH-08 is a **physical-device validation** stage; CI can verify the pin-map and 
 Record board model, reader model, LCD address, firmware commit, results, and any wiring changes. Never publish Wi-Fi credentials, device keys, PINs, or full sensitive logs.
 
 **CSH-08 PASS criteria:** the above applicable checks pass on the physical device and the CI hardware-contract tests plus firmware build are green. Until then, hardware validation remains pending; do not proceed to vending integration.
+
+
+## Installation and wiring tutorial
+
+See [INSTALLATION_AND_WIRING.md](INSTALLATION_AND_WIRING.md) for the full step-by-step installation, pin mapping, power-safety notes, and physical test checklist.
