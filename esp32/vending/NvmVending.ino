@@ -28,6 +28,10 @@ const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
 #define BUTTON_DOWN 5
 #define BUTTON_SELECT 6
 #define SERVO_COUNT 5
+// IR break-beam output across the shared product chute. Confirm polarity for the chosen module.
+#define PRODUCT_DROP_SENSOR_PIN 1
+#define PRODUCT_SENSOR_BLOCKED_LEVEL HIGH
+#define PRODUCT_DROP_TIMEOUT_MS 4000UL
 const int SERVO_PINS[SERVO_COUNT]={3,16,17,18,21};
 #define OLED_ADDR 0x3C
 
@@ -154,6 +158,32 @@ bool reportDispense(const String&tx,bool success){
   }
   return false;
 }
+bool actuateAndDetectProduct(Servo&servo){
+  // A blocked beam before vending indicates an obstruction or sensor fault.
+  if(digitalRead(PRODUCT_DROP_SENSOR_PIN)==PRODUCT_SENSOR_BLOCKED_LEVEL){
+    Serial.println("IR DROP SENSOR: beam blocked before dispense; refusing actuation");
+    return false;
+  }
+  const unsigned long started=millis();
+  bool servoReturned=false,seenBlocked=false;
+  servo.write(70);
+  while(millis()-started<PRODUCT_DROP_TIMEOUT_MS){
+    const unsigned long elapsed=millis()-started;
+    if(!servoReturned && elapsed>=700UL){servo.write(10);servoReturned=true;}
+    const bool blocked=digitalRead(PRODUCT_DROP_SENSOR_PIN)==PRODUCT_SENSOR_BLOCKED_LEVEL;
+    if(blocked)seenBlocked=true;
+    // Require a complete blocked-then-clear passage, not just an interrupted beam.
+    if(seenBlocked && !blocked){
+      if(!servoReturned)servo.write(10);
+      Serial.println("IR DROP SENSOR: product passage confirmed");
+      return true;
+    }
+    delay(2);
+  }
+  if(!servoReturned)servo.write(10);
+  Serial.println("IR DROP SENSOR: no complete product passage detected");
+  return false;
+}
 bool dispense(const String&tx,int servoChannel){
   if(servoChannel<1||servoChannel>SERVO_COUNT){
     savePendingDispense(tx,false);
@@ -161,11 +191,12 @@ bool dispense(const String&tx,int servoChannel){
     return false;
   }
   Servo&servo=dispensers[servoChannel-1];
-  servo.write(70);delay(700);servo.write(10);
-  // Persist the physical action result before reporting it. A retry must report,
-  // never actuate the servo a second time.
-  savePendingDispense(tx,true);
-  return reportDispense(tx,true);
+  const bool detected=actuateAndDetectProduct(servo);
+  // Persist the sensor result before reporting it. Recovery retries only the
+  // server report; it never repeats a potentially completed physical vend.
+  savePendingDispense(tx,detected);
+  if(!reportDispense(tx,detected))return false;
+  return detected;
 }
 void scanCard(){
   if(!readerReady||!productCount)return;Product&x=productsList[selectedIndex];if(!x.enabled||x.stock<=0)return;
@@ -198,6 +229,7 @@ void setup(){
     if(!pendingDispenseTx.length()){Serial.println("FATAL: pending dispense transaction ID missing");while(true)delay(1000);}
   }
   pinMode(BUTTON_UP,INPUT_PULLUP);pinMode(BUTTON_DOWN,INPUT_PULLUP);pinMode(BUTTON_SELECT,INPUT_PULLUP);
+  pinMode(PRODUCT_DROP_SENSOR_PIN,INPUT_PULLUP);
   Wire.begin(I2C_SDA,I2C_SCL);displayReady=display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR);
   for(int i=0;i<SERVO_COUNT;i++){dispensers[i].setPeriodHertz(50);dispensers[i].attach(SERVO_PINS[i],500,2400);dispensers[i].write(10);}
   showMessage("NVM VENDING","Starting...");
