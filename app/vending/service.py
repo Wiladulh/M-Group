@@ -189,8 +189,8 @@ class VendingService:
 
     def authorize(self,transaction_id):
         tx=self.get(transaction_id)
-        if tx["status"]=="completed": return tx
-        if tx["status"] in {"failed","refunded"}: return tx
+        if tx["status"] in {"authorized","completed","refunding","failed","refunded"}: return tx
+        if tx["status"]!="pending": raise ValueError("transaction_not_pending")
         try:
             if tx["payment_method"]=="QRIS":
                 raise ValueError("qris_payment_provider_not_activated")
