@@ -41,3 +41,8 @@ Set `WIFI_SSID`, `WIFI_PASSWORD`, `NVM_BASE_URL`, `DEVICE_ID`, and `NVM_DEVICE_K
 - The product API returns `enabled` as a JSON boolean. The firmware uses product ID, name, price, stock, enabled state, and servo channel from that response.
 
 Firmware CI validates compilation only; NFC reads, Wi-Fi reachability, servo behavior, dispensing feedback, and real transaction reconciliation still require physical-device tests.
+
+
+## Installation and wiring tutorial
+
+See [INSTALLATION_AND_WIRING.md](INSTALLATION_AND_WIRING.md) for the full step-by-step installation, pin mapping, power-safety notes, and physical test checklist.
