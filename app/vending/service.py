@@ -216,33 +216,62 @@ class VendingService:
 
     def dispense(self,transaction_id,success=True):
         tx=self.get(transaction_id)
-        # The device may retry after the server committed the result but the
-        # HTTP response was lost. Return the terminal transaction without
-        # decrementing stock or issuing a second refund.
-        if tx["status"] in {"completed", "refunded"}: return tx
+        # Terminal retries are safe after a response is lost.
+        if tx["status"] in {"completed", "refunded", "failed"}: return tx
+        if tx["status"]=="refunding":
+            return self._fail_and_refund(tx)
         if tx["status"]!="authorized": raise ValueError("transaction_not_authorized")
         if not success: return self._fail_and_refund(tx)
         with self.db.connect() as c:
-            p=c.execute("SELECT stock FROM vending_products WHERE product_id=? AND machine_id=?",(tx["product_id"],tx["machine_id"])).fetchone()
-            if not p or p["stock"]<=0:
+            # Claim the authorized transaction in the same DB transaction as
+            # the stock decrement. Concurrent duplicate reports cannot consume
+            # stock twice for the same transaction.
+            claimed=c.execute(
+                """UPDATE vending_transactions SET status='completed',payment_status='completed',
+                   dispense_status='success',completed_at=CURRENT_TIMESTAMP
+                   WHERE transaction_id=? AND status='authorized'""",
+                (transaction_id,)
+            )
+            if claimed.rowcount != 1:
+                c.rollback()
+                current=self.get(transaction_id)
+                if current["status"] in {"completed","refunded","failed"}: return current
+                raise ValueError("transaction_state_conflict")
+            stock=c.execute(
+                "UPDATE vending_products SET stock=stock-1 WHERE product_id=? AND machine_id=? AND stock>0",
+                (tx["product_id"],tx["machine_id"])
+            )
+            if stock.rowcount != 1:
                 c.rollback()
                 return self._fail_and_refund(tx)
-            c.execute("UPDATE vending_products SET stock=stock-1 WHERE product_id=? AND machine_id=? AND stock>0",(tx["product_id"],tx["machine_id"]))
-            c.execute("""UPDATE vending_transactions SET status='completed',payment_status='completed',dispense_status='success',
-                completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?""",(transaction_id,))
             c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("vending","vending_transaction",transaction_id,"dispensed"))
+                ("vending","vending_transaction",transaction_id,"dispense_command_reported_success"))
             c.commit()
         return self.get(transaction_id)
 
     def _fail_and_refund(self,tx):
-        self.payment.financial.credit(tx["account_id"],tx["amount"],
-            reference="refund:"+tx["transaction_id"],
-            idempotency_key="vending-refund:"+tx["transaction_id"])
+        transaction_id=tx["transaction_id"]
+        # Claim the refund path before crediting. The ledger idempotency key
+        # makes recovery safe if the process stops between credit and status.
         with self.db.connect() as c:
-            c.execute("UPDATE vending_transactions SET status='refunded',payment_status='refunded',dispense_status='failed' WHERE transaction_id=?",(tx["transaction_id"],))
+            current=c.execute("SELECT status FROM vending_transactions WHERE transaction_id=?",(transaction_id,)).fetchone()
+            if not current: raise ValueError("transaction_not_found")
+            if current["status"] in {"completed","refunded","failed"}: return self.get(transaction_id)
+            if current["status"]=="authorized":
+                claim=c.execute("UPDATE vending_transactions SET status='refunding' WHERE transaction_id=? AND status='authorized'",(transaction_id,))
+                if claim.rowcount != 1:
+                    c.rollback()
+                    return self.get(transaction_id)
+                c.commit()
+            elif current["status"]!="refunding":
+                raise ValueError("transaction_not_authorized")
+        self.payment.financial.credit(tx["account_id"],tx["amount"],
+            reference="refund:"+transaction_id,
+            idempotency_key="vending-refund:"+transaction_id)
+        with self.db.connect() as c:
+            c.execute("UPDATE vending_transactions SET status='refunded',payment_status='refunded',dispense_status='failed' WHERE transaction_id=? AND status='refunding'",(transaction_id,))
             c.commit()
-        return self.get(tx["transaction_id"])
+        return self.get(transaction_id)
 
     def get(self,transaction_id):
         with self.db.connect() as c:
