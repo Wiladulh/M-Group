@@ -39,6 +39,9 @@ unsigned long lastHeartbeat=0,vendingSequence=0;
 bool readerReady=false,displayReady=false,pendingDispenseReport=false,pendingDispenseSuccess=true;
 String pendingDispenseTx="";
 int selectedIndex=0,productCount=0;
+bool pendingTransaction=false;
+String pendingTransactionId="",pendingTransactionPhase="";
+int pendingServoChannel=0;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
 Product productsList[16];
@@ -86,13 +89,21 @@ void parseProducts(const String&json){
     Product&x=productsList[productCount];x.id=json.substring(s,e);
     const String namePrefix="\"name\":\"";
     int n=json.indexOf(namePrefix,e),ns=n<0?-1:n+namePrefix.length(),ne=ns<0?-1:json.indexOf('"',ns);x.name=(ns>=0&&ne>=0)?json.substring(ns,ne):x.id;
-    int q=json.indexOf("\"price\":",e);x.price=q>=0?jsonLong(json.substring(q),"price"):0;
+    int q=json.indexOf("\"effective_price\":",e);String priceKey="effective_price";if(q<0){q=json.indexOf("\"price\":",e);priceKey="price";}x.price=q>=0?jsonLong(json.substring(q),priceKey):0;
     q=json.indexOf("\"stock\":",e);x.stock=q>=0?jsonLong(json.substring(q),"stock"):0;
     q=json.indexOf("\"enabled\":",e);x.enabled=q>=0&&json.substring(q,q+20).indexOf("true")>=0;
     q=json.indexOf("\"servo_channel\":",e);x.servo_channel=q>=0?jsonLong(json.substring(q),"servo_channel"):productCount+1;
     if(x.servo_channel<1||x.servo_channel>SERVO_COUNT)x.servo_channel=productCount+1;
     pos=e+1;productCount++;
   }
+}
+void clearPendingTransaction(){
+  vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");
+  pendingTransaction=false;pendingTransactionId="";pendingTransactionPhase="";pendingServoChannel=0;
+}
+void savePendingTransaction(const String&tx,const String&phase,int servoChannel){
+  vendingPrefs.putString("tx_id",tx);vendingPrefs.putString("tx_phase",phase);vendingPrefs.putInt("tx_servo",servoChannel);vendingPrefs.putBool("tx_pending",true);
+  pendingTransaction=true;pendingTransactionId=tx;pendingTransactionPhase=phase;pendingServoChannel=servoChannel;
 }
 bool products(){
   int code=0;String reply=request("GET",String("/api/v1/vending/")+DEVICE_ID+"/products","",code);
@@ -137,7 +148,7 @@ bool reportDispense(const String&tx,bool success){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
     int code=0;String reply=request("POST","/api/v1/vending/transactions/"+tx+"/dispense",body,code);
     Serial.printf("DISPENSE REPORT attempt=%d code=%d %s\n",attempt,code,reply.c_str());
-    if(code>=200&&code<300){clearPendingDispense();return true;}
+    if(code>=200&&code<300){clearPendingDispense();if(pendingTransaction&&pendingTransactionId==tx)clearPendingTransaction();return true;}
     if(code>0&&code<500)break;
     delay(300);
   }
@@ -163,8 +174,12 @@ void scanCard(){
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
   String tx=beginTransaction(x.id,credential,String(vendingSequence));
-  if(!tx.length()||!authorize(tx)){showMessage("PAYMENT FAILED");delay(1200);return;}
+  if(!tx.length()){showMessage("TRANSACTION UNKNOWN","Check server");delay(1200);return;}
+  savePendingTransaction(tx,"created",x.servo_channel);
+  if(!authorize(tx)){showMessage("PAYMENT PENDING","Checking status");delay(800);return;}
+  savePendingTransaction(tx,"authorized",x.servo_channel);
   showMessage("PAYMENT OK",x.name,"Dispensing...");
+  savePendingTransaction(tx,"dispensing",x.servo_channel);
   if(dispense(tx,x.servo_channel)){showMessage("TAKE PRODUCT",x.name);delay(800);products();}
   else if(pendingDispenseReport)showMessage("RESULT PENDING","Retry server report");
   else showMessage("DISPENSE ERROR","Refund recorded");
@@ -174,6 +189,8 @@ void setup(){
   Serial.begin(115200);delay(300);
   vendingPrefs.begin("nvm-vend",false);
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
+  pendingTransaction=vendingPrefs.getBool("tx_pending",false);
+  if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
   pendingDispenseReport=vendingPrefs.getBool("disp_pending",false);
   if(pendingDispenseReport){
     pendingDispenseTx=vendingPrefs.getString("disp_tx","");
@@ -193,6 +210,27 @@ void loop(){
     showMessage("RESULT PENDING","Retry server report");
     reportDispense(pendingDispenseTx,pendingDispenseSuccess);
     delay(250);return;
+  }
+  if(pendingTransaction){
+    int code=0;String status=request("GET","/api/v1/vending/transactions/"+pendingTransactionId,"",code);
+    if(code<200||code>=300){showMessage("TX STATUS UNKNOWN","Retrying server");delay(500);return;}
+    String state=jsonString(status,"status");
+    if(state=="completed"||state=="refunded"||state=="failed"){clearPendingTransaction();showMessage("TX RESOLVED",state);delay(500);return;}
+    if(state=="pending"){
+      if(!authorize(pendingTransactionId)){showMessage("PAYMENT PENDING","Retry status");delay(500);return;}
+      savePendingTransaction(pendingTransactionId,"authorized",pendingServoChannel);state="authorized";
+    }
+    if(state=="authorized"){
+      if(pendingTransactionPhase=="dispensing"){
+        savePendingDispense(pendingTransactionId,false);reportDispense(pendingTransactionId,false);
+        showMessage("DISPENSE UNCERTAIN","Refund requested");delay(500);return;
+      }
+      savePendingTransaction(pendingTransactionId,"dispensing",pendingServoChannel);
+      bool ok=dispense(pendingTransactionId,pendingServoChannel);
+      if(ok){showMessage("TAKE PRODUCT");products();}else if(pendingDispenseReport)showMessage("RESULT PENDING","Retry server report");
+      delay(500);return;
+    }
+    showMessage("TX NEEDS REVIEW",state);delay(500);return;
   }
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
   if(digitalRead(BUTTON_UP)==LOW){if(productCount)selectedIndex=(selectedIndex+productCount-1)%productCount;products();delay(250);}
