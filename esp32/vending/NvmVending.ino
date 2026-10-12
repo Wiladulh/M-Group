@@ -52,6 +52,7 @@ bool pendingCreateRequest=false;
 String pendingCreateProduct="",pendingCreateCredential="";
 unsigned long pendingCreateSequence=0;
 int pendingCreateServo=0;
+bool createRequestRejected=false;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
 Product productsList[16];
@@ -140,6 +141,7 @@ bool products(){
   showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));return true;
 }
 String beginTransaction(const String&product,const String&credential,const String&seq){
+  createRequestRejected=false;
   String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(DEVICE_ID)+":"+seq+"\"}";
   String path=String("/api/v1/vending/")+DEVICE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
@@ -148,7 +150,7 @@ String beginTransaction(const String&product,const String&credential,const Strin
     String tx=jsonString(reply,"transaction_id");
     Serial.printf("BEGIN attempt=%d code=%d %s\n",attempt,code,reply.c_str());
     if(tx.length())return tx;
-    if(code>0 && code<500)return "";
+    if(code>=400 && code<500){createRequestRejected=true;return "";}
     delay(250);
   }
   return "";
@@ -228,7 +230,11 @@ void scanCard(){
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
   savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel);
   String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
-  if(!tx.length()){showMessage("CREATE PENDING","Retry same request");delay(1200);return;}
+  if(!tx.length()){
+    if(createRequestRejected){clearPendingCreateRequest();showMessage("TRANSACTION REJECTED","Check stock/card");}
+    else showMessage("CREATE PENDING","Retry same request");
+    delay(1200);return;
+  }
   clearPendingCreateRequest();
   savePendingTransaction(tx,"created",x.servo_channel);
   if(!authorize(tx)){showMessage("PAYMENT PENDING","Checking status");delay(800);return;}
@@ -282,6 +288,9 @@ void loop(){
       const int servoChannel=pendingCreateServo;
       clearPendingCreateRequest();
       savePendingTransaction(tx,"created",servoChannel);
+    }else if(createRequestRejected){
+      clearPendingCreateRequest();
+      showMessage("CREATE REJECTED","Ready to retry");
     }
     delay(500);return;
   }
