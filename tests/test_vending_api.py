@@ -81,3 +81,53 @@ def test_vending_credential_resolves_primary_savings_account():
             assert result.json()["member_id"] == "m1"
         finally:
             main.get_settings = old
+
+
+def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal_state():
+    with TemporaryDirectory() as d:
+        old = main.get_settings
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        try:
+            client = TestClient(main.create_app())
+            seed(client)
+            tx = client.post("/api/v1/vending/v1/transactions", json={
+                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "idempotency_key":"vend-reconcile-1"
+            }, headers={"X-NVM-Device-Key":"vm-secret"}).json()
+            tid = tx["transaction_id"]
+            missing_auth = client.get(f"/api/v1/vending/transactions/{tid}")
+            assert missing_auth.status_code == 401
+            headers = {"X-NVM-Device-Key":"vm-secret"}
+            pending = client.get(f"/api/v1/vending/transactions/{tid}", headers=headers)
+            assert pending.status_code == 200
+            assert pending.json()["status"] == "pending"
+            authorized = client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers=headers)
+            assert authorized.status_code == 200
+            terminal = client.get(f"/api/v1/vending/transactions/{tid}", headers=headers)
+            assert terminal.status_code == 200
+            assert terminal.json()["status"] == "authorized"
+        finally:
+            main.get_settings = old
+
+
+def test_vending_idempotency_key_cannot_be_reused_for_different_product():
+    with TemporaryDirectory() as d:
+        old = main.get_settings
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        try:
+            client = TestClient(main.create_app())
+            seed(client)
+            headers = {"X-NVM-Device-Key":"vm-secret"}
+            first = client.post("/api/v1/vending/v1/transactions", json={
+                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "idempotency_key":"vend-reused-key"
+            }, headers=headers)
+            assert first.status_code == 200
+            conflict = client.post("/api/v1/vending/v1/transactions", json={
+                "product_id":"different-product","credential_id":"nfc1","account_id":"a1",
+                "idempotency_key":"vend-reused-key"
+            }, headers=headers)
+            assert conflict.status_code == 400
+            assert conflict.json()["detail"] == "idempotency_key_conflict"
+        finally:
+            main.get_settings = old
