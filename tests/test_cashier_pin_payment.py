@@ -7,7 +7,7 @@ import app.main as main
 def test_cashier_pin_payment_debits_and_returns_balance():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
