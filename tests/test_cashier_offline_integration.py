@@ -11,7 +11,7 @@ def test_cashier_replay_after_lost_response_is_idempotent():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(d) / "nvm.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"}
         )()
         try:
             client = TestClient(main.create_app())
