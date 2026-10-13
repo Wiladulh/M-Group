@@ -39,7 +39,7 @@ async function loadMembers(){
   try{
     const id=$('memberId').value.trim();
     const url=id?'/api/v1/members/'+encodeURIComponent(id):'/api/v1/members';
-    const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
+    const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan member');
     $('memberAuthResult').textContent='Member berhasil disimpan.';
     await loadMemberList();
@@ -47,7 +47,7 @@ async function loadMembers(){
 }
 async function loadMemberList(){
   const token=$('memberAdminToken').value.trim(); if(!token)return;
-  const {r,d}=await json('/api/v1/members',{headers:{'X-NVM-Admin-Token':token}});
+  const {r,d}=await json('/api/v1/members',{headers:{'X-M_GROUP-Admin-Token':token}});
   if(r.ok){
     const rows=d.members||[];
     $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Ganti NFC</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
@@ -67,7 +67,7 @@ $('members').addEventListener('click',async e=>{
   if(!token){$('memberAuthResult').textContent='Admin Token wajib diisi';return}
   try{
     if(action==='edit'){
-      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{headers:{'X-NVM-Admin-Token':token}});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{headers:{'X-M_GROUP-Admin-Token':token}});
       if(!r.ok)throw new Error(d.detail||'Gagal membaca anggota');
       const m=d;$('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
       $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
@@ -80,17 +80,17 @@ $('members').addEventListener('click',async e=>{
       $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='pin'){
       const operator_id=prompt('ID petugas yang melakukan reset PIN:');if(!operator_id)return;
-      if(!confirm('Pastikan identitas anggota sudah diverifikasi sesuai prosedur NVM. Lanjut reset PIN?'))return;
+      if(!confirm('Pastikan identitas anggota sudah diverifikasi sesuai prosedur M_GROUP. Lanjut reset PIN?'))return;
       const pin=prompt('Masukkan PIN transaksi baru (4–6 digit):');if(!pin)return;
       const reason=prompt('Alasan reset PIN:');if(!reason)return;
-      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
       if(!r.ok)throw new Error(d.detail||'Reset PIN gagal');
       $('memberAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
     }else if(action==='nfc'){
       const cashier=$('nfcCashierDevice').value;if(!cashier)throw new Error('Pilih Cashier aktif terlebih dahulu');
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu NFC lama anggota ini akan dinonaktifkan setelah kartu baru berhasil dipindai. Lanjutkan?'))return;
-      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({cashier_device_id:cashier,operator_id})});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start',{method:'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify({cashier_device_id:cashier,operator_id})});
       if(!r.ok)throw new Error(d.detail||'Gagal memulai penggantian NFC');
       $('nfcRegistrationResult').textContent='Penggantian kartu dimulai. Silakan scan kartu baru pada Cashier terpilih.';
       pollNfcRegistration(memberId,d.session_id);
@@ -101,7 +101,7 @@ $('members').addEventListener('click',async e=>{
       const reason=prompt('Alasan koreksi (minimal 5 karakter):');if(!reason)return;
       if(!confirm('Konfirmasi koreksi transaksi Top Up '+original_transaction_id+' ke nominal '+money(corrected_amount)+'?'))return;
       const idempotency_key='member-correction-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
-      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
       if(!r.ok)throw new Error(d.detail||'Koreksi Top Up gagal');
       $('memberAuthResult').textContent='Koreksi tercatat. Nominal sebelum: '+money(d.original_amount)+'; sesudah: '+money(d.corrected_amount)+'.';
       await load();
@@ -114,7 +114,7 @@ async function loadNfcCashiers(){
   const token=$('memberAdminToken')?.value.trim();
   const sel=$('nfcCashierDevice');
   if(!sel||!token)return;
-  const {r,d}=await json('/api/v1/devices',{headers:{'X-NVM-Admin-Token':token}});
+  const {r,d}=await json('/api/v1/devices',{headers:{'X-M_GROUP-Admin-Token':token}});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
   sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||x.hardware_id)+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
@@ -123,7 +123,7 @@ async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
     const token=$('memberAdminToken').value.trim();
-    const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{headers:{'X-NVM-Admin-Token':token}});
+    const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{headers:{'X-M_GROUP-Admin-Token':token}});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
     if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Silakan scan kartu NFC pada Cashier. Menunggu hasil...';
     else if(d.status==='completed'){
@@ -145,7 +145,7 @@ $('nfcStart').onclick=async()=>{
     if(!memberId)throw new Error('Pilih member terlebih dahulu');
     if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start',{
-      method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},
+      method:'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},
       body:JSON.stringify({cashier_device_id:deviceId})
     });
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
@@ -158,7 +158,7 @@ async function loadDevices(){
   const token=$('deviceAdminToken').value.trim();
   if(!token){$('deviceAuthResult').textContent='Admin Token wajib diisi';return}
   try{
-    const {r,d}=await json('/api/v1/devices',{headers:{'X-NVM-Admin-Token':token}});
+    const {r,d}=await json('/api/v1/devices',{headers:{'X-M_GROUP-Admin-Token':token}});
     if(!r.ok)throw new Error(d.detail||'Gagal memuat perangkat');
     $('deviceAuthResult').textContent='Data perangkat berhasil dimuat.';
     const rows=(d.devices||[]);
@@ -182,10 +182,10 @@ async function saveDevice(deviceId){
   const status=document.querySelector('[data-device-status="'+CSS.escape(deviceId)+'"]').value;
   if(!name){$('deviceAuthResult').textContent='Nama perangkat wajib diisi';return}
   try{
-    const current=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{headers:{'X-NVM-Admin-Token':token}});
+    const current=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{headers:{'X-M_GROUP-Admin-Token':token}});
     if(!current.r.ok)throw new Error(current.d.detail||'Gagal membaca perangkat');
     const q={device_type:current.d.device_type,status:status,display_name:name};
-    const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify(q)});
+    const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify(q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan perangkat');
     $('deviceAuthResult').textContent='Perangkat berhasil diperbarui.';
     await loadDevices();
@@ -201,7 +201,7 @@ async function loadAudit(){
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+(date?'&date='+encodeURIComponent(date):'');
     const token=await adminToken();
-    const {r,d}=await json('/api/v1/audit/report'+q,{headers:{'X-NVM-Admin-Token':token}});
+    const {r,d}=await json('/api/v1/audit/report'+q,{headers:{'X-M_GROUP-Admin-Token':token}});
     $('auditResult').innerHTML=r.ok?table(d.transactions,['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
 }
@@ -211,35 +211,35 @@ $('auditExport').onclick=async()=>{
     const token=await adminToken();
     const source=$('auditSource').value,period=$('auditPeriod').value,date=$('auditDate').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+(date?'&date='+encodeURIComponent(date):'');
-    const r=await fetch('/api/v1/audit/export.xlsx'+q,{headers:{'X-NVM-Admin-Token':token}});
+    const r=await fetch('/api/v1/audit/export.xlsx'+q,{headers:{'X-M_GROUP-Admin-Token':token}});
     if(!r.ok)throw new Error('Export gagal: '+r.status);
-    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nvm-audit-'+source.toLowerCase()+'-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
+    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M_GROUP-audit-'+source.toLowerCase()+'-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
   }catch(e){$('auditResult').textContent=e.message}
 };
 $('operatorPinForm').onsubmit=async e=>{
   e.preventDefault();
   try{
     const token=await adminToken();
-    const {r,d}=await json('/api/v1/cashier/operator-pin',{method:'POST',headers:{'Content-Type':'application/json','X-NVM-Admin-Token':token},body:JSON.stringify({pin:$('newOperatorPin').value})});
+    const {r,d}=await json('/api/v1/cashier/operator-pin',{method:'POST',headers:{'Content-Type':'application/json','X-M_GROUP-Admin-Token':token},body:JSON.stringify({pin:$('newOperatorPin').value})});
     $('operatorPinResult').textContent=JSON.stringify(d,null,2);
     if(r.ok)$('newOperatorPin').value='';
   }catch(e){$('operatorPinResult').textContent=e.message}
 };
 $('backupCreate').onclick=async()=>{
   try{
-    const token=await adminToken(),r=await fetch('/api/v1/backup',{method:'POST',headers:{'X-NVM-Admin-Token':token}});
+    const token=await adminToken(),r=await fetch('/api/v1/backup',{method:'POST',headers:{'X-M_GROUP-Admin-Token':token}});
     if(!r.ok)throw new Error('Backup gagal: '+r.status);
-    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='NVM_BACKUP.nvm.zip';a.click();URL.revokeObjectURL(a.href);
+    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M_GROUP_BACKUP.M_GROUP.zip';a.click();URL.revokeObjectURL(a.href);
     $('backupResult').textContent='Backup berhasil dibuat.';
   }catch(e){$('backupResult').textContent=e.message}
 };
 $('backupRestore').onclick=async()=>{
   try{
     const token=await adminToken(),file=$('restoreFile').files[0];
-    if(!file)throw new Error('Pilih file .nvm.zip terlebih dahulu');
+    if(!file)throw new Error('Pilih file .M_GROUP.zip terlebih dahulu');
     if(!confirm('Restore akan mengganti database aktif. Lanjutkan?'))return;
     const fd=new FormData();fd.append('file',file);
-    const {r,d}=await json('/api/v1/backup/restore',{method:'POST',headers:{'X-NVM-Admin-Token':token},body:fd});
+    const {r,d}=await json('/api/v1/backup/restore',{method:'POST',headers:{'X-M_GROUP-Admin-Token':token},body:fd});
     $('backupResult').textContent=JSON.stringify(d,null,2);
     if(r.ok)setTimeout(()=>location.reload(),1000);
   }catch(e){$('backupResult').textContent=e.message}
