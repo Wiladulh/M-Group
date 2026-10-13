@@ -56,7 +56,7 @@ class PaymentService:
             raise PermissionError("credential_account_mismatch")
         account_id = resolved_account_id
 
-        if method == "NFC" and device_id is not None:
+        if method == "NFC":
             if pin is None:
                 raise PermissionError("pin_required")
             if not self.identity.verify_credential_pin(credential_id, pin):
