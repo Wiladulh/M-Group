@@ -3,14 +3,14 @@ requires=["setuptools>=68"]
 build-backend="setuptools.build_meta"
 
 [project]
-name="nvm-platform"
+name="m-group-platform"
 version="0.1.0"
 description="Portable cooperative financial, NFC payment and vending platform"
 requires-python=">=3.10"
 dependencies=["fastapi>=0.115,<1","uvicorn[standard]>=0.30,<1","python-multipart>=0.0.9,<1","openpyxl>=3.1,<4"]
 
 [project.scripts]
-nvm="app.cli:main"
+m-group="app.cli:main"
 
 [tool.setuptools.packages.find]
 include=["app*"]
