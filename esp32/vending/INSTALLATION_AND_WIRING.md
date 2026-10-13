@@ -1,4 +1,4 @@
-# M_GROUP Vending — Tutorial Instalasi & Wiring ESP32-S3
+# M-Group Vending — Tutorial Instalasi & Wiring ESP32-S3
 
 Panduan ini mengikuti konstanta GPIO pada `M_GROUPVending.ino`. Board ESP32-S3 berbeda-beda; sebelum merakit, pastikan semua GPIO di tabel tersedia dan tidak dipakai fungsi onboard pada board pilihan.
 
@@ -66,7 +66,7 @@ Pin RC522 yang bertanda **SDA** berfungsi sebagai SS/CS saat SPI, bukan SDA I2C.
 
 ## 5. Wiring lima servo
 
-| Kanal servo M_GROUP | Sinyal GPIO | Fungsi |
+| Kanal servo M-Group | Sinyal GPIO | Fungsi |
 |---:|---:|---|
 | 1 | GPIO 3 | Produk/servo dengan `servo_channel = 1` |
 | 2 | GPIO 16 | Produk/servo dengan `servo_channel = 2` |
@@ -109,7 +109,7 @@ Sebelum menguji servo, pastikan sensor tidak melaporkan beam terhalang saat jalu
    - `M_GROUP_BASE_URL`, misalnya `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di LAN; tanpa slash akhir)
    - `DEVICE_ID`, ID perangkat vending yang terdaftar
    - `M_GROUP_DEVICE_KEY`, key aktif dari registri perangkat
-6. Provision perangkat bertipe `esp32-s3-vending` di server. Pastikan ID dan key sama dengan firmware. Daftarkan mesin vending di M_GROUP dengan `device_id` yang menunjuk ke ID perangkat ini; ID mesin vending dapat berbeda dari ID perangkat.
+6. Provision perangkat bertipe `esp32-s3-vending` di server. Pastikan ID dan key sama dengan firmware. Daftarkan mesin vending di M-Group dengan `device_id` yang menunjuk ke ID perangkat ini; ID mesin vending dapat berbeda dari ID perangkat.
 7. Pastikan server dapat dijangkau dari LAN. Bind default `127.0.0.1` hanya menerima koneksi lokal; gunakan bind LAN yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
 8. Flash firmware dan buka Serial Monitor pada **115200 baud**.
 
