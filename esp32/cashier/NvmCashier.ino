@@ -67,7 +67,7 @@ void scanCard();
 
 String getJson(const String& path,int& code){
   HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(M_GROUP_BASE_URL)+path);
-  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY); code=http.GET();
+  http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY); code=http.GET();
   String out=code>0?http.getString():""; http.end(); return out;
 }
 
@@ -80,7 +80,7 @@ String jsonField(const String& body,const String& key){
 String postJson(const String& path,const String& body,int& code){
   HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(8000); http.begin(String(M_GROUP_BASE_URL)+path);
   http.addHeader("Content-Type","application/json");
-  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY); code=http.POST(body);
+  http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY); code=http.POST(body);
   String out=code>0?http.getString():""; http.end(); return out;
 }
 
@@ -304,7 +304,7 @@ void setup(){
   }else{
     Serial.printf("NFC READY reader=%s\\n",card.name());
     if(pendingPayment) lcdShow("PAYMENT PENDING","Masukkan PIN");
-    else lcdShow("KASIR M_GROUP","1 Bayar 2 Topup");
+    else lcdShow("KASIR M-Group","1 Bayar 2 Topup");
   }
 }
 
@@ -345,5 +345,5 @@ void loop(){
     lcdShow("Topup","Nominal:");
     scanTopup(operatorPin);
   }
-  lcdShow("KASIR M_GROUP","1 Bayar 2 Topup");
+  lcdShow("KASIR M-Group","1 Bayar 2 Topup");
 }
