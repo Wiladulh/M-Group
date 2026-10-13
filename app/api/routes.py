@@ -744,6 +744,14 @@ def build_router(db, app_settings=None):
     @r.post("/payments")
     def payment(q:PaymentRequest,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
+        if q.method == "NFC":
+            if not q.pin:
+                raise HTTPException(403, "pin_required")
+            try:
+                if not identity.verify_credential_pin(q.credential_id, q.pin):
+                    raise HTTPException(403, "invalid_pin")
+            except PermissionError as e:
+                raise HTTPException(403, str(e))
         try:return payments.pay(**q.model_dump())
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
