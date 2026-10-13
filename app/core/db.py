@@ -313,10 +313,15 @@ class Database:
                         "slot": "INTEGER",
                         "capacity": "INTEGER NOT NULL DEFAULT 0",
                         "servo_channel": "INTEGER",
+                        "created_at": "TEXT",
                     }
                     for name, definition in product_additions.items():
                         if name not in product_columns:
                             c.execute(f"ALTER TABLE vending_products ADD COLUMN {name} {definition}")
+                    c.execute(
+                        "UPDATE vending_products SET created_at=CURRENT_TIMESTAMP "
+                        "WHERE created_at IS NULL OR created_at=''"
+                    )
 
                     machines = [row[0] for row in c.execute("SELECT machine_id FROM vending_machines ORDER BY machine_id")]
                     for machine_id in machines:
