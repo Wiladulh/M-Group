@@ -26,14 +26,14 @@ RC522 SPI:
 - SS GPIO 14
 - RST GPIO 15
 
-Change constants in M_GROUPVending.ino for the actual ESP32-S3 board and wiring.
+Change constants in `esp32/vending/MGroupVending.ino` for the actual ESP32-S3 board and wiring.
 
 The UID is converted to nfc-<lowercase hexadecimal UID>. The M-Group server remains authoritative for credential, account, balance, stock, transaction, and refund state.
 
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `M_GROUPVending.ino`.
+Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/vending/MGroupVending.ino`.
 
 - `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
