@@ -1,14 +1,14 @@
 #!/sbin/openrc-run
-name="M_GROUP"
-description="M_GROUP M-Group platform server"
-command="/opt/M_GROUP/venv/bin/uvicorn"
-command_args="app.main:app --host ${M_GROUP_HOST:-0.0.0.0} --port ${M_GROUP_PORT:-8011}"
-command_user="${M_GROUP_USER:-root}"
-directory="/opt/M_GROUP"
-pidfile="/run/M_GROUP.pid"
+name="M-Group"
+description="M-Group M-Group platform server"
+command="/opt/M-Group/venv/bin/uvicorn"
+command_args="app.main:app --host ${M-Group_HOST:-0.0.0.0} --port ${M-Group_PORT:-8011}"
+command_user="${M-Group_USER:-root}"
+directory="/opt/M-Group"
+pidfile="/run/M-Group.pid"
 command_background="yes"
-output_log="/var/log/M_GROUP.log"
-error_log="/var/log/M_GROUP.log"
+output_log="/var/log/M-Group.log"
+error_log="/var/log/M-Group.log"
 
 depend() {
   need net
@@ -16,6 +16,6 @@ depend() {
 }
 
 start_pre() {
-  checkpath --directory --owner "${M_GROUP_USER:-root}" /var/lib/M_GROUP
-  checkpath --file --owner "${M_GROUP_USER:-root}" /var/log/M_GROUP.log
+  checkpath --directory --owner "${M-Group_USER:-root}" /var/lib/M-Group
+  checkpath --file --owner "${M-Group_USER:-root}" /var/log/M-Group.log
 }
