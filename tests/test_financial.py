@@ -11,7 +11,7 @@ def seed(db):
 
 def test_credit_debit_balance_and_ledger():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=FinancialService(db)
         a=f.credit("acct-fin-1",100000,reference="deposit",idempotency_key="dep-1")
         assert a["transaction_type"] == "credit"
@@ -23,7 +23,7 @@ def test_credit_debit_balance_and_ledger():
 
 def test_financial_idempotency_and_insufficient_balance():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=FinancialService(db)
         a=f.credit("acct-fin-1",50000,idempotency_key="same")
         b=f.credit("acct-fin-1",50000,idempotency_key="same")
