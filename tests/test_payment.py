@@ -13,7 +13,7 @@ def seed(db):
 
 def test_nfc_payment_idempotency():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         p=PaymentService(db)
         a=p.pay("cred-1","acct-1",25000,method="NFC",idempotency_key="idem-1")
         b=p.pay("cred-1","acct-1",25000,method="NFC",idempotency_key="idem-1")
@@ -24,14 +24,14 @@ def test_nfc_payment_idempotency():
 
 def test_qris_is_a_supported_future_method():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         result=PaymentService(db).pay("cred-1","acct-1",1000,method="QRIS",provider="future-qris",idempotency_key="q-1")
         assert result["method"] == "QRIS"
         assert result["provider"] == "future-qris"
 
 def test_payment_uses_financial_core_and_rejects_account_mismatch():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         with db.connect() as c:
             c.execute("INSERT INTO identity_members(member_id,name) VALUES('member-2','Other')")
             c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('acct-2','member-2','savings')")
@@ -49,7 +49,7 @@ def test_payment_uses_financial_core_and_rejects_account_mismatch():
 
 def test_payment_insufficient_balance_is_atomic():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         try:
             PaymentService(db).pay("cred-1","acct-1",100001,method="NFC",idempotency_key="too-much")
             assert False
@@ -63,7 +63,7 @@ def test_payment_insufficient_balance_is_atomic():
 
 def test_nfc_payment_resolves_savings_account_from_credential():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         result=PaymentService(db).pay(
             "cred-1", None, 25000, method="NFC",
             idempotency_key="resolve-1"
@@ -75,7 +75,7 @@ def test_nfc_payment_resolves_savings_account_from_credential():
 
 def test_nfc_payment_rejects_idempotency_key_reuse_with_different_request():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         p=PaymentService(db)
         p.pay("cred-1","acct-1",10000,method="NFC",idempotency_key="idem-conflict")
         try:
@@ -87,7 +87,7 @@ def test_nfc_payment_rejects_idempotency_key_reuse_with_different_request():
 
 def test_nfc_payment_records_100_percent_promo_without_ledger_debit():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         result=PaymentService(db).pay(
             "cred-1","acct-1",0,method="NFC",original_amount=5000,
             discount_amount=5000,promo_id="promo-100",
