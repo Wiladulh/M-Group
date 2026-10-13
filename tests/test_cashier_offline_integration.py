@@ -34,15 +34,15 @@ def test_cashier_replay_after_lost_response_is_idempotent():
             provision = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
-            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers={"X-NVM-Admin-Token": "admin-secret"}).status_code == 200
+            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers={"X-M-Group-Admin-Token": "admin-secret"}).status_code == 200
             assert client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
-                headers={"X-NVM-Device-Key": device_key},
+                headers={"X-M-Group-Device-Key": device_key},
             ).status_code == 200
 
             payload = {
@@ -55,7 +55,7 @@ def test_cashier_replay_after_lost_response_is_idempotent():
                 "idempotency_key": "cashier-01:offline-recovery-01",
                 "pin": "1234",
             }
-            headers = {"X-NVM-Device-Key": device_key}
+            headers = {"X-M-Group-Device-Key": device_key}
 
             # Server commits the payment, but the client loses the response.
             first = client.post("/api/v1/cashier/payments", json=payload, headers=headers)
@@ -80,7 +80,7 @@ def test_cashier_replay_after_lost_response_is_idempotent():
 
 def test_cashier_firmware_keeps_ambiguous_payment_pending_offline():
     source = (
-        Path(__file__).resolve().parents[1] / "esp32" / "cashier" / "NvmCashier.ino"
+        Path(__file__).resolve().parents[1] / "esp32" / "cashier" / "MGroupCashier.ino"
     ).read_text(encoding="utf-8")
 
     assert 'if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000))' in source
