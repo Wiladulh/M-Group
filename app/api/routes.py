@@ -572,13 +572,15 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.post("/accounts/{account_id}/credit")
-    def account_credit(account_id,q:FinancialRequest):
+    def account_credit(account_id,q:FinancialRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return financial.credit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
 
     @r.post("/accounts/{account_id}/debit")
-    def account_debit(account_id,q:FinancialRequest):
+    def account_debit(account_id,q:FinancialRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return financial.debit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
@@ -634,7 +636,8 @@ def build_router(db, app_settings=None):
         return {"machines": vending.machines()}
 
     @r.post("/vending")
-    def vending_register(q:VendingRegisterRequest):
+    def vending_register(q:VendingRegisterRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
@@ -644,17 +647,20 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.patch("/vending/{machine_id}")
-    def vending_update(machine_id,q:VendingUpdateRequest):
+    def vending_update(machine_id,q:VendingUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return vending.update_machine(machine_id,q.name,q.location,q.device_id,q.status)
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
-    def vending_enable(machine_id):
+    def vending_enable(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return vending.set_status(machine_id,"active")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.post("/vending/{machine_id}/disable")
-    def vending_disable(machine_id):
+    def vending_disable(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return vending.set_status(machine_id,"disabled")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
@@ -684,7 +690,8 @@ def build_router(db, app_settings=None):
         return {"machine": machine, "products": catalog}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
-    def vending_product(machine_id,product_id,q:VendingProductRequest):
+    def vending_product(machine_id,product_id,q:VendingProductRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         if q.product_id!=product_id:raise HTTPException(400,"product_id_mismatch")
         try:return vending.upsert_product(machine_id,product_id,q.name,q.price,q.stock,q.enabled,q.slot,q.capacity,q.servo_channel)
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
