@@ -1,5 +1,5 @@
 #!/bin/sh
 set -eu
-PREFIX=${M_GROUP_PREFIX:-/opt/M_GROUP}
+PREFIX=${M-Group_PREFIX:-/opt/M-Group}
 rm -rf "$PREFIX"
-echo "M_GROUP application removed; instance data preserved."
+echo "M-Group application removed; instance data preserved."
