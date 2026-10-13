@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-PREFIX=${NVM_PREFIX:-/opt/nvm}
+PREFIX=${M_GROUP_PREFIX:-/opt/M_GROUP}
 "$PREFIX/venv/bin/pip" install --upgrade "$PWD"
