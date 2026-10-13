@@ -9,7 +9,7 @@ from app.core.db import Database
 def test_cashier_payment_requires_active_registered_device():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        db_path = Path(d) / "nvm.db"
+        db_path = Path(d) / "m-group.db"
         main.get_settings = lambda: type("S", (), {"db_path": db_path, "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
@@ -28,7 +28,7 @@ def test_cashier_payment_requires_active_registered_device():
                     "VALUES('member-account-01','credit',10000,'seed')"
                 )
 
-            assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers={"X-NVM-Admin-Token": "admin-secret"}).status_code == 200
+            assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers={"X-M-Group-Admin-Token": "admin-secret"}).status_code == 200
 
             q = {
                 "device_id": "cashier-01",
@@ -45,7 +45,7 @@ def test_cashier_payment_requires_active_registered_device():
             provision = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
@@ -53,14 +53,14 @@ def test_cashier_payment_requires_active_registered_device():
             hb = client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
-                headers={"X-NVM-Device-Key": device_key},
+                headers={"X-M-Group-Device-Key": device_key},
             )
             assert hb.status_code == 200
 
             payment = client.post(
                 "/api/v1/cashier/payments",
                 json=q,
-                headers={"X-NVM-Device-Key": device_key},
+                headers={"X-M-Group-Device-Key": device_key},
             )
             assert payment.status_code == 200
             assert payment.json()["status"] == "completed"
