@@ -15,8 +15,8 @@ def test_nfc_payment_idempotency():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         p=PaymentService(db)
-        a=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",pin="1234",idempotency_key="idem-1")
-        b=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",pin="1234",idempotency_key="idem-1")
+        a=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-1")
+        b=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-1")
         assert a["transaction_id"] == b["transaction_id"]
         with db.connect() as c:
             balance=c.execute("SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) FROM financial_ledger WHERE account_id='acct-1'").fetchone()[0]
@@ -39,7 +39,7 @@ def test_payment_uses_financial_core_and_rejects_account_mismatch():
             c.commit()
         p=PaymentService(db)
         try:
-            p.pay("cred-1","acct-2",1000,method="NFC",pin="1234",pin="1234")
+            p.pay("cred-1","acct-2",1000,method="NFC",pin="1234")
             assert False
         except PermissionError as e:
             assert str(e) == "credential_account_mismatch"
@@ -51,7 +51,7 @@ def test_payment_insufficient_balance_is_atomic():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         try:
-            PaymentService(db).pay("cred-1","acct-1",100001,method="NFC",pin="1234",pin="1234",idempotency_key="too-much")
+            PaymentService(db).pay("cred-1","acct-1",100001,method="NFC",pin="1234",idempotency_key="too-much")
             assert False
         except ValueError as e:
             assert str(e) == "insufficient_balance"
@@ -65,7 +65,7 @@ def test_nfc_payment_resolves_savings_account_from_credential():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         result=PaymentService(db).pay(
-            "cred-1", None, 25000, method="NFC",pin="1234",pin="1234",
+            "cred-1", None, 25000, method="NFC",pin="1234",
             idempotency_key="resolve-1"
         )
         assert result["final_amount"] == 25000
@@ -77,9 +77,9 @@ def test_nfc_payment_rejects_idempotency_key_reuse_with_different_request():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         p=PaymentService(db)
-        p.pay("cred-1","acct-1",10000,method="NFC",pin="1234",pin="1234",idempotency_key="idem-conflict")
+        p.pay("cred-1","acct-1",10000,method="NFC",pin="1234",idempotency_key="idem-conflict")
         try:
-            p.pay("cred-1","acct-1",11000,method="NFC",pin="1234",pin="1234",idempotency_key="idem-conflict")
+            p.pay("cred-1","acct-1",11000,method="NFC",pin="1234",idempotency_key="idem-conflict")
             assert False
         except ValueError as e:
             assert str(e) == "idempotency_key_conflict"
@@ -89,7 +89,7 @@ def test_nfc_payment_records_100_percent_promo_without_ledger_debit():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         result=PaymentService(db).pay(
-            "cred-1","acct-1",0,method="NFC",pin="1234",pin="1234",original_amount=5000,
+            "cred-1","acct-1",0,method="NFC",pin="1234",original_amount=5000,
             discount_amount=5000,promo_id="promo-100",
             idempotency_key="promo-100"
         )
