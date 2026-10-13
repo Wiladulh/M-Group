@@ -30,14 +30,55 @@ if [ "$MODE" = system ] && [ "$(id -u)" -ne 0 ]; then
   echo "--system requires root; use sudo sh installer/install.sh --system." >&2
   exit 1
 fi
-command -v "$PYTHON" >/dev/null 2>&1 || { echo "Python 3.10+ is required." >&2; exit 1; }
+# Bootstrap OS prerequisites before creating the virtual environment.
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then "$@"
+  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+  else echo "Missing system requirements. Re-run with root access or install them manually." >&2; return 1
+  fi
+}
+python_ok() {
+  command -v "$PYTHON" >/dev/null 2>&1 || return 1
+  "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1 || return 1
+  "$PYTHON" -m venv --help >/dev/null 2>&1 || return 1
+}
+if ! python_ok; then
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with apt..."
+    as_root apt-get update
+    as_root apt-get install -y python3 python3-venv python3-pip ca-certificates
+  elif command -v apk >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with apk..."
+    as_root apk add --no-cache python3 py3-pip py3-virtualenv ca-certificates
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with dnf..."
+    as_root dnf install -y python3 python3-pip ca-certificates
+  elif command -v yum >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with yum..."
+    as_root yum install -y python3 python3-pip ca-certificates
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with pacman..."
+    as_root pacman -Sy --needed --noconfirm python python-pip ca-certificates
+  elif command -v zypper >/dev/null 2>&1; then
+    echo "Installing Python/venv prerequisites with zypper..."
+    as_root zypper --non-interactive install python3 python3-pip ca-certificates
+  else
+    echo "Cannot auto-install prerequisites: unsupported package manager." >&2
+    echo "Install Python 3.10+, pip, and venv support, then rerun this installer." >&2
+    exit 1
+  fi
+fi
+command -v "$PYTHON" >/dev/null 2>&1 || {
+  echo "Python 3 was not found after prerequisite installation. Set M_GROUP_PYTHON to a Python 3.10+ executable." >&2
+  exit 1
+}
 "$PYTHON" - <<'PY'
 import sys
 if sys.version_info < (3, 10):
-    raise SystemExit("M-Group requires Python 3.10 or newer.")
+    raise SystemExit("Installed Python is older than 3.10. Install Python 3.10+ from a supported repository and set M_GROUP_PYTHON if needed.")
 PY
 "$PYTHON" -m venv --help >/dev/null 2>&1 || {
-  echo "Python venv support is missing. Install your distro's venv package (e.g. python3-venv on Debian/Ubuntu)." >&2
+  echo "Python venv is still unavailable after installing prerequisites. Check your distro's Python venv package." >&2
   exit 1
 }
 if [ "$MODE" = system ]; then
