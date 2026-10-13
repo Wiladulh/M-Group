@@ -11,11 +11,11 @@ class Settings:
     admin_token: str
 
 def get_settings() -> Settings:
-    data_dir=Path(os.getenv("NVM_DATA_DIR",str(Path.home()/".local/share/nvm"))).expanduser()
+    data_dir=Path(os.getenv("M_GROUP_DATA_DIR",str(Path.home()/".local/share/M_GROUP"))).expanduser()
     return Settings(
         data_dir,
-        os.getenv("NVM_HOST","127.0.0.1"),
-        int(os.getenv("NVM_PORT","8011")),
-        Path(os.getenv("NVM_DB_PATH",str(data_dir/"nvm.db"))).expanduser(),
-        os.getenv("NVM_ADMIN_TOKEN",""),
+        os.getenv("M_GROUP_HOST","127.0.0.1"),
+        int(os.getenv("M_GROUP_PORT","8011")),
+        Path(os.getenv("M_GROUP_DB_PATH",str(data_dir/"M_GROUP.db"))).expanduser(),
+        os.getenv("M_GROUP_ADMIN_TOKEN",""),
     )
