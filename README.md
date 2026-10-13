@@ -1,6 +1,8 @@
-# NVM — Natura Vending Machine
+# M-Group
 
-Portable cooperative financial, NFC payment, loan and vending platform.
+Modular membership, financial ledger, payment, cashier and vending platform.
+
+This repository contains the server API, WebUI, database migrations, ESP32 cashier and vending firmware, installer, documentation, and automated tests.
 
 ## Minimum system requirements
 
