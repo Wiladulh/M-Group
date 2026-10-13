@@ -4,15 +4,15 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include "NvmKeypad.h"
-#include "NvmCardReader.h"
+#include "M_GROUPKeypad.h"
+#include "M_GROUPCardReader.h"
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
 // Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* NVM_BASE_URL="http://192.168.1.10:8011";
+const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
 const char* DEVICE_ID="cashier-01";
-const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
+const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
 LiquidCrystal_I2C lcd(0x27,16,2);
 
 #define PN532_SDA 21
@@ -25,7 +25,7 @@ LiquidCrystal_I2C lcd(0x27,16,2);
 #define RC522_SS 27
 #define RC522_RST 4
 
-NvmCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC522_SS,RC522_RST);
+M_GROUPCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC522_SS,RC522_RST);
 unsigned long lastHeartbeat=0,paymentSequence=0,depositSequence=0;
 bool readerReady=false;
 long paymentAmount=0;
@@ -66,8 +66,8 @@ void registrationScan(const String& session);
 void scanCard();
 
 String getJson(const String& path,int& code){
-  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(NVM_BASE_URL)+path);
-  http.addHeader("X-NVM-Device-Key",NVM_DEVICE_KEY); code=http.GET();
+  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(M_GROUP_BASE_URL)+path);
+  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY); code=http.GET();
   String out=code>0?http.getString():""; http.end(); return out;
 }
 
@@ -78,9 +78,9 @@ String jsonField(const String& body,const String& key){
 }
 
 String postJson(const String& path,const String& body,int& code){
-  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(8000); http.begin(String(NVM_BASE_URL)+path);
+  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(8000); http.begin(String(M_GROUP_BASE_URL)+path);
   http.addHeader("Content-Type","application/json");
-  http.addHeader("X-NVM-Device-Key",NVM_DEVICE_KEY); code=http.POST(body);
+  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY); code=http.POST(body);
   String out=code>0?http.getString():""; http.end(); return out;
 }
 
@@ -185,7 +185,7 @@ void scanTopup(const String& operatorPin){
   long amount=readCashierAmount();
   if(amount<=0)return;
   lcdShow("Topup","Tap kartu");
-  uint8_t uid[NVM_MAX_UID_LENGTH]={0},len=0;
+  uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN:");
@@ -197,7 +197,7 @@ void scanTopup(const String& operatorPin){
 
 void registrationScan(const String& session){
   lcdShow("REGISTRASI NFC","Silahkan scan");
-  uint8_t uid[NVM_MAX_UID_LENGTH]={0},len=0;
+  uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN 4 digit:");
@@ -223,7 +223,7 @@ void pollRegistration(){
 void scanCard(){
   if(!readerReady){lcdShow("NFC ERROR","Cek reader");delay(1500);return;}
   if(paymentAmount<=0)return;
-  uint8_t uid[NVM_MAX_UID_LENGTH]={0},len=0;
+  uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
   if(!card.readUID(uid,len))return;
   lcdShow("Kartu terbaca","Memeriksa...");
   String credential=uidToCredential(uid,len); ++paymentSequence;
@@ -253,7 +253,7 @@ String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t max
   renderInput();
   Serial.printf("INPUT START %s (digits; *=backspace; #=confirm)\\n",title);
   while(true){
-    char k=nvmKeypad.getKey();
+    char k=M_GROUPKeypad.getKey();
     if(k>='0'&&k<='9'&&s.length()<maxDigits){
       s+=k; renderInput();
     }else if(k=='*'&&!s.isEmpty()){
@@ -272,7 +272,7 @@ long readCashierAmount(){
 
 void setup(){
   Serial.begin(115200); delay(300);
-  cashierPrefs.begin("nvm-cashier",false);
+  cashierPrefs.begin("M_GROUP-cashier",false);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
@@ -304,7 +304,7 @@ void setup(){
   }else{
     Serial.printf("NFC READY reader=%s\\n",card.name());
     if(pendingPayment) lcdShow("PAYMENT PENDING","Masukkan PIN");
-    else lcdShow("KASIR NVM","1 Bayar 2 Topup");
+    else lcdShow("KASIR M_GROUP","1 Bayar 2 Topup");
   }
 }
 
@@ -330,7 +330,7 @@ void loop(){
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
   char mode=0;
   while(!mode){
-    char k=nvmKeypad.getKey();
+    char k=M_GROUPKeypad.getKey();
     if(k=='1'||k=='2')mode=k;
     delay(5);
   }
@@ -345,5 +345,5 @@ void loop(){
     lcdShow("Topup","Nominal:");
     scanTopup(operatorPin);
   }
-  lcdShow("KASIR NVM","1 Bayar 2 Topup");
+  lcdShow("KASIR M_GROUP","1 Bayar 2 Topup");
 }
