@@ -228,10 +228,10 @@ def build_router(db, app_settings=None):
             raise HTTPException(404, str(e))
 
     @r.get("/health")
-    def health(): return {"status": "ok", "service": "nvm"}
+    def health(): return {"status": "ok", "service": "M-Group"}
 
     @r.get("/system")
-    def system(): return {"service": "nvm", "api_version": "v1"}
+    def system(): return {"service": "M-Group", "api_version": "v1"}
 
     @r.get("/audit")
     def audit(limit: int = 100):
@@ -320,13 +320,13 @@ def build_router(db, app_settings=None):
             raise HTTPException(401,"admin_auth_required")
 
     @r.get("/members")
-    def members_list(include_deleted: bool = False, x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def members_list(include_deleted: bool = False, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         return {"members": members.list(include_deleted)}
 
     @r.post("/members")
-    def member_create(q: MemberCreateRequest, x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_create(q: MemberCreateRequest, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         member_id = "member-" + uuid4().hex
         try:
             return members.create(member_id,q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
@@ -334,16 +334,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/members/{member_id}")
-    def member_get(member_id, x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_get(member_id, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result = members.get(member_id)
         if result is None:
             raise HTTPException(404,"member_not_found")
         return result
 
     @r.patch("/members/{member_id}")
-    def member_update(member_id,q: MemberUpdateRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_update(member_id,q: MemberUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return members.update(member_id,q.name,q.nik,q.address,q.status,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
         except ValueError as e:
@@ -351,16 +351,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if "already" in code else 400,code)
 
     @r.delete("/members/{member_id}")
-    def member_delete(member_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_delete(member_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return members.soft_delete(member_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
     @r.post("/members/{member_id}/nfc-cards")
-    def member_add_nfc(member_id,q: NfcCardRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_add_nfc(member_id,q: NfcCardRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return members.add_card(member_id,q.card_uid,q.credential_id)
         except ValueError as e:
@@ -368,8 +368,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if "already" in code else 400,code)
 
     @r.post("/members/{member_id}/nfc-cards/{card_id}/revoke")
-    def member_revoke_nfc(member_id,card_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def member_revoke_nfc(member_id,card_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             result = members.revoke_card(card_id)
             if result["member_id"] != member_id:
@@ -379,16 +379,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(404,str(e))
 
     @r.get("/nfc/cards/{card_uid}")
-    def nfc_card_resolve(card_uid,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def nfc_card_resolve(card_uid,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result = members.resolve_card(card_uid)
         if result is None:
             raise HTTPException(404,"nfc_card_not_found")
         return result
 
     @r.post("/members/{member_id}/pin")
-    def set_member_pin(member_id,q:PinRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def set_member_pin(member_id,q:PinRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         if not q.identity_verified:
@@ -407,8 +407,8 @@ def build_router(db, app_settings=None):
 
     @r.post("/members/{member_id}/topup-corrections")
     def member_topup_correction(member_id,q:MemberCorrectionRequest,
-                                 x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+                                 x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         try:
@@ -423,21 +423,21 @@ def build_router(db, app_settings=None):
             raise HTTPException(status,code)
 
     @r.get("/devices")
-    def devices_list(include_deleted: bool = False, x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def devices_list(include_deleted: bool = False, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         return {"devices": devices.list(include_deleted)}
 
     @r.get("/devices/{device_id}")
-    def device_get(device_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def device_get(device_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result = devices.get(device_id)
         if result is None:
             raise HTTPException(404,"device_not_found")
         return result
 
     @r.patch("/devices/{device_id}")
-    def device_update(device_id,q: DeviceHeartbeatRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def device_update(device_id,q: DeviceHeartbeatRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return devices.update(device_id,q.device_type,q.status,q.display_name)
         except ValueError as e:
@@ -510,16 +510,16 @@ def build_router(db, app_settings=None):
                 "status":"pending","registered":False}
 
     @r.delete("/devices/{device_id}")
-    def device_delete(device_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def device_delete(device_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return devices.soft_delete(device_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
     @r.post("/devices/{device_id}/provision")
-    def device_provision(device_id,q:DeviceProvisionRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        if not getattr(app_settings,"admin_token","") or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,getattr(app_settings,"admin_token","")):
+    def device_provision(device_id,q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        if not getattr(app_settings,"admin_token","") or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,getattr(app_settings,"admin_token","")):
             raise HTTPException(401,"admin_auth_required")
         if not device_id.strip() or not q.device_type.strip():
             raise HTTPException(400,"device_id_and_type_required")
@@ -535,10 +535,10 @@ def build_router(db, app_settings=None):
         return {"device_id":device_id,"device_type":q.device_type,"device_key":key}
 
     @r.post("/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_nvm_device_key: str | None = Header(default=None)):
+    def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
-        require_device(device_id,x_nvm_device_key)
+        require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
             c.execute("""UPDATE device_registry SET device_type=?,status=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
                       (q.device_type,q.status,device_id))
@@ -585,16 +585,16 @@ def build_router(db, app_settings=None):
 
     @r.get("/promotions")
     def promotions_list(machine_id: str | None = None, payment_method: str | None = None,
-                         include_disabled: bool = True, x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+                         include_disabled: bool = True, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return {"promotions": promos.list(machine_id,payment_method,include_disabled)}
         except ValueError as e:
             raise HTTPException(400,str(e))
 
     @r.post("/promotions")
-    def promotion_create(q: PromoRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def promotion_create(q: PromoRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return promos.create(q.scope,q.machine_id,q.product_id,q.payment_method,
                                  q.payment_provider,q.discount_percent,q.starts_at,q.ends_at,
@@ -605,8 +605,8 @@ def build_router(db, app_settings=None):
     @r.get("/promotions/resolve")
     def promotion_resolve(machine_id: str,product_id: str,payment_method: str,
                            payment_provider: str | None = None,
-                           x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+                           x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             result = promos.resolve(machine_id,product_id,payment_method,payment_provider)
             return {"promotion":result}
@@ -614,16 +614,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,str(e))
 
     @r.get("/promotions/{promo_id}")
-    def promotion_get(promo_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def promotion_get(promo_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result = promos.get(promo_id)
         if result is None:
             raise HTTPException(404,"promo_not_found")
         return result
 
     @r.patch("/promotions/{promo_id}")
-    def promotion_update(promo_id,q: PromoUpdateRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def promotion_update(promo_id,q: PromoUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:
             return promos.update(promo_id,**q.model_dump(exclude_none=True))
         except ValueError as e:
@@ -659,13 +659,13 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id, x_nvm_device_key: str | None = Header(default=None)):
+    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
         # WebUI reads may omit a device key; firmware requests are authenticated.
-        if x_nvm_device_key:
+        if x_m_group_device_key:
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
-            require_device(machine["device_id"], x_nvm_device_key)
+            require_device(machine["device_id"], x_m_group_device_key)
         catalog = vending.products(machine["machine_id"])
         # Preserve base price while exposing the exact NFC/local amount shown
         # by the current firmware. QRIS remains a separately configured,
@@ -690,23 +690,23 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
 
     @r.post("/vending/{machine_id}/transactions")
-    def vending_begin(machine_id,q:VendingBeginRequest,x_nvm_device_key: str | None = Header(default=None)):
+    def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
             machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_nvm_device_key)
+            require_device(machine["device_id"],x_m_group_device_key)
             return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.get("/vending/transactions/{transaction_id}")
-    def vending_transaction_status(transaction_id, x_nvm_device_key: str | None = Header(default=None)):
+    def vending_transaction_status(transaction_id, x_m_group_device_key: str | None = Header(default=None)):
         """Authenticated reconciliation endpoint for ambiguous device requests."""
         try:
             tx = vending.get(transaction_id)
             machine = vending.machine(tx["machine_id"])
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
-            require_device(machine["device_id"], x_nvm_device_key)
+            require_device(machine["device_id"], x_m_group_device_key)
             return tx
         except HTTPException:
             raise
@@ -714,23 +714,23 @@ def build_router(db, app_settings=None):
             raise HTTPException(404 if str(e) == "transaction_not_found" else 400, str(e))
 
     @r.post("/vending/transactions/{transaction_id}/authorize")
-    def vending_authorize(transaction_id,x_nvm_device_key: str | None = Header(default=None)):
+    def vending_authorize(transaction_id,x_m_group_device_key: str | None = Header(default=None)):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_nvm_device_key)
+            require_device(machine["device_id"],x_m_group_device_key)
             return vending.authorize(transaction_id)
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:raise HTTPException(400,str(e))
 
     @r.post("/vending/transactions/{transaction_id}/dispense")
-    def vending_dispense(transaction_id,q:VendingDispenseRequest,x_nvm_device_key: str | None = Header(default=None)):
+    def vending_dispense(transaction_id,q:VendingDispenseRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_nvm_device_key)
+            require_device(machine["device_id"],x_m_group_device_key)
             return vending.dispense(transaction_id,q.success)
         except ValueError as e:raise HTTPException(409,str(e))
 
@@ -743,8 +743,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.post("/members/{member_id}/nfc-registration/start")
-    def nfc_registration_start(member_id,q:NfcRegistrationStartRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def nfc_registration_start(member_id,q:NfcRegistrationStartRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
@@ -776,8 +776,8 @@ def build_router(db, app_settings=None):
         return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending"}
 
     @r.post("/members/{member_id}/nfc-replacement/start")
-    def nfc_replacement_start(member_id,q:NfcRegistrationStartRequest,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def nfc_replacement_start(member_id,q:NfcRegistrationStartRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         member=members.get(member_id)
@@ -798,8 +798,8 @@ def build_router(db, app_settings=None):
         return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending","operation":"replacement"}
 
     @r.get("/members/{member_id}/nfc-registration/{session_id}")
-    def nfc_registration_status(member_id,session_id,x_nvm_admin_token: str | None = Header(default=None)):
-        require_admin(x_nvm_admin_token)
+    def nfc_registration_status(member_id,session_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         with db.connect() as c:
             row=c.execute(
                 "SELECT session_id,member_id,device_id,status,card_uid,credential_id,created_at,completed_at "
@@ -810,8 +810,8 @@ def build_router(db, app_settings=None):
         return dict(row)
 
     @r.get("/cashier/{device_id}/nfc-registration")
-    def cashier_nfc_registration(device_id,x_nvm_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_nvm_device_key)
+    def cashier_nfc_registration(device_id,x_m_group_device_key: str | None = Header(default=None)):
+        require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
             row=c.execute(
                 """SELECT session_id,member_id,status
@@ -826,8 +826,8 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/{device_id}/nfc-registration/complete")
     def cashier_nfc_registration_complete(device_id,q:NfcRegistrationCompleteRequest,
-                                           x_nvm_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_nvm_device_key)
+                                           x_m_group_device_key: str | None = Header(default=None)):
+        require_device(device_id,x_m_group_device_key)
         if not q.pin.isdigit() or len(q.pin)!=4:
             raise HTTPException(400,"registration_pin_must_be_4_digits")
         card_uid=(q.card_uid or "").strip().upper()
@@ -897,9 +897,9 @@ def build_router(db, app_settings=None):
                 "card_uid":card_uid,"status":"completed","pin_status":"set"}
 
     @r.post("/cashier/operator-pin")
-    def cashier_operator_pin(q:OperatorPinRequest,x_nvm_admin_token: str | None = Header(default=None)):
+    def cashier_operator_pin(q:OperatorPinRequest,x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         if not q.pin.isdigit() or not 4 <= len(q.pin) <= 6:
             raise HTTPException(400,"pin_must_be_4_to_6_digits")
@@ -920,13 +920,13 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_nvm_device_key: str | None = Header(default=None),x_nvm_device_id: str | None = Header(default=None)):
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_nvm_device_id: str | None = Header(default=None)):
         # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
         device_id = x_nvm_device_id
         if not device_id:
-            if not x_nvm_device_key:
+            if not x_m_group_device_key:
                 raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_nvm_device_key.encode("utf-8")).hexdigest()
+            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
             with db.connect() as c:
                 rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
             matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
@@ -935,7 +935,7 @@ def build_router(db, app_settings=None):
             if matches[0]["status"] != "active":
                 raise HTTPException(403, "device_not_active")
             device_id = matches[0]["device_id"]
-        require_device(device_id,x_nvm_device_key)
+        require_device(device_id,x_m_group_device_key)
         if not verify_operator_pin(q.operator_pin): raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key: raise HTTPException(400,"idempotency_key_required")
         if not isinstance(q.amount,int) or q.amount<=0: raise HTTPException(400,"amount_must_be_positive_integer")
@@ -966,10 +966,10 @@ def build_router(db, app_settings=None):
         return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
-    def cashier_payment(q:PaymentRequest,x_nvm_device_key: str | None = Header(default=None)):
+    def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
         if q.device_id is None:raise HTTPException(400,"device_id_required")
         try:
-            require_device(q.device_id,x_nvm_device_key)
+            require_device(q.device_id,x_m_group_device_key)
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
@@ -983,9 +983,9 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.get("/audit/report")
-    def audit_report(source:str="ALL",period:str="day",date:str|None=None,x_nvm_admin_token: str | None = Header(default=None)):
+    def audit_report(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING"}: raise HTTPException(400,"invalid_source")
@@ -1015,9 +1015,9 @@ def build_router(db, app_settings=None):
         return {"source":source,"period":period,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
 
     @r.get("/audit/export.xlsx")
-    def audit_export(source:str="ALL",period:str="day",date:str|None=None,x_nvm_admin_token: str | None = Header(default=None)):
+    def audit_export(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
@@ -1027,9 +1027,9 @@ def build_router(db, app_settings=None):
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
-    def backup_create(x_nvm_admin_token: str | None = Header(default=None)):
+    def backup_create(x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
@@ -1039,9 +1039,9 @@ def build_router(db, app_settings=None):
         return FileResponse(path,filename=path.name,media_type="application/zip")
 
     @r.post("/backup/restore")
-    async def backup_restore(file:UploadFile=File(...),x_nvm_admin_token: str | None = Header(default=None)):
+    async def backup_restore(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         if not file.filename or not file.filename.endswith(".nvm.zip"): raise HTTPException(400,"invalid_backup_file")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"backups"
@@ -1052,9 +1052,9 @@ def build_router(db, app_settings=None):
         return {"status":"restored","manifest":result}
 
     @r.post("/backup/import-excel")
-    async def backup_import_excel(file:UploadFile=File(...),x_nvm_admin_token: str | None = Header(default=None)):
+    async def backup_import_excel(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
-        if not token or not x_nvm_admin_token or not secrets.compare_digest(x_nvm_admin_token,token):
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400,"invalid_excel_file")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"imports"
