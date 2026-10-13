@@ -15,7 +15,7 @@ def seed(db):
 
 def test_vending_transaction_binds_payment_method_and_provider():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         f.payment.financial.credit("pm-acct",10000,idempotency_key="pm-credit")
         tx=f.begin("pm-01","water","pm-nfc","pm-acct","pm-nfc-1","NFC","local")
@@ -30,7 +30,7 @@ def test_vending_transaction_binds_payment_method_and_provider():
 
 def test_vending_qris_is_stored_separately_but_not_activated():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         tx=f.begin("pm-01","water","pm-nfc","pm-acct","pm-qris-1","QRIS","provider-x")
         assert tx["payment_method"]=="QRIS"
@@ -43,7 +43,7 @@ def test_vending_qris_is_stored_separately_but_not_activated():
 
 def test_vending_rejects_invalid_method_provider_pair():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         with pytest.raises(ValueError, match="invalid_nfc_provider"):
             f.begin("pm-01","water","pm-nfc","pm-acct","pm-invalid-1","NFC","provider-x")
@@ -51,7 +51,7 @@ def test_vending_rejects_invalid_method_provider_pair():
 
 def test_vending_promo_foundation_is_scoped_by_machine_product_and_method():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         with db.connect() as c:
             c.execute("""INSERT INTO vending_promo_rules
                 (promo_id,machine_id,product_id,payment_method,payment_provider,discount_percent,starts_at,ends_at)
