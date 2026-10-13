@@ -6,14 +6,14 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
-#include "NvmCardReader.h"
+#include "M_GROUPCardReader.h"
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
 // Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* NVM_BASE_URL="http://192.168.1.10:8011";
+const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
 const char* DEVICE_ID="vm-01";
-const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
+const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
 
 #define I2C_SDA 8
 #define I2C_SCL 9
@@ -35,7 +35,7 @@ const char* NVM_DEVICE_KEY="CHANGE_DEVICE_KEY";
 const int SERVO_PINS[SERVO_COUNT]={3,16,17,18,21};
 #define OLED_ADDR 0x3C
 
-NvmCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC522_SS,RC522_RST);
+M_GROUPCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC522_SS,RC522_RST);
 Adafruit_SSD1306 display(128,64,&Wire,-1);
 Servo dispensers[SERVO_COUNT];
 Preferences vendingPrefs;
@@ -61,9 +61,9 @@ String request(const String& method,const String& path,const String& body,int& c
   HTTPClient http;
   http.setConnectTimeout(3000);
   http.setTimeout(8000);
-  http.begin(String(NVM_BASE_URL)+path);
+  http.begin(String(M_GROUP_BASE_URL)+path);
   http.addHeader("Content-Type","application/json");
-  http.addHeader("X-NVM-Device-Key",NVM_DEVICE_KEY);
+  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY);
   if(method=="GET")code=http.GET();else if(method=="POST")code=http.POST(body);else code=-1;
   String out=code>0?http.getString():"";http.end();return out;
 }
@@ -136,7 +136,7 @@ bool products(){
   int code=0;String reply=request("GET",String("/api/v1/vending/")+DEVICE_ID+"/products","",code);
   Serial.printf("PRODUCTS %d %s\n",code,reply.c_str());
   if(code<200||code>=300){showMessage("SERVER ERROR","Products unavailable");return false;}
-  parseProducts(reply);if(!productCount){showMessage("NVM VENDING","No products");return false;}
+  parseProducts(reply);if(!productCount){showMessage("M_GROUP VENDING","No products");return false;}
   if(selectedIndex>=productCount)selectedIndex=0;Product&x=productsList[selectedIndex];
   showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));return true;
 }
@@ -224,7 +224,7 @@ bool dispense(const String&tx,int servoChannel){
 }
 void scanCard(){
   if(!readerReady||!productCount)return;Product&x=productsList[selectedIndex];if(!x.enabled||x.stock<=0)return;
-  uint8_t uid[NVM_MAX_UID_LENGTH]={0},len=0;if(!card.readUID(uid,len))return;
+  uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;if(!card.readUID(uid,len))return;
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
@@ -248,7 +248,7 @@ void scanCard(){
 }
 void setup(){
   Serial.begin(115200);delay(300);
-  vendingPrefs.begin("nvm-vend",false);
+  vendingPrefs.begin("M_GROUP-vend",false);
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
   if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
@@ -270,7 +270,7 @@ void setup(){
   pinMode(PRODUCT_DROP_SENSOR_PIN,INPUT_PULLUP);
   Wire.begin(I2C_SDA,I2C_SCL);displayReady=display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR);
   for(int i=0;i<SERVO_COUNT;i++){dispensers[i].setPeriodHertz(50);dispensers[i].attach(SERVO_PINS[i],500,2400);dispensers[i].write(10);}
-  showMessage("NVM VENDING","Starting...");
+  showMessage("M_GROUP VENDING","Starting...");
   if(connectWifi()){heartbeat();products();}
   readerReady=card.begin(I2C_SDA,I2C_SCL);
 }
