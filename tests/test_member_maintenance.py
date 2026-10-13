@@ -7,7 +7,7 @@ from app.financial.service import FinancialService
 
 def test_topup_correction_is_ledger_backed_and_idempotent():
     with TemporaryDirectory() as tmp:
-        db = Database(Path(tmp) / "nvm.db")
+        db = Database(Path(tmp) / "m-group.db")
         db.migrate()
         with db.connect() as c:
             c.execute("INSERT INTO identity_members(member_id,name) VALUES('NTR-00001','Test Member')")
@@ -36,7 +36,7 @@ def test_topup_correction_is_ledger_backed_and_idempotent():
 
 def test_topup_correction_rejects_duplicate_and_invalid_amount():
     with TemporaryDirectory() as tmp:
-        db = Database(Path(tmp) / "nvm.db")
+        db = Database(Path(tmp) / "m-group.db")
         db.migrate()
         with db.connect() as c:
             c.execute("INSERT INTO identity_members(member_id,name) VALUES('NTR-00002','Test Member')")
@@ -63,7 +63,7 @@ def test_pin_reset_requires_admin_and_identity_verification():
 
     with TemporaryDirectory() as tmp:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "nvm.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -71,7 +71,7 @@ def test_pin_reset_requires_admin_and_identity_verification():
                 c.commit()
             url = "/api/v1/members/NTR-00003/pin"
             assert client.post(url, json={"pin": "1234"}).status_code == 401
-            admin = {"X-NVM-Admin-Token": "admin-secret"}
+            admin = {"X-M-Group-Admin-Token": "admin-secret"}
             assert client.post(url, headers=admin, json={"pin": "1234", "operator_id": "operator-1"}).status_code == 400
             response = client.post(url, headers=admin, json={
                 "pin": "1234", "operator_id": "operator-1",
@@ -93,10 +93,10 @@ def test_nfc_replacement_revokes_old_credential():
 
     with TemporaryDirectory() as tmp:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "nvm.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
-            admin = {"X-NVM-Admin-Token": "admin-secret"}
+            admin = {"X-M-Group-Admin-Token": "admin-secret"}
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('NTR-00004','NFC Test')")
                 c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
@@ -107,7 +107,7 @@ def test_nfc_replacement_revokes_old_credential():
                                 json={"cashier_device_id": "cashier-test"})
             assert start.status_code == 200
             first = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
-                                headers={"X-NVM-Device-Key": "cash-key"},
+                                headers={"X-M-Group-Device-Key": "cash-key"},
                                 json={"session_id": start.json()["session_id"], "card_uid": "04:AA:BB:CC:01", "pin": "1234"})
             assert first.status_code == 200
             old_credential = first.json()["credential_id"]
@@ -116,7 +116,7 @@ def test_nfc_replacement_revokes_old_credential():
                                       json={"cashier_device_id": "cashier-test", "operator_id": "operator-1"})
             assert replacement.status_code == 200
             second = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
-                                 headers={"X-NVM-Device-Key": "cash-key"},
+                                 headers={"X-M-Group-Device-Key": "cash-key"},
                                  json={"session_id": replacement.json()["session_id"], "card_uid": "04:AA:BB:CC:02", "pin": "1234"})
             assert second.status_code == 200
             new_credential = second.json()["credential_id"]
