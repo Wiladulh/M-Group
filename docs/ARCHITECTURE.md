@@ -1,1 +1,1 @@
-NVM is a portable Linux application. Domains: core/runtime, identity, financial ledger, NFC payment, loans, vending, device protocol, API, WebUI, installer and CI/CD. Production instance data remains outside the source repository.
+M_GROUP is a portable Linux application. Domains: core/runtime, identity, financial ledger, NFC payment, loans, vending, device protocol, API, WebUI, installer and CI/CD. Production instance data remains outside the source repository.
