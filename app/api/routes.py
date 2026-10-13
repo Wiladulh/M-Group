@@ -920,9 +920,9 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_nvm_device_id: str | None = Header(default=None)):
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
         # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_nvm_device_id
+        device_id = x_m_group_device_id
         if not device_id:
             if not x_m_group_device_key:
                 raise HTTPException(401, "device_auth_required")
@@ -1019,7 +1019,7 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"exports"
+        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         path=root/f"audit-{source.lower()}-{period}-{date or 'today'}.xlsx"
         data=audit_report(source,period,date)
@@ -1031,10 +1031,10 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"backups"
+        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
         import datetime as dt
-        path=root/f"NVM_BACKUP_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.nvm.zip"
+        path=root/f"M-Group_BACKUP_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.mgroup.zip"
         create_native_backup(db,path,include_excel=True)
         return FileResponse(path,filename=path.name,media_type="application/zip")
 
@@ -1043,9 +1043,9 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        if not file.filename or not file.filename.endswith(".nvm.zip"): raise HTTPException(400,"invalid_backup_file")
-        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"backups"
-        root.mkdir(parents=True,exist_ok=True); path=root/"restore-upload.nvm.zip"
+        if not file.filename or not file.filename.endswith(".mgroup.zip"): raise HTTPException(400,"invalid_backup_file")
+        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
+        root.mkdir(parents=True,exist_ok=True); path=root/"restore-upload.mgroup.zip"
         path.write_bytes(await file.read())
         try: result=restore_native_backup(db,path)
         except Exception as e: raise HTTPException(400,str(e))
@@ -1057,7 +1057,7 @@ def build_router(db, app_settings=None):
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400,"invalid_excel_file")
-        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/nvm"))/"imports"
+        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"imports"
         root.mkdir(parents=True,exist_ok=True); path=root/"import.xlsx"; path.write_bytes(await file.read())
         try: result=import_excel(db,path)
         except Exception as e: raise HTTPException(400,str(e))
