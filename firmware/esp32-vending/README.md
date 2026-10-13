@@ -1,4 +1,4 @@
-# NVM ESP32-S3 Vending
+# M_GROUP ESP32-S3 Vending
 
 Server is the source of truth for product, price, stock, payment and transaction state.
 
@@ -6,7 +6,7 @@ Flow:
 1. Select product.
 2. Read NFC credential.
 3. POST vending transaction with an idempotency key.
-4. Authorize payment on NVM server.
+4. Authorize payment on M_GROUP server.
 5. Physically dispense.
 6. POST dispense result.
 7. Server decrements inventory only after successful dispense.
