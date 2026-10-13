@@ -5,7 +5,7 @@ from app.core.db import Database
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="M_GROUP")
+    parser = argparse.ArgumentParser(prog="M-Group")
     parser.add_argument("command", nargs="?", choices=["init"])
     args = parser.parse_args()
 
