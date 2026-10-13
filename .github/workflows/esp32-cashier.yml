@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - "esp32/cashier/**"
-      - "platformio.ini"
       - ".github/workflows/esp32-cashier.yml"
 
 jobs:
@@ -26,16 +25,17 @@ jobs:
           python -m pip install --upgrade platformio
 
       - name: Stage Cashier Sources
+        working-directory: esp32/cashier
         run: |
           mkdir -p src
-          cp esp32/cashier/*.ino src/
-          cp esp32/cashier/*.h src/
+          cp MGroupCashier.ino MGroupCardReader.h MGroupKeypad.h src/
 
       - name: Build ESP32 Cashier
+        working-directory: esp32/cashier
         run: pio run -e esp32dev
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: m-group-esp32-cashier-firmware
-          path: .pio/build/esp32dev/firmware.bin
+          path: esp32/cashier/.pio/build/esp32dev/firmware.bin
