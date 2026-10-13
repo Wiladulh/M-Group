@@ -16,4 +16,21 @@ jobs:
       - run: pip install pytest httpx build
       - run: pytest -q
       - run: python -m build --wheel
-      - run: python -c "import glob,zipfile; p=glob.glob('dist/*.whl')[0]; z=zipfile.ZipFile(p); names=z.namelist(); required=['app/webui/index.html','app/webui/pages/dashboard.html','app/webui/assets/js/app.js']; missing=[x for x in required if x not in names]; assert not missing, f'Missing packaged WebUI files: {missing}'"
+      - name: Verify installed wheel contains WebUI resources
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          required = [
+              "app/webui/index.html",
+              "app/webui/pages/dashboard.html",
+              "app/webui/assets/js/app.js",
+          ]
+          missing = [path for path in required if path not in names]
+          if missing:
+              raise SystemExit(f"Missing packaged WebUI files: {missing}")
+          PY
