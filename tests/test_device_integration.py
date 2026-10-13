@@ -8,14 +8,14 @@ import app.main as main
 def test_device_heartbeat_and_vending_product_sync():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
 
             cashier = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert cashier.status_code == 200
             cashier_key = cashier.json()["device_key"]
@@ -23,7 +23,7 @@ def test_device_heartbeat_and_vending_product_sync():
             vending = client.post(
                 "/api/v1/devices/vm-01/provision",
                 json={"device_type": "esp32-s3-vending"},
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert vending.status_code == 200
             vending_key = vending.json()["device_key"]
@@ -31,14 +31,14 @@ def test_device_heartbeat_and_vending_product_sync():
             hb = client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
-                headers={"X-NVM-Device-Key": cashier_key},
+                headers={"X-M-Group-Device-Key": cashier_key},
             )
             assert hb.status_code == 200
 
             vm = client.post(
                 "/api/v1/devices/vm-01/heartbeat",
                 json={"device_type": "esp32-s3-vending", "status": "active"},
-                headers={"X-NVM-Device-Key": vending_key},
+                headers={"X-M-Group-Device-Key": vending_key},
             )
             assert vm.status_code == 200
 
