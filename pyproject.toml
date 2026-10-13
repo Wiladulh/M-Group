@@ -16,4 +16,4 @@ m-group="app.cli:main"
 include=["app*"]
 
 [tool.setuptools.package-data]
-app = ["webui/index.html", "migrations/*.sql"]
+app = ["webui/index.html", "webui/assets/**/*", "webui/pages/*.html", "migrations/*.sql"]

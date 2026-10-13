@@ -13,5 +13,24 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt
-      - run: pip install pytest httpx
+      - run: pip install pytest httpx build
       - run: pytest -q
+      - run: python -m build --wheel
+      - name: Verify installed wheel contains WebUI resources
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          required = [
+              "app/webui/index.html",
+              "app/webui/pages/dashboard.html",
+              "app/webui/assets/js/app.js",
+          ]
+          missing = [path for path in required if path not in names]
+          if missing:
+              raise SystemExit(f"Missing packaged WebUI files: {missing}")
+          PY
