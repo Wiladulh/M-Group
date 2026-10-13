@@ -32,5 +32,5 @@ jobs:
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: nvm-esp32-s3-vending-firmware
+          name: m-group-esp32-s3-vending-firmware
           path: firmware/esp32-vending/.pio/build/esp32-s3/firmware.bin
