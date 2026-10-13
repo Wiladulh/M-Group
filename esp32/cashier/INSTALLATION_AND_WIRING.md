@@ -1,6 +1,6 @@
-# M_GROUP Cashier — Tutorial Instalasi & Wiring
+# M-Group Cashier — Tutorial Instalasi & Wiring
 
-Panduan ini mengikuti pin yang saat ini dipakai oleh `M_GROUPCashier.ino` dan helper di folder ini. Periksa tabel sebelum menyalakan perangkat.
+Panduan ini mengikuti pin yang saat ini dipakai oleh `MGroupCashier.ino` dan helper di folder ini. Periksa tabel sebelum menyalakan perangkat.
 
 ## 1. Komponen
 
@@ -19,7 +19,7 @@ Panduan ini mengikuti pin yang saat ini dipakai oleh `M_GROUPCashier.ino` dan he
 | SDA | GPIO 21 |
 | SCL | GPIO 22 |
 
-Firmware memakai alamat LCD `0x27`. Jika modul menggunakan alamat lain, ubah `LiquidCrystal_I2C lcd(0x27,16,2)` di `M_GROUPCashier.ino`. **Peringatan:** jangan biarkan pull-up backpack LCD menarik SDA/SCL ke 5 V; level sinyal ESP32 adalah 3.3 V. Gunakan level shifter atau pull-up 3.3 V yang sesuai bila diperlukan.
+Firmware memakai alamat LCD `0x27`. Jika modul menggunakan alamat lain, ubah `LiquidCrystal_I2C lcd(0x27,16,2)` di `MGroupCashier.ino`. **Peringatan:** jangan biarkan pull-up backpack LCD menarik SDA/SCL ke 5 V; level sinyal ESP32 adalah 3.3 V. Gunakan level shifter atau pull-up 3.3 V yang sesuai bila diperlukan.
 
 ## 3. Wiring keypad 4x4
 
@@ -75,9 +75,9 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
    - `Keypad`
    - `Adafruit PN532`
    - `MFRC522`
-3. Unduh/clone repo M_GROUP, lalu buka `esp32/cashier/M_GROUPCashier.ino`. Pastikan `M_GROUPKeypad.h` dan `M_GROUPCardReader.h` tetap berada di folder yang sama dengan sketch.
+3. Unduh/clone repo M-Group, lalu buka `esp32/cashier/MGroupCashier.ino`. Pastikan `MGroupKeypad.h` dan `MGroupCardReader.h` tetap berada di folder yang sama dengan sketch.
 4. Pilih board ESP32 yang sesuai dengan perangkat, port USB, lalu compile. Periksa bahwa semua library ditemukan.
-5. Isi konfigurasi di bagian atas `M_GROUPCashier.ino`:
+5. Isi konfigurasi di bagian atas `MGroupCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
    - `M_GROUP_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
    - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan

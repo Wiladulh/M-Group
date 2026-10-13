@@ -24,7 +24,7 @@ def test_cashier_deposit_and_audit_are_separate_from_vending():
             assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
             dep=client.post("/api/v1/cashier/deposits",
                 json={"credential_id":"cred1","amount":10500,"operator_pin":"9992","member_pin":"1234","idempotency_key":"dep-1"},
-                headers={"X-M-Group-Device-Key":"cash-key","X-M_GROUP-Device-Id":"cash-01"})
+                headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
             assert dep.status_code==200
             assert dep.json()["balance_after"]==10500
             report=client.get("/api/v1/audit/report?source=CASHIER&period=day",headers={"X-M-Group-Admin-Token":"admin-secret"})
@@ -51,9 +51,9 @@ def test_operator_pin_can_be_changed_by_admin():
                 c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
                 c.commit()
             assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
-            ok=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"4321","member_pin":"1234","idempotency_key":"dep-2"},headers={"X-M-Group-Device-Key":"cash-key","X-M_GROUP-Device-Id":"cash-01"})
+            ok=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"4321","member_pin":"1234","idempotency_key":"dep-2"},headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
             assert ok.status_code==200
-            bad=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"9992","member_pin":"1234","idempotency_key":"dep-3"},headers={"X-M-Group-Device-Key":"cash-key","X-M_GROUP-Device-Id":"cash-01"})
+            bad=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"9992","member_pin":"1234","idempotency_key":"dep-3"},headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
             assert bad.status_code==403
         finally:
             main.get_settings=old
