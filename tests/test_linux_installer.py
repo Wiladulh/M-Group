@@ -14,12 +14,16 @@ def test_linux_installer_shell_syntax():
     assert result.returncode == 0, result.stderr
 
 
-def test_linux_installer_documents_safe_localhost_default():
+def test_linux_installer_defaults_to_all_interfaces_and_prompts_for_configuration():
     installer = (ROOT / "installer" / "install.sh").read_text()
     docs = (ROOT / "installer" / "README.md").read_text()
-    assert 'M_GROUP_HOST:-127.0.0.1' in installer
+    assert 'M_GROUP_HOST:-0.0.0.0' in installer
+    assert 'if [ "$MODE" = system ] && [ -t 0 ]; then' in installer
+    assert "Admin API token (hidden" in installer
+    assert 'CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}' in installer
     assert "/etc/m-group/m-group.env" in docs
-    assert "SSH tunnel" in docs
+    assert "DHCP" in docs
+    assert "TLS reverse proxy" in docs
 
 
 def test_linux_installer_has_supported_prerequisite_bootstrap():
