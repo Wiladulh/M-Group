@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+name="M-Group"
+description="M-Group M-Group platform server"
+command="/opt/M-Group/venv/bin/uvicorn"
+command_args="app.main:app --host ${M_GROUP_HOST:-0.0.0.0} --port ${M_GROUP_PORT:-8011}"
+command_user="${M_GROUP_USER:-root}"
+directory="/opt/M-Group"
+pidfile="/run/M-Group.pid"
+command_background="yes"
+output_log="/var/log/M-Group.log"
+error_log="/var/log/M-Group.log"
+
+depend() {
+  need net
+  after firewall
+}
+
+start_pre() {
+  checkpath --directory --owner "${M_GROUP_USER:-root}" /var/lib/M-Group
+  checkpath --file --owner "${M_GROUP_USER:-root}" /var/log/M-Group.log
+}
