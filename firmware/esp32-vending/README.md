@@ -1,16 +1,14 @@
-# M_GROUP ESP32-S3 Vending
+# Legacy PlatformIO scaffold — not the active firmware
 
-Server is the source of truth for product, price, stock, payment and transaction state.
+The maintained ESP32-S3 Vending firmware is located at
+[`esp32/vending/MGroupVending.ino](../../esp32/vending/MGroupVending.ino).
 
-Flow:
-1. Select product.
-2. Read NFC credential.
-3. POST vending transaction with an idempotency key.
-4. Authorize payment on M_GROUP server.
-5. Physically dispense.
-6. POST dispense result.
-7. Server decrements inventory only after successful dispense.
+Use the maintained sketch and its adjacent helper header in `esp32/vending/`.
+This directory contains an older PlatformIO scaffold without the maintained
+transaction and hardware implementation; it is not a supported build target.
 
-The example firmware uses a servo and one selection button. NFC/display adapters are deliberately isolated from the transaction protocol so hardware can be changed without changing the financial flow.
+For installation, wiring, server configuration, and physical validation steps,
+see [the current Vending tutorial](../../esp32/vending/INSTALLATION_AND_WIRING.md)
+and [the current Vending README](../../esp32/vending/README.md).
 
-Before flashing, set Wi-Fi, server address, machine ID, NFC/account mapping and actual GPIOs.
+Do not use this scaffold to flash a production device.
