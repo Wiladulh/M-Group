@@ -22,8 +22,8 @@ def test_cashier_hardware_pin_map_is_locked():
     for pin in expected_cashier_pins:
         assert pin in CASHIER
 
-    assert "byte MGroupRowPins[M_GROUP_ROWS]={32,33,25,26};" in KEYPAD
-    assert "byte MGroupColPins[M_GROUP_COLS]={13,14,16,17};" in KEYPAD
+    assert "byte M_GROUPRowPins[M_GROUP_ROWS]={32,33,25,26};" in KEYPAD
+    assert "byte M_GROUPColPins[M_GROUP_COLS]={13,14,16,17};" in KEYPAD
 
 
 def test_reader_abstraction_has_both_supported_readers_and_safe_none_state():
