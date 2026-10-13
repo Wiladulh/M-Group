@@ -1,6 +1,6 @@
-# NVM Cashier — Tutorial Instalasi & Wiring
+# M_GROUP Cashier — Tutorial Instalasi & Wiring
 
-Panduan ini mengikuti pin yang saat ini dipakai oleh `NvmCashier.ino` dan helper di folder ini. Periksa tabel sebelum menyalakan perangkat.
+Panduan ini mengikuti pin yang saat ini dipakai oleh `M_GROUPCashier.ino` dan helper di folder ini. Periksa tabel sebelum menyalakan perangkat.
 
 ## 1. Komponen
 
@@ -19,7 +19,7 @@ Panduan ini mengikuti pin yang saat ini dipakai oleh `NvmCashier.ino` dan helper
 | SDA | GPIO 21 |
 | SCL | GPIO 22 |
 
-Firmware memakai alamat LCD `0x27`. Jika modul menggunakan alamat lain, ubah `LiquidCrystal_I2C lcd(0x27,16,2)` di `NvmCashier.ino`. **Peringatan:** jangan biarkan pull-up backpack LCD menarik SDA/SCL ke 5 V; level sinyal ESP32 adalah 3.3 V. Gunakan level shifter atau pull-up 3.3 V yang sesuai bila diperlukan.
+Firmware memakai alamat LCD `0x27`. Jika modul menggunakan alamat lain, ubah `LiquidCrystal_I2C lcd(0x27,16,2)` di `M_GROUPCashier.ino`. **Peringatan:** jangan biarkan pull-up backpack LCD menarik SDA/SCL ke 5 V; level sinyal ESP32 adalah 3.3 V. Gunakan level shifter atau pull-up 3.3 V yang sesuai bila diperlukan.
 
 ## 3. Wiring keypad 4x4
 
@@ -75,15 +75,15 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
    - `Keypad`
    - `Adafruit PN532`
    - `MFRC522`
-3. Unduh/clone repo NVM, lalu buka `esp32/cashier/NvmCashier.ino`. Pastikan `NvmKeypad.h` dan `NvmCardReader.h` tetap berada di folder yang sama dengan sketch.
+3. Unduh/clone repo M_GROUP, lalu buka `esp32/cashier/M_GROUPCashier.ino`. Pastikan `M_GROUPKeypad.h` dan `M_GROUPCardReader.h` tetap berada di folder yang sama dengan sketch.
 4. Pilih board ESP32 yang sesuai dengan perangkat, port USB, lalu compile. Periksa bahwa semua library ditemukan.
-5. Isi konfigurasi di bagian atas `NvmCashier.ino`:
+5. Isi konfigurasi di bagian atas `M_GROUPCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
-   - `NVM_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
+   - `M_GROUP_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
    - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan
-   - `NVM_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
+   - `M_GROUP_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
 6. Daftarkan/provision perangkat bertipe kasir pada server dengan ID yang sama. Pastikan key aktif.
-7. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `NVM_HOST=0.0.0.0`, `NVM_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
+7. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
 8. Flash sketch, buka Serial Monitor pada **115200 baud**, lalu reset perangkat.
 
 Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publik maupun log.
