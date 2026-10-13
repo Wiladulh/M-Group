@@ -742,7 +742,8 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(409,str(e))
 
     @r.post("/payments")
-    def payment(q:PaymentRequest):
+    def payment(q:PaymentRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return payments.pay(**q.model_dump())
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
