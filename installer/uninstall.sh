@@ -1,5 +1,5 @@
 #!/bin/sh
 set -eu
-PREFIX=${NVM_PREFIX:-/opt/nvm}
+PREFIX=${M_GROUP_PREFIX:-/opt/M_GROUP}
 rm -rf "$PREFIX"
-echo "NVM application removed; instance data preserved."
+echo "M_GROUP application removed; instance data preserved."
