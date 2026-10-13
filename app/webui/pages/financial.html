@@ -5,8 +5,9 @@
   </section>
   <section class="section">
     <h2>Deposit / Penarikan</h2>
-    <div class="hint">Gunakan Account ID anggota.</div>
+    <div class="hint">Gunakan Account ID anggota. Mutasi saldo memerlukan Admin Token.</div>
     <form id="financialForm">
+      <input id="financialAdminToken" type="password" placeholder="Admin Token" autocomplete="current-password" required>
       <input id="account" placeholder="Account ID" required>
       <input id="amount" type="number" min="1" placeholder="Jumlah" required>
       <select id="direction">
