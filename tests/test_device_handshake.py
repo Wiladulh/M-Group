@@ -7,7 +7,7 @@ def test_cashier_and_vending_identity_handshake():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
-            "db_path": Path(d) / "nvm.db",
+            "db_path": Path(d) / "m-group.db",
             "admin_token": "admin-secret"
         })()
         try:
@@ -49,7 +49,7 @@ def test_cashier_and_vending_identity_handshake():
 
             devices = client.get(
                 "/api/v1/devices",
-                headers={"X-NVM-Admin-Token":"admin-secret"},
+                headers={"X-M-Group-Admin-Token":"admin-secret"},
             )
             assert devices.status_code == 200
             rows = devices.json()["devices"]
