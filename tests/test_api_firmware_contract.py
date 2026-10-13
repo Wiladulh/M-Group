@@ -4,13 +4,13 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-ADMIN = {"X-NVM-Admin-Token": "admin-secret"}
+ADMIN = {"X-M-Group-Admin-Token": "admin-secret"}
 
 
 def configured_client(directory):
     old = main.get_settings
     main.get_settings = lambda: type(
-        "S", (), {"db_path": Path(directory) / "nvm.db", "admin_token": "admin-secret"}
+        "S", (), {"db_path": Path(directory) / "m-group.db", "admin_token": "admin-secret"}
     )()
     client = TestClient(main.create_app())
     return old, client
@@ -55,7 +55,7 @@ def test_cashier_deposit_accepts_firmware_contract_without_device_id_header():
                     "member_pin": "1234",
                     "idempotency_key": "cashier-01:deposit:1",
                 },
-                headers={"X-NVM-Device-Key": key},
+                headers={"X-M-Group-Device-Key": key},
             )
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "completed"
@@ -79,7 +79,7 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
                 c.commit()
 
             key = provision(client, "vm-01", "esp32-s3-vending")
-            headers = {"X-NVM-Device-Key": key}
+            headers = {"X-M-Group-Device-Key": key}
 
             products = client.get("/api/v1/vending/vm-01/products", headers=headers)
             assert products.status_code == 200, products.text
