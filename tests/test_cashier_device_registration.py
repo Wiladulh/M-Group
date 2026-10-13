@@ -23,7 +23,7 @@ def test_cashier_device_registration_and_heartbeat_gate():
             provision = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert provision.status_code == 200
             data = provision.json()
@@ -34,14 +34,14 @@ def test_cashier_device_registration_and_heartbeat_gate():
             invalid_key = client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
-                headers={"X-NVM-Device-Key": "invalid-key"},
+                headers={"X-M-Group-Device-Key": "invalid-key"},
             )
             assert invalid_key.status_code == 403
 
             heartbeat = client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
-                headers={"X-NVM-Device-Key": device_key},
+                headers={"X-M-Group-Device-Key": device_key},
             )
             assert heartbeat.status_code == 200
             hb = heartbeat.json()
