@@ -8,11 +8,11 @@ def test_h_full_integration_one_by_one():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(d) / "nvm.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"}
         )()
         try:
             client = TestClient(main.create_app())
-            admin = {"X-NVM-Admin-Token": "admin-secret"}
+            admin = {"X-M-Group-Admin-Token": "admin-secret"}
 
             # H-01 Member/KTP
             member = client.post(
@@ -43,7 +43,7 @@ def test_h_full_integration_one_by_one():
 
             heartbeat = client.post(
                 "/api/v1/devices/cashier-h/heartbeat",
-                headers={"X-NVM-Device-Key": cashier_key},
+                headers={"X-M-Group-Device-Key": cashier_key},
                 json={"device_type": "esp32-cashier", "status": "active"},
             )
             assert heartbeat.status_code == 200
@@ -66,14 +66,14 @@ def test_h_full_integration_one_by_one():
 
             cashier_pending = client.get(
                 "/api/v1/cashier/cashier-h/nfc-registration",
-                headers={"X-NVM-Device-Key": cashier_key},
+                headers={"X-M-Group-Device-Key": cashier_key},
             )
             assert cashier_pending.status_code == 200
             assert cashier_pending.json()["session_id"] == session_id
 
             complete = client.post(
                 "/api/v1/cashier/cashier-h/nfc-registration/complete",
-                headers={"X-NVM-Device-Key": cashier_key},
+                headers={"X-M-Group-Device-Key": cashier_key},
                 json={"session_id": session_id, "card_uid": "04:A1:B2:C3:D4", "pin": "1234"},
             )
             assert complete.status_code == 200
@@ -114,7 +114,7 @@ def test_h_full_integration_one_by_one():
             # H-06 Cashier
             cashier_payment = client.post(
                 "/api/v1/cashier/payments",
-                headers={"X-NVM-Device-Key": cashier_key},
+                headers={"X-M-Group-Device-Key": cashier_key},
                 json={
                     "device_id": "cashier-h",
                     "credential_id": credential_id,
@@ -152,7 +152,7 @@ def test_h_full_integration_one_by_one():
 
             tx = client.post(
                 "/api/v1/vending/machine-h/transactions",
-                headers={"X-NVM-Device-Key": vending_key},
+                headers={"X-M-Group-Device-Key": vending_key},
                 json={
                     "product_id": "water-h",
                     "credential_id": credential_id,
@@ -165,14 +165,14 @@ def test_h_full_integration_one_by_one():
 
             authorized = client.post(
                 f"/api/v1/vending/transactions/{tid}/authorize",
-                headers={"X-NVM-Device-Key": vending_key},
+                headers={"X-M-Group-Device-Key": vending_key},
             )
             assert authorized.status_code == 200
             assert authorized.json()["status"] == "authorized"
 
             dispensed = client.post(
                 f"/api/v1/vending/transactions/{tid}/dispense",
-                headers={"X-NVM-Device-Key": vending_key},
+                headers={"X-M-Group-Device-Key": vending_key},
                 json={"success": True},
             )
             assert dispensed.status_code == 200
@@ -187,7 +187,7 @@ def test_h_full_integration_one_by_one():
             # H-09 WebUI
             root = client.get("/")
             assert root.status_code == 200
-            assert "NVM" in root.text
+            assert "M_GROUP" in root.text
             dashboard = client.get("/api/v1/dashboard")
             assert dashboard.status_code == 200
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
@@ -195,11 +195,11 @@ def test_h_full_integration_one_by_one():
             # H-10 Error/authorization flow
             assert client.get("/api/v1/members", headers={}).status_code == 401
             assert client.get(
-                "/api/v1/devices", headers={"X-NVM-Admin-Token": "wrong"}
+                "/api/v1/devices", headers={"X-M-Group-Admin-Token": "wrong"}
             ).status_code == 401
             assert client.get(
                 "/api/v1/cashier/cashier-h/nfc-registration",
-                headers={"X-NVM-Device-Key": "wrong"},
+                headers={"X-M-Group-Device-Key": "wrong"},
             ).status_code == 403
             assert client.post(
                 "/api/v1/vending/machine-h/transactions",
