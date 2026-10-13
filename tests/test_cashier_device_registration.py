@@ -9,7 +9,7 @@ from app.core.db import Database
 def test_cashier_device_registration_and_heartbeat_gate():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        db_path = Path(d) / "nvm.db"
+        db_path = Path(d) / "m-group.db"
         main.get_settings = lambda: type("S", (), {"db_path": db_path, "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
