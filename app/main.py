@@ -13,7 +13,7 @@ def create_app():
     configure_logging()
     db = Database(s.db_path)
     db.migrate()
-    app = FastAPI(title="M_GROUP", version="0.1.0")
+    app = FastAPI(title="M-Group", version="0.1.0")
     app.state.settings = s
     app.state.db = db
     app.include_router(build_router(db, s))
