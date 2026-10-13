@@ -19,7 +19,7 @@ def seed(client):
 def test_vending_api_payment_and_dispense():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -32,17 +32,17 @@ def test_vending_api_payment_and_dispense():
             assert products.json()["products"][0]["discount_amount"] == 0
             tx = client.post("/api/v1/vending/v1/transactions", json={
                 "product_id":"water","credential_id":"nfc1","account_id":"a1",
-                "idempotency_key":"vend-api-1"} , headers={"X-NVM-Device-Key":"vm-secret"})
+                "idempotency_key":"vend-api-1"} , headers={"X-M-Group-Device-Key":"vm-secret"})
             assert tx.status_code == 200
             tid = tx.json()["transaction_id"]
-            auth = client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers={"X-NVM-Device-Key":"vm-secret"})
+            auth = client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers={"X-M-Group-Device-Key":"vm-secret"})
             assert auth.status_code == 200
             assert auth.json()["status"] == "authorized"
-            done = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-NVM-Device-Key":"vm-secret"})
+            done = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-M-Group-Device-Key":"vm-secret"})
             assert done.status_code == 200
             assert done.json()["status"] == "completed"
             # A retry after a lost HTTP response is idempotent.
-            retry = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-NVM-Device-Key":"vm-secret"})
+            retry = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-M-Group-Device-Key":"vm-secret"})
             assert retry.status_code == 200
             assert retry.json()["status"] == "completed"
             assert client.get("/api/v1/accounts/a1/balance").json()["balance"] == 5000
@@ -53,16 +53,16 @@ def test_vending_api_payment_and_dispense():
 def test_vending_api_failed_dispense_refunds():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
             tx = client.post("/api/v1/vending/v1/transactions", json={
                 "product_id":"water","credential_id":"nfc1","account_id":"a1",
-                "idempotency_key":"vend-api-fail"}, headers={"X-NVM-Device-Key":"vm-secret"}).json()
+                "idempotency_key":"vend-api-fail"}, headers={"X-M-Group-Device-Key":"vm-secret"}).json()
             tid = tx["transaction_id"]
-            assert client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers={"X-NVM-Device-Key":"vm-secret"}).status_code == 200
-            failed = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":False}, headers={"X-NVM-Device-Key":"vm-secret"})
+            assert client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers={"X-M-Group-Device-Key":"vm-secret"}).status_code == 200
+            failed = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":False}, headers={"X-M-Group-Device-Key":"vm-secret"})
             assert failed.status_code == 200
             assert failed.json()["status"] == "refunded"
             assert failed.json()["dispense_status"] == "failed"
@@ -74,7 +74,7 @@ def test_vending_api_failed_dispense_refunds():
 def test_vending_credential_resolves_primary_savings_account():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -89,18 +89,18 @@ def test_vending_credential_resolves_primary_savings_account():
 def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal_state():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
             tx = client.post("/api/v1/vending/v1/transactions", json={
                 "product_id":"water","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-reconcile-1"
-            }, headers={"X-NVM-Device-Key":"vm-secret"}).json()
+            }, headers={"X-M-Group-Device-Key":"vm-secret"}).json()
             tid = tx["transaction_id"]
             missing_auth = client.get(f"/api/v1/vending/transactions/{tid}")
             assert missing_auth.status_code == 401
-            headers = {"X-NVM-Device-Key":"vm-secret"}
+            headers = {"X-M-Group-Device-Key":"vm-secret"}
             pending = client.get(f"/api/v1/vending/transactions/{tid}", headers=headers)
             assert pending.status_code == 200
             assert pending.json()["status"] == "pending"
@@ -116,11 +116,11 @@ def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal
 def test_vending_idempotency_key_cannot_be_reused_for_different_product():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
-            headers = {"X-NVM-Device-Key":"vm-secret"}
+            headers = {"X-M-Group-Device-Key":"vm-secret"}
             first = client.post("/api/v1/vending/v1/transactions", json={
                 "product_id":"water","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-reused-key"
