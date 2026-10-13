@@ -94,12 +94,14 @@ def test_h_full_integration_one_by_one():
             # H-04 NFC payment
             payment = client.post(
                 "/api/v1/payments",
+                headers=admin,
                 json={
                     "credential_id": credential_id,
                     "account_id": "acct-h",
                     "amount": 5000,
                     "method": "NFC",
                     "provider": "local",
+                    "pin": "1234",
                     "idempotency_key": "h-nfc-1",
                 },
             )
