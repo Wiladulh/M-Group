@@ -51,6 +51,7 @@ def test_device_heartbeat_and_vending_product_sync():
 
             product = client.put(
                 "/api/v1/vending/vm-01/products/water-01",
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
                 json={
                     "product_id": "water-01",
                     "name": "Air Mineral",

@@ -44,10 +44,11 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
 def test_vending_registry_api():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db"})()
+        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
         try:
             client=TestClient(main.create_app())
-            created=client.post("/api/v1/vending",json={
+            admin={"X-M-Group-Admin-Token":"admin-secret"}
+            created=client.post("/api/v1/vending",headers=admin,json={
                 "machine_id":"api-v1","name":"API Vending","location":"Lobby","device_id":"api-esp32"
             })
             assert created.status_code==200
@@ -55,10 +56,10 @@ def test_vending_registry_api():
             detail=client.get("/api/v1/vending/api-v1")
             assert detail.status_code==200
             assert len(detail.json()["slots"])==5
-            updated=client.patch("/api/v1/vending/api-v1",json={"location":"Gate"})
+            updated=client.patch("/api/v1/vending/api-v1",headers=admin,json={"location":"Gate"})
             assert updated.status_code==200
             assert updated.json()["location"]=="Gate"
-            assert client.post("/api/v1/vending/api-v1/disable").status_code==200
-            assert client.post("/api/v1/vending/api-v1/enable").json()["status"]=="active"
+            assert client.post("/api/v1/vending/api-v1/disable",headers=admin).status_code==200
+            assert client.post("/api/v1/vending/api-v1/enable",headers=admin).json()["status"]=="active"
         finally:
             main.get_settings=old

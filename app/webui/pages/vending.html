@@ -6,12 +6,16 @@
   <section class="section">
     <h2>Inventory Produk</h2>
     <div id="products" class="scroll"></div>
+    <div class="hint">Perubahan inventaris memerlukan Admin Token. Slot dan servo harus sesuai wiring ESP32.</div>
     <form id="productForm" style="margin-top:12px">
+      <input id="vendingAdminToken" type="password" placeholder="Admin Token" autocomplete="current-password" required>
       <input id="machineId" placeholder="Machine ID" required>
       <input id="productId" placeholder="Product ID" required>
       <input id="productName" placeholder="Nama produk" required>
       <input id="productPrice" type="number" min="1" placeholder="Harga" required>
-      <input id="productStock" type="number" min="0" placeholder="Stok" required>
+      <input id="productStock" type="number" min="0" placeholder="Stok saat ini" required>
+      <input id="productSlot" type="number" min="1" max="5" placeholder="Slot 1–5" required>
+      <input id="productCapacity" type="number" min="0" placeholder="Kapasitas slot" required>
       <label class="check">
         <input id="productEnabled" type="checkbox" checked> Aktif
       </label>
