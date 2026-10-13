@@ -102,6 +102,15 @@ EOF
     fi
   fi
   if [ "$SERVICE_USER" != root ]; then chown -R "$SERVICE_USER" "$DATA"; fi
+  cat > "$BIN_DIR/m-group-server-openrc" <<EOF
+#!/bin/sh
+set -eu
+set -a
+. "$ENV_FILE"
+set +a
+exec "$BIN_DIR/m-group-server"
+EOF
+  chmod 0755 "$BIN_DIR/m-group-server-openrc"
   if [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     cat > /etc/systemd/system/m-group.service <<EOF
 [Unit]
