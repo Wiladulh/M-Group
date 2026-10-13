@@ -1,4 +1,4 @@
-# NVM WebUI — Koreksi Desain yang Dikunci
+# M_GROUP WebUI — Koreksi Desain yang Dikunci
 
 Status: keputusan desain disepakati; demo UI diperbarui secara terpisah dari implementasi backend/firmware.
 
@@ -55,21 +55,21 @@ Demo HTML tidak terhubung ke backend dan perangkat fisik. Perilaku di atas baru 
 - Dropdown dan tabel registry menampilkan nama lokasi, device name/Machine ID, MAC, dan status. Mesin offline tetap terlihat agar admin dapat memilih dan memeriksa katalog/stok terakhir yang diketahui, dengan status offline yang jelas.
 - Saat mesin dipilih, tabel katalog, stok, dan editor hanya menampilkan data milik mesin tersebut. Setiap mesin memiliki tepat lima Product ID (1–5); Product ID sama pada dua mesin tidak berbagi stok atau konfigurasi.
 - MAC address membantu identifikasi, tetapi bukan autentikasi yang cukup karena dapat dipalsukan. Implementasi nyata wajib mengikat perangkat melalui enrollment/credential perangkat dan heartbeat terautentikasi.
-- Pada demo GitHub Pages, daftar perangkat dan statusnya adalah data contoh statis di browser untuk memvalidasi UX. Deteksi/registrasi dinamis sebenarnya baru dibuat saat backend NVM diimplementasikan; jangan mengklaim demo melakukan auto-discovery jaringan nyata.
+- Pada demo GitHub Pages, daftar perangkat dan statusnya adalah data contoh statis di browser untuk memvalidasi UX. Deteksi/registrasi dinamis sebenarnya baru dibuat saat backend M_GROUP diimplementasikan; jangan mengklaim demo melakukan auto-discovery jaringan nyata.
 
 ## 7. Alur kerja yang disepakati: DEMO dahulu, implementasi server belakangan
 
 Keputusan proses:
-- **Jangan mulai perombakan backend NVM atau firmware untuk butir UI ini sekarang.**
+- **Jangan mulai perombakan backend M_GROUP atau firmware untuk butir UI ini sekarang.**
 - Sempurnakan dan tinjau demo GitHub Pages terlebih dahulu sampai pengguna menyatakan desain dan alurnya sesuai harapan serta siap diimplementasikan.
 - Koreksi berikutnya dilakukan pada demo dan dokumen spesifikasi yang sama, bukan membangun implementasi produksi lebih awal.
 - Setelah demo disetujui, gunakan dokumen ini sebagai spesifikasi implementasi untuk server/API/database dan firmware; petakan setiap butir ke pekerjaan implementasi dan tes agar tidak mengulang desain dari awal.
 - Label DEMO MODE harus tetap jelas. Data, status, pemindaian NFC, top-up, dan perubahan katalog di browser hanyalah simulasi lokal; jangan mengklaim ada koneksi server/perangkat sungguhan.
-- Jangan menghapus atau mengubah baseline sistem NVM yang sudah lulus tes hanya demi perubahan tampilan demo.
+- Jangan menghapus atau mengubah baseline sistem M_GROUP yang sudah lulus tes hanya demi perubahan tampilan demo.
 
 ### Checklist status demo saat checkpoint 2026-10-09
 
-- [x] Demo berada di `demo/index.html`; URL publik yang dituju: https://wiladulh.github.io/NVM/demo/
+- [x] Demo berada di `demo/index.html`; URL publik yang dituju: https://wiladulh.github.io/M_GROUP/demo/
 - [x] Label DEMO MODE dan batasan simulasi browser.
 - [x] Member ID otomatis pada demo dengan format `NTR-00001`; tidak ada input Member ID manual.
 - [x] Form member: nama, NIK, dropdown cashier, dan tombol Scan.
