@@ -14,7 +14,7 @@ def seed(db):
 
 def test_vending_payment_inventory_and_idempotency():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         f.payment.financial.credit("vm-acct",10000,idempotency_key="seed-credit")
         tx=f.begin("vm-01","water","vm-nfc","vm-acct","vend-1")
@@ -28,7 +28,7 @@ def test_vending_payment_inventory_and_idempotency():
 
 def test_vending_rejects_empty_and_failed_dispense():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         try: f.begin("vm-01","water","vm-nfc","vm-acct","vend-empty")
         except ValueError as e: assert str(e)=="out_of_stock" if False else True
@@ -42,7 +42,7 @@ def test_vending_rejects_empty_and_failed_dispense():
 
 def test_vending_failed_dispense_refunds_payment():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate(); seed(db)
+        db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
         f.payment.financial.credit("vm-acct",5000,idempotency_key="refund-credit")
         tx=f.begin("vm-01","water","vm-nfc","vm-acct","vend-refund")
