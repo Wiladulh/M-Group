@@ -7,7 +7,7 @@ def test_hardware_auto_registration_and_identity_stability():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
-            "db_path": Path(d) / "nvm.db",
+            "db_path": Path(d) / "m-group.db",
             "admin_token": "admin-secret"
         })()
         try:
@@ -61,7 +61,7 @@ def test_hardware_auto_registration_and_identity_stability():
                     "status": "active",
                     "display_name": "Cashier Utama",
                 },
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert rename.status_code == 200
             assert rename.json()["display_name"] == "Cashier Utama"
@@ -70,13 +70,13 @@ def test_hardware_auto_registration_and_identity_stability():
             heartbeat = client.post(
                 f"/api/v1/devices/{device_id}/heartbeat",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-NVM-Device-Key": "factory-secret-01"},
+                headers={"X-M-Group-Device-Key": "factory-secret-01"},
             )
             assert heartbeat.status_code == 200
 
             listed = client.get(
                 "/api/v1/devices",
-                headers={"X-NVM-Admin-Token": "admin-secret"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
             )
             assert listed.status_code == 200
             item = next(x for x in listed.json()["devices"] if x["device_id"] == device_id)
