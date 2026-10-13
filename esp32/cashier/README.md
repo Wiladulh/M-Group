@@ -1,4 +1,4 @@
-# NVM ESP32 Cashier — NFC + PIN + LCD + Keypad
+# M_GROUP ESP32 Cashier — NFC + PIN + LCD + Keypad
 
 ## Cashier payment flow (CSH-04)
 
@@ -34,11 +34,11 @@
 
 ## CSH-03 NFC reader abstraction
 
-Application code uses `NvmCardReader`, not concrete PN532/MFRC522 APIs.
+Application code uses `M_GROUPCardReader`, not concrete PN532/MFRC522 APIs.
 
 - Tries PN532 over I2C first, then falls back to RC522 over SPI.
 - Reports the active reader with `name()` and `type`.
-- Supports UID lengths up to 10 bytes using `NVM_MAX_UID_LENGTH`.
+- Supports UID lengths up to 10 bytes using `M_GROUP_MAX_UID_LENGTH`.
 - Physical card-present/removal behavior still requires testing on the selected reader.
 
 ## Hardware and wiring
@@ -55,12 +55,12 @@ Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `NVM_BASE_URL`, `DEVICE_ID`, and `NVM_DEVICE_KEY` in `NvmCashier.ino`.
+Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `M_GROUPCashier.ino`.
 
-- `NVM_BASE_URL` must be the NVM server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
-- NVM defaults to `NVM_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `NVM_HOST=0.0.0.0 NVM_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
-- Provision the device using the exact `DEVICE_ID` and paste the returned key into `NVM_DEVICE_KEY`. The key must be active in the server registry.
-- Configure the operator top-up PIN through the authenticated NVM API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
+- `M_GROUP_BASE_URL` must be the M_GROUP server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+- M_GROUP defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
+- Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
+- Configure the operator top-up PIN through the authenticated M_GROUP API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
 
 The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
 
@@ -72,7 +72,7 @@ Automated CI covers the server-side recovery case where a payment is committed b
 Physical offline test checklist (after flashing the built firmware):
 
 1. Confirm the cashier is registered and can complete one normal NFC payment.
-2. Disconnect Wi-Fi or stop the NVM server, then start a payment attempt. The LCD must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
+2. Disconnect Wi-Fi or stop the M_GROUP server, then start a payment attempt. The LCD must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
 3. Restore Wi-Fi/server. Enter the PIN to retry the pending payment. Do not clear NVS or start a different payment while pending.
 4. Check server ledger and payment history: one original transaction/debit only. Repeat only with a new test credential/account or a safely funded test account.
 5. Record LCD/Serial behavior and server transaction ID. CI cannot substitute for this physical network interruption test.
