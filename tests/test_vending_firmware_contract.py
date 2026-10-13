@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIRMWARE = (ROOT / "esp32" / "vending" / "NvmVending.ino").read_text(encoding="utf-8")
+FIRMWARE = (ROOT / "esp32" / "vending" / "MGroupVending.ino").read_text(encoding="utf-8")
 
 
 def test_vending_create_request_is_persisted_before_network_call():
