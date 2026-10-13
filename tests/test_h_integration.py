@@ -187,7 +187,7 @@ def test_h_full_integration_one_by_one():
             # H-09 WebUI
             root = client.get("/")
             assert root.status_code == 200
-            assert "M_GROUP" in root.text
+            assert "M-Group" in root.text
             dashboard = client.get("/api/v1/dashboard")
             assert dashboard.status_code == 200
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
