@@ -1,6 +1,6 @@
 # M-Group Vending — Tutorial Instalasi & Wiring ESP32-S3
 
-Panduan ini mengikuti konstanta GPIO pada `M_GROUPVending.ino`. Board ESP32-S3 berbeda-beda; sebelum merakit, pastikan semua GPIO di tabel tersedia dan tidak dipakai fungsi onboard pada board pilihan.
+Panduan ini mengikuti konstanta GPIO pada `MGroupVending.ino`. Board ESP32-S3 berbeda-beda; sebelum merakit, pastikan semua GPIO di tabel tersedia dan tidak dipakai fungsi onboard pada board pilihan.
 
 ## 1. Komponen
 
@@ -102,9 +102,9 @@ Sebelum menguji servo, pastikan sensor tidak melaporkan beam terhalang saat jalu
    - `Adafruit PN532`
    - `MFRC522`
    - `ESP32Servo`
-3. Buka `esp32/vending/M_GROUPVending.ino`. Pastikan `M_GROUPCardReader.h` tetap berada di folder yang sama dengan sketch.
+3. Buka `esp32/vending/MGroupVending.ino`. Pastikan `MGroupCardReader.h` tetap berada di folder yang sama dengan sketch.
 4. Pilih board ESP32-S3 yang cocok dengan perangkat dan port USB, lalu compile.
-5. Atur variabel di bagian atas `M_GROUPVending.ino`:
+5. Atur variabel di bagian atas `MGroupVending.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
    - `M_GROUP_BASE_URL`, misalnya `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di LAN; tanpa slash akhir)
    - `DEVICE_ID`, ID perangkat vending yang terdaftar
