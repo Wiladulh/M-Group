@@ -3,7 +3,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SOURCE_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-PYTHON=${M_GROUP_PYTHON:-python3}
+PYTHON=${M-Group_PYTHON:-python3}
 MIN_CORES=2
 MIN_RAM_KB=$((315 * 1024))
 
@@ -22,21 +22,21 @@ CORES=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
 RAM_KB=$(awk '/MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)
 
 if [ "$CORES" -lt "$MIN_CORES" ]; then
-  echo "M_GROUP requires at least ${MIN_CORES} CPU cores; detected ${CORES}."
+  echo "M-Group requires at least ${MIN_CORES} CPU cores; detected ${CORES}."
   exit 1
 fi
 
 if [ "$RAM_KB" -lt "$MIN_RAM_KB" ]; then
-  echo "M_GROUP requires at least 315 MB RAM; detected ${RAM_KB} KB."
+  echo "M-Group requires at least 315 MB RAM; detected ${RAM_KB} KB."
   exit 1
 fi
 
 if [ "$(id -u)" -eq 0 ]; then
-  PREFIX=${M_GROUP_PREFIX:-/opt/M_GROUP}
-  DATA=${M_GROUP_DATA_DIR:-/var/lib/M_GROUP}
+  PREFIX=${M-Group_PREFIX:-/opt/M-Group}
+  DATA=${M-Group_DATA_DIR:-/var/lib/M-Group}
 else
-  PREFIX=${M_GROUP_PREFIX:-"$HOME/.local/lib/M_GROUP"}
-  DATA=${M_GROUP_DATA_DIR:-"$HOME/.local/share/M_GROUP"}
+  PREFIX=${M-Group_PREFIX:-"$HOME/.local/lib/M-Group"}
+  DATA=${M-Group_DATA_DIR:-"$HOME/.local/share/M-Group"}
 fi
 
 mkdir -p "$PREFIX" "$DATA"
@@ -46,25 +46,25 @@ mkdir -p "$PREFIX" "$DATA"
 
 mkdir -p "$PREFIX/bin"
 
-cat > "$PREFIX/bin/M_GROUP" <<EOF
+cat > "$PREFIX/bin/m-group" <<EOF
 #!/bin/sh
-export M_GROUP_DATA_DIR="$DATA"
-exec "$PREFIX/venv/bin/M_GROUP" "\\$@"
+export M-Group_DATA_DIR="$DATA"
+exec "$PREFIX/venv/bin/m-group" "\\$@"
 EOF
-chmod 0755 "$PREFIX/bin/M_GROUP"
+chmod 0755 "$PREFIX/bin/m-group"
 
-cat > "$PREFIX/bin/M_GROUP-server" <<EOF
+cat > "$PREFIX/bin/m-group-server" <<EOF
 #!/bin/sh
 set -eu
-export M_GROUP_DATA_DIR="$DATA"
-exec "$PREFIX/venv/bin/uvicorn" app.main:app --host "\\${M_GROUP_HOST:-127.0.0.1}" --port "\\${M_GROUP_PORT:-8011}"
+export M-Group_DATA_DIR="$DATA"
+exec "$PREFIX/venv/bin/uvicorn" app.main:app --host "\\${M-Group_HOST:-127.0.0.1}" --port "\\${M-Group_PORT:-8011}"
 EOF
-chmod 0755 "$PREFIX/bin/M_GROUP-server"
+chmod 0755 "$PREFIX/bin/m-group-server"
 
-echo "M_GROUP installed successfully."
+echo "M-Group installed successfully."
 echo "Install prefix: $PREFIX"
 echo "Data directory: $DATA"
-echo "Server: $PREFIX/bin/M_GROUP-server"
-echo "CLI: $PREFIX/bin/M_GROUP"
-echo "For LAN/ESP32 access: M_GROUP_HOST=0.0.0.0"
-echo "For device provisioning: set M_GROUP_ADMIN_TOKEN"
+echo "Server: $PREFIX/bin/m-group-server"
+echo "CLI: $PREFIX/bin/m-group"
+echo "For LAN/ESP32 access: M-Group_HOST=0.0.0.0"
+echo "For device provisioning: set M-Group_ADMIN_TOKEN"
