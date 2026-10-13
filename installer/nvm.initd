@@ -1,14 +1,14 @@
 #!/sbin/openrc-run
-name="nvm"
-description="NVM Natura Vending Machine server"
-command="/opt/nvm/venv/bin/uvicorn"
-command_args="app.main:app --host ${NVM_HOST:-0.0.0.0} --port ${NVM_PORT:-8011}"
-command_user="${NVM_USER:-root}"
-directory="/opt/nvm"
-pidfile="/run/nvm.pid"
+name="M_GROUP"
+description="M_GROUP M-Group platform server"
+command="/opt/M_GROUP/venv/bin/uvicorn"
+command_args="app.main:app --host ${M_GROUP_HOST:-0.0.0.0} --port ${M_GROUP_PORT:-8011}"
+command_user="${M_GROUP_USER:-root}"
+directory="/opt/M_GROUP"
+pidfile="/run/M_GROUP.pid"
 command_background="yes"
-output_log="/var/log/nvm.log"
-error_log="/var/log/nvm.log"
+output_log="/var/log/M_GROUP.log"
+error_log="/var/log/M_GROUP.log"
 
 depend() {
   need net
@@ -16,6 +16,6 @@ depend() {
 }
 
 start_pre() {
-  checkpath --directory --owner "${NVM_USER:-root}" /var/lib/nvm
-  checkpath --file --owner "${NVM_USER:-root}" /var/log/nvm.log
+  checkpath --directory --owner "${M_GROUP_USER:-root}" /var/lib/M_GROUP
+  checkpath --file --owner "${M_GROUP_USER:-root}" /var/log/M_GROUP.log
 }
