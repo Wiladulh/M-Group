@@ -63,7 +63,7 @@ String request(const String& method,const String& path,const String& body,int& c
   http.setTimeout(8000);
   http.begin(String(M_GROUP_BASE_URL)+path);
   http.addHeader("Content-Type","application/json");
-  http.addHeader("X-M_GROUP-Device-Key",M_GROUP_DEVICE_KEY);
+  http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY);
   if(method=="GET")code=http.GET();else if(method=="POST")code=http.POST(body);else code=-1;
   String out=code>0?http.getString():"";http.end();return out;
 }
@@ -136,7 +136,7 @@ bool products(){
   int code=0;String reply=request("GET",String("/api/v1/vending/")+DEVICE_ID+"/products","",code);
   Serial.printf("PRODUCTS %d %s\n",code,reply.c_str());
   if(code<200||code>=300){showMessage("SERVER ERROR","Products unavailable");return false;}
-  parseProducts(reply);if(!productCount){showMessage("M_GROUP VENDING","No products");return false;}
+  parseProducts(reply);if(!productCount){showMessage("M-Group VENDING","No products");return false;}
   if(selectedIndex>=productCount)selectedIndex=0;Product&x=productsList[selectedIndex];
   showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));return true;
 }
@@ -270,7 +270,7 @@ void setup(){
   pinMode(PRODUCT_DROP_SENSOR_PIN,INPUT_PULLUP);
   Wire.begin(I2C_SDA,I2C_SCL);displayReady=display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR);
   for(int i=0;i<SERVO_COUNT;i++){dispensers[i].setPeriodHertz(50);dispensers[i].attach(SERVO_PINS[i],500,2400);dispensers[i].write(10);}
-  showMessage("M_GROUP VENDING","Starting...");
+  showMessage("M-Group VENDING","Starting...");
   if(connectWifi()){heartbeat();products();}
   readerReady=card.begin(I2C_SDA,I2C_SCL);
 }
