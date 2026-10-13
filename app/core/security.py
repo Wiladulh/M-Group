@@ -12,7 +12,7 @@ def require_api_access(request: Request, settings) -> None:
     if not token and not (user and password):
         return
 
-    supplied = request.headers.get("X-M_GROUP-Token", "")
+    supplied = request.headers.get("X-M-Group-Admin-Token", "")
     if token and supplied and secrets.compare_digest(supplied, token):
         return
 
@@ -29,5 +29,5 @@ def require_api_access(request: Request, settings) -> None:
     raise HTTPException(
         status_code=401,
         detail="authentication_required",
-        headers={"WWW-Authenticate": 'Basic realm="M_GROUP"'},
+        headers={"WWW-Authenticate": 'Basic realm="M-Group"'},
     )
