@@ -7,7 +7,7 @@ from app.vending.service import VendingService
 
 def test_vending_registry_supports_many_machines_and_five_slots():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate()
+        db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         for i in range(1,6):
             m=f.register(f"vm-{i}",f"Vending {i}",f"Location {i}",f"esp32-{i}")
@@ -18,7 +18,7 @@ def test_vending_registry_supports_many_machines_and_five_slots():
 
 def test_vending_registry_isolates_machine_slots():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate()
+        db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         f.register("a","A",device_id="dev-a")
         f.register("b","B",device_id="dev-b")
@@ -31,7 +31,7 @@ def test_vending_registry_isolates_machine_slots():
 
 def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
     with TemporaryDirectory() as d:
-        db=Database(Path(d)/"nvm.db"); db.migrate()
+        db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         f.register("a","A",device_id="same")
         try: f.register("b","B",device_id="same")
@@ -44,7 +44,7 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
 def test_vending_registry_api():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"nvm.db"})()
+        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db"})()
         try:
             client=TestClient(main.create_app())
             created=client.post("/api/v1/vending",json={
