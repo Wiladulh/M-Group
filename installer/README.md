@@ -20,7 +20,7 @@ For a per-user installation without a system service:
 sh installer/install.sh --user
 ```
 
-Requirements: Python 3.10+, pip and venv support. If venv creation fails on Debian/Ubuntu, install `python3-venv`; on Alpine/postmarketOS ensure the Python and pip/virtualenv packages for your release are installed.
+The installer checks system prerequisites and attempts to install missing Python/pip/venv packages automatically using the detected package manager: apt (Debian/Ubuntu), apk (Alpine/postmarketOS), dnf/yum (Fedora-family), pacman (Arch), or zypper (openSUSE). If needed, it uses sudo to request privilege escalation. Internet access and working distro package repositories are required. It verifies Python 3.10+ and venv before continuing. If configured repositories only offer an older Python, it stops with a clear error rather than installing an incompatible runtime. Set M_GROUP_PYTHON to a Python 3.10+ executable if it is not named python3.
 
 ## Access
 
