@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - "esp32/vending/**"
-      - "firmware/esp32-vending/**"
       - ".github/workflows/esp32-vending.yml"
 
 jobs:
@@ -25,12 +24,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --upgrade platformio
 
+      - name: Stage Vending Sources
+        working-directory: esp32/vending
+        run: |
+          mkdir -p src
+          cp MGroupVending.ino MGroupCardReader.h src/
+
       - name: Build ESP32-S3 Vending
-        working-directory: firmware/esp32-vending
+        working-directory: esp32/vending
         run: pio run -e esp32-s3
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: m-group-esp32-s3-vending-firmware
-          path: firmware/esp32-vending/.pio/build/esp32-s3/firmware.bin
+          path: esp32/vending/.pio/build/esp32-s3/firmware.bin
