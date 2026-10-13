@@ -6,7 +6,7 @@ import app.main as main
 def test_dashboard_exposes_financial_payment_and_vending_data():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "nvm.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
