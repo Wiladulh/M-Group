@@ -1,7 +1,7 @@
 # Legacy PlatformIO scaffold — not the active firmware
 
 The maintained ESP32-S3 Vending firmware is located at
-[`esp32/vending/MGroupVending.ino](../../esp32/vending/MGroupVending.ino).
+[`esp32/vending/MGroupVending.ino`](../../esp32/vending/MGroupVending.ino).
 
 Use the maintained sketch and its adjacent helper header in `esp32/vending/`.
 This directory contains an older PlatformIO scaffold without the maintained
