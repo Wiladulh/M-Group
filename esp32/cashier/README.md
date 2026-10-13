@@ -1,4 +1,4 @@
-# M_GROUP ESP32 Cashier — NFC + PIN + LCD + Keypad
+# M-Group ESP32 Cashier — NFC + PIN + LCD + Keypad
 
 ## Cashier payment flow (CSH-04)
 
@@ -57,10 +57,10 @@ Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
 
 Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `M_GROUPCashier.ino`.
 
-- `M_GROUP_BASE_URL` must be the M_GROUP server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
-- M_GROUP defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
+- `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+- M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
 - Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
-- Configure the operator top-up PIN through the authenticated M_GROUP API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
+- Configure the operator top-up PIN through the authenticated M-Group API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
 
 The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
 
@@ -72,7 +72,7 @@ Automated CI covers the server-side recovery case where a payment is committed b
 Physical offline test checklist (after flashing the built firmware):
 
 1. Confirm the cashier is registered and can complete one normal NFC payment.
-2. Disconnect Wi-Fi or stop the M_GROUP server, then start a payment attempt. The LCD must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
+2. Disconnect Wi-Fi or stop the M-Group server, then start a payment attempt. The LCD must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
 3. Restore Wi-Fi/server. Enter the PIN to retry the pending payment. Do not clear NVS or start a different payment while pending.
 4. Check server ledger and payment history: one original transaction/debit only. Repeat only with a new test credential/account or a safely funded test account.
 5. Record LCD/Serial behavior and server transaction ID. CI cannot substitute for this physical network interruption test.
