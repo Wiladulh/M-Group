@@ -1,4 +1,4 @@
-# M_GROUP Cashier — Tutorial Instalasi & Wiring
+# M-Group Cashier — Tutorial Instalasi & Wiring
 
 Panduan ini mengikuti pin yang saat ini dipakai oleh `M_GROUPCashier.ino` dan helper di folder ini. Periksa tabel sebelum menyalakan perangkat.
 
@@ -75,7 +75,7 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
    - `Keypad`
    - `Adafruit PN532`
    - `MFRC522`
-3. Unduh/clone repo M_GROUP, lalu buka `esp32/cashier/M_GROUPCashier.ino`. Pastikan `M_GROUPKeypad.h` dan `M_GROUPCardReader.h` tetap berada di folder yang sama dengan sketch.
+3. Unduh/clone repo M-Group, lalu buka `esp32/cashier/M_GROUPCashier.ino`. Pastikan `M_GROUPKeypad.h` dan `M_GROUPCardReader.h` tetap berada di folder yang sama dengan sketch.
 4. Pilih board ESP32 yang sesuai dengan perangkat, port USB, lalu compile. Periksa bahwa semua library ditemukan.
 5. Isi konfigurasi di bagian atas `M_GROUPCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
