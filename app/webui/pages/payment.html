@@ -1,8 +1,9 @@
 <div id="tab-pembayaran" class="tab-pane">
   <section class="section">
     <h2>Pembayaran NFC / QRIS</h2>
-    <div class="hint">NFC, QRIS, dan CASH menggunakan payment core yang sama.</div>
+    <div class="hint">Pembayaran manual memerlukan Admin Token. Transaksi NFC juga memerlukan PIN anggota; QRIS belum diaktifkan sebagai jalur pembayaran mandiri.</div>
     <form id="paymentForm">
+      <input id="paymentAdminToken" type="password" placeholder="Admin Token" autocomplete="current-password" required>
       <input id="credential" placeholder="Credential ID" required>
       <input id="payaccount" placeholder="Account ID" required>
       <input id="payamount" type="number" min="1" placeholder="Jumlah" required>
