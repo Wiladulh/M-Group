@@ -12,7 +12,7 @@ cd M-Group
 sudo sh installer/install.sh --system
 ```
 
-The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory, generates an admin token if one is not already configured, and registers/starts a service when systemd or OpenRC is available. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database.
+The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory and configuration file, and registers/starts a service when systemd or OpenRC is available. In an interactive system install it prompts for listen address, port, application directory, database/data directory, configuration directory, and the admin API token. The token input is hidden while typing; leave it blank to generate a cryptographically random token. Save a generated token from the installer output. On non-interactive runs, defaults are applied and a token is generated automatically. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database.
 
 For a per-user installation without a system service:
 
@@ -24,7 +24,7 @@ The installer checks system prerequisites and attempts to install missing Python
 
 ## Access
 
-By default the service binds to `127.0.0.1:8011` to avoid exposing member/financial data directly to the internet. For a VPS, use a TLS reverse proxy (recommended) or an SSH tunnel. For an SSH tunnel, run this from your own computer:
+By default the server binds to `0.0.0.0:8011`, which listens on all IPv4 interfaces and works when the server receives its address by DHCP. This does not configure upstream NAT, cloud security groups, or firewalls; those must allow the chosen port. Because M-Group handles member and financial data, the recommended public deployment is a TLS reverse proxy (for example, Caddy or nginx) with the raw application port blocked from the public internet. For temporary administration, an SSH tunnel is also possible; run this from your own computer:
 
 ```sh
 ssh -L 8011:127.0.0.1:8011 user@YOUR_VPS
@@ -32,9 +32,9 @@ ssh -L 8011:127.0.0.1:8011 user@YOUR_VPS
 
 Then open `http://127.0.0.1:8011` locally.
 
-To intentionally serve a trusted LAN, set `M_GROUP_HOST=0.0.0.0` and configure firewall rules before restarting the service. Do not expose the raw API port publicly without HTTPS and appropriate network controls.
+To bind only to a specific interface, set `M_GROUP_HOST` to that interface address in the configuration file. Do not expose the raw API port publicly without HTTPS and appropriate network controls.
 
-System install configuration and the generated admin token are stored in `/etc/m-group/m-group.env` with restrictive permissions. Keep this file secret. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
+System install configuration and the admin API token are stored in `/etc/m-group/m-group.env` by default with mode `0600`. Keep this file secret. During installation, the default locations are `/opt/M-Group` (application), `/var/lib/M-Group` (database/data), and `/etc/m-group` (configuration); the installer lets you change these locations interactively. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
 
 - systemd: `sudo systemctl restart m-group`
 - OpenRC: `sudo rc-service m-group restart`
