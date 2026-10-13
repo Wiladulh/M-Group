@@ -85,7 +85,7 @@ def create_native_backup(db, target, include_excel=True):
         raw=c.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         dump="\n".join(c.iterdump()).encode()
     manifest={
-        "format":"M_GROUP-native-backup-v1",
+        "format":"M-Group-native-backup-v1",
         "created_at":datetime.now(timezone.utc).isoformat(),
         "retention_months":12,
         "tables":[r[0] for r in raw],
@@ -98,7 +98,7 @@ def create_native_backup(db, target, include_excel=True):
                 raise RuntimeError("openpyxl_required")
             buf=target.with_suffix(".xlsx")
             export_excel(db,buf)
-            z.write(buf,"excel/M_GROUP-export.xlsx")
+            z.write(buf,"excel/M-Group-export.xlsx")
             buf.unlink(missing_ok=True)
         digest=hashlib.sha256(dump).hexdigest()
         z.writestr("checksum.sha256",digest+"  database.sql\n")
