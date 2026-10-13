@@ -6,7 +6,7 @@ This repository contains the server API, WebUI, database migrations, ESP32 cashi
 
 ## Minimum system requirements
 
-M_GROUP targets lightweight Linux systems and is designed to run with:
+M-Group targets lightweight Linux systems and is designed to run with:
 
 - 2 CPU cores minimum
 - 315 MB RAM minimum
@@ -35,6 +35,6 @@ Operational transactions are separated by source:
 - Operational transaction retention is **12 months** on the server, with backup/archive before purge.
 - Audit reports support **day, week and month** filters and can be restricted to Cashier or Vending.
 - Cashier savings deposits use a separate operator PIN (default **9992**, changeable from WebUI) plus the member NFC PIN.
-- Native M_GROUP backup archives contain a database dump, manifest and checksum and may include an Excel-compatible export.
+- Native M-Group backup archives contain a database dump, manifest and checksum and may include an Excel-compatible export.
 - XLSX export is intended for audit/reporting and preserves stable transaction columns.
-- Excel import is validation-gated and is not the primary recovery format; native M_GROUP backup is the authoritative restore format.
+- Excel import is validation-gated and is not the primary recovery format; native M-Group backup is the authoritative restore format.
