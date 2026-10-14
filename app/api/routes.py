@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import hashlib
 import secrets
+import io
+import zipfile
 from app.identity.service import IdentityService
 from app.identity.management import MemberManagementService
 from app.device.management import DeviceManagementService
@@ -13,6 +15,10 @@ from app.vending.service import VendingService
 from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
 from pathlib import Path
 from uuid import uuid4
+
+MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
+MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_EXCEL_EXPANDED_BYTES = 100 * 1024 * 1024
 
 class PaymentRequest(BaseModel):
     credential_id: str
@@ -1152,24 +1158,57 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        if not file.filename or not file.filename.endswith(".mgroup.zip"): raise HTTPException(400,"invalid_backup_file")
+        if not file.filename or not file.filename.endswith(".mgroup.zip"):
+            raise HTTPException(400,"invalid_backup_file")
+        content = await file.read(MAX_BACKUP_UPLOAD_BYTES + 1)
+        if len(content) > MAX_BACKUP_UPLOAD_BYTES:
+            raise HTTPException(413,"backup_upload_too_large")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
-        root.mkdir(parents=True,exist_ok=True); path=root/"restore-upload.mgroup.zip"
-        path.write_bytes(await file.read())
-        try: result=restore_native_backup(db,path)
-        except Exception as e: raise HTTPException(400,str(e))
-        return {"status":"restored","manifest":result}
+        root.mkdir(parents=True,exist_ok=True)
+        path=root/f"restore-upload-{uuid4().hex}.mgroup.zip"
+        try:
+            path.write_bytes(content)
+            result=restore_native_backup(db,path)
+            return {"status":"restored","manifest":result}
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400,"invalid_backup_archive")
+        finally:
+            path.unlink(missing_ok=True)
+            await file.close()
 
     @r.post("/backup/import-excel")
     async def backup_import_excel(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400,"invalid_excel_file")
+        if not file.filename or not file.filename.lower().endswith(".xlsx"):
+            raise HTTPException(400,"invalid_excel_file")
+        content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
+        if len(content) > MAX_EXCEL_UPLOAD_BYTES:
+            raise HTTPException(413,"excel_upload_too_large")
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                infos = archive.infolist()
+                names = {info.filename for info in infos}
+                if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+                    raise ValueError("invalid_excel_archive")
+                if len(infos) > 1000 or sum(info.file_size for info in infos) > MAX_EXCEL_EXPANDED_BYTES:
+                    raise ValueError("excel_archive_too_large")
+        except Exception:
+            raise HTTPException(400,"invalid_excel_archive")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"imports"
-        root.mkdir(parents=True,exist_ok=True); path=root/"import.xlsx"; path.write_bytes(await file.read())
-        try: result=import_excel(db,path)
-        except Exception as e: raise HTTPException(400,str(e))
-        return {"status":"imported","result":result}
+        root.mkdir(parents=True,exist_ok=True)
+        path=root/f"import-{uuid4().hex}.xlsx"
+        try:
+            path.write_bytes(content)
+            result=import_excel(db,path)
+            return {"status":"imported","result":result}
+        except Exception:
+            raise HTTPException(400,"invalid_excel_archive")
+        finally:
+            path.unlink(missing_ok=True)
+            await file.close()
 
     return r
