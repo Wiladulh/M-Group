@@ -389,11 +389,41 @@ class Database:
             c.execute("CREATE INDEX IF NOT EXISTS ix_payment_source_created ON payment_transactions(transaction_source,created_at)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_vending_source_created ON vending_transactions(transaction_source,created_at)")
             c.execute("INSERT OR IGNORE INTO system_meta(key,value) VALUES('transaction_retention_months','12')")
-            pin_row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
-            if not pin_row or not pin_row["value"]:
-                salt=secrets.token_hex(16)
-                digest=hashlib.pbkdf2_hmac("sha256",b"9992",salt.encode(),120000).hex()
-                c.execute("INSERT OR REPLACE INTO system_meta(key,value) VALUES('cashier_operator_pin_hash',?)",(salt+":"+digest,))
+            operator_pin = os.getenv("M_GROUP_CASHIER_OPERATOR_PIN", "")
+            if operator_pin and (not operator_pin.isdigit() or not 4 <= len(operator_pin) <= 6):
+                raise ValueError("cashier_operator_pin_must_be_4_to_6_digits")
+
+            pin_marker = c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_security_version'"
+            ).fetchone()
+            pin_row = c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+            ).fetchone()
+            if not pin_marker:
+                # Remove the publicly documented legacy default only when the
+                # stored salted hash actually matches 9992. Preserve custom PINs.
+                if pin_row and pin_row["value"] and ":" in pin_row["value"]:
+                    salt, stored_digest = pin_row["value"].split(":", 1)
+                    legacy_digest = hashlib.pbkdf2_hmac("sha256", b"9992", salt.encode(), 120000).hex()
+                    if secrets.compare_digest(stored_digest, legacy_digest):
+                        c.execute("DELETE FROM system_meta WHERE key='cashier_operator_pin_hash'")
+                c.execute(
+                    "INSERT OR REPLACE INTO system_meta(key,value) VALUES('cashier_operator_pin_security_version','001')"
+                )
+                pin_row = c.execute(
+                    "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+                ).fetchone()
+
+            # A new install has no shared/default operator PIN. The installer may
+            # provide a one-time PIN for first boot; otherwise it is configured
+            # explicitly by an administrator in the WebUI.
+            if (not pin_row or not pin_row["value"]) and operator_pin:
+                salt = secrets.token_hex(16)
+                digest = hashlib.pbkdf2_hmac("sha256", operator_pin.encode(), salt.encode(), 120000).hex()
+                c.execute(
+                    "INSERT OR REPLACE INTO system_meta(key,value) VALUES('cashier_operator_pin_hash',?)",
+                    (salt + ":" + digest,),
+                )
             additions = {
                 "method": "TEXT NOT NULL DEFAULT 'NFC'",
                 "provider": "TEXT NOT NULL DEFAULT 'local'",
