@@ -993,33 +993,85 @@ def build_router(db, app_settings=None):
                 raise HTTPException(403, "device_not_active")
             device_id = matches[0]["device_id"]
         require_device(device_id,x_m_group_device_key)
-        if not verify_operator_pin(q.operator_pin): raise HTTPException(403,"invalid_operator_pin")
-        if not q.idempotency_key: raise HTTPException(400,"idempotency_key_required")
-        if not isinstance(q.amount,int) or q.amount<=0: raise HTTPException(400,"amount_must_be_positive_integer")
+        if not verify_operator_pin(q.operator_pin):
+            raise HTTPException(403,"invalid_operator_pin")
+        if not q.idempotency_key:
+            raise HTTPException(400,"idempotency_key_required")
+        if not isinstance(q.amount,int) or isinstance(q.amount,bool) or q.amount<=0:
+            raise HTTPException(400,"amount_must_be_positive_integer")
+
+        financial_key = "cashier-deposit:" + q.idempotency_key
+        with db.connect() as c:
+            old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
+            if old:
+                if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                    or old["amount"] != q.amount):
+                    raise HTTPException(409,"idempotency_key_conflict")
+                fin = c.execute(
+                    "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
+                    (financial_key,),
+                ).fetchone()
+                result = dict(old)
+                result["financial_transaction_id"] = fin["transaction_id"] if fin else None
+                return result
+
         auth=identity.authorize_credential(q.credential_id)
-        if not auth["authorized"]: raise HTTPException(403,auth["reason"])
+        if not auth["authorized"]:
+            raise HTTPException(403,auth["reason"])
         account=identity.account_for_credential(q.credential_id)
-        if not account["authorized"]: raise HTTPException(404,account["reason"])
+        if not account["authorized"]:
+            raise HTTPException(404,account["reason"])
         try:
             pin_ok=identity.verify_credential_pin(q.credential_id,q.member_pin)
         except PermissionError as e:
             raise HTTPException(403,str(e))
-        if not pin_ok: raise HTTPException(403,"invalid_pin")
-        with db.connect() as c:
-            old=c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
-        if old: return dict(old)
-        before=financial.balance(account["account_id"])
-        fin=financial.credit(account["account_id"],q.amount,reference="cashier-deposit:"+q.idempotency_key,idempotency_key="cashier-deposit:"+q.idempotency_key)
-        after=before+q.amount
-        tid="cash-"+uuid4().hex
-        with db.connect() as c:
-            c.execute("""INSERT INTO cashier_deposits
-                (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
-            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
-            c.commit()
+        if not pin_ok:
+            raise HTTPException(403,"invalid_pin")
+
+        before = 0
+        tid = "cash-" + uuid4().hex
+        try:
+            with db.connect() as c:
+                c.execute("BEGIN IMMEDIATE")
+                # Recheck under a write lock to make retries/concurrent taps atomic.
+                old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
+                if old:
+                    if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                        or old["amount"] != q.amount):
+                        raise HTTPException(409,"idempotency_key_conflict")
+                    fin = c.execute(
+                        "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
+                        (financial_key,),
+                    ).fetchone()
+                    result = dict(old)
+                    result["financial_transaction_id"] = fin["transaction_id"] if fin else None
+                    return result
+                orphan = c.execute(
+                    "SELECT transaction_id,account_id,amount,transaction_type,reference FROM financial_transactions WHERE idempotency_key=?",
+                    (financial_key,),
+                ).fetchone()
+                if orphan:
+                    raise HTTPException(409,"cashier_deposit_reconciliation_required")
+                before = int(c.execute(
+                    "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) "
+                    "FROM financial_ledger WHERE account_id=?",
+                    (account["account_id"],),
+                ).fetchone()[0])
+                fin = financial.credit_on_connection(
+                    c, account["account_id"], q.amount,
+                    reference=financial_key, idempotency_key=financial_key,
+                )
+                after = before + q.amount
+                c.execute("""INSERT INTO cashier_deposits
+                    (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                    (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
+                c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
+                c.commit()
+        except ValueError as e:
+            code = str(e)
+            raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
         return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
