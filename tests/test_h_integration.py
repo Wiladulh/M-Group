@@ -156,7 +156,7 @@ def test_h_full_integration_one_by_one():
                 "/api/v1/vending/machine-h/transactions",
                 headers={"X-M-Group-Device-Key": vending_key},
                 json={
-                    "product_id": "water-h",
+                    "product_id": "1",
                     "credential_id": credential_id,
                     "account_id": "acct-h",
                     "idempotency_key": "h-vending-1",
@@ -206,7 +206,7 @@ def test_h_full_integration_one_by_one():
             assert client.post(
                 "/api/v1/vending/machine-h/transactions",
                 json={
-                    "product_id": "water-h",
+                    "product_id": "1",
                     "credential_id": credential_id,
                     "idempotency_key": "h-vending-auth-fail",
                 },
