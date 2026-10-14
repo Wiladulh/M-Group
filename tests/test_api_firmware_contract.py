@@ -103,6 +103,6 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
             )
             assert dispensed.status_code == 200, dispensed.text
             assert dispensed.json()["status"] == "completed"
-            assert client.get("/api/v1/accounts/a1/balance").json()["balance"] == 5000
+            assert client.get("/api/v1/accounts/a1/balance", headers=ADMIN).json()["balance"] == 5000
         finally:
             main.get_settings = old
