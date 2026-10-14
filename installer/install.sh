@@ -95,6 +95,31 @@ HOST=${M_GROUP_HOST:-0.0.0.0}
 PORT=${M_GROUP_PORT:-8011}
 ADMIN_TOKEN=${M_GROUP_ADMIN_TOKEN:-}
 OPERATOR_PIN=${M_GROUP_CASHIER_OPERATOR_PIN:-}
+# Reuse the existing system configuration on reinstall unless the operator
+# explicitly overrides a value through the environment or interactive prompt.
+# Read only known key/value lines; never source the old file during installation.
+if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then
+  ENV_FILE="$CONFIG_DIR/m-group.env"
+  if [ "${M_GROUP_PREFIX+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_PREFIX=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || PREFIX=$saved
+  fi
+  if [ "${M_GROUP_DATA_DIR+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_DATA_DIR=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || DATA=$saved
+  fi
+  if [ "${M_GROUP_HOST+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_HOST=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || HOST=$saved
+  fi
+  if [ "${M_GROUP_PORT+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_PORT=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || PORT=$saved
+  fi
+  if [ -z "$ADMIN_TOKEN" ]; then
+    ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
+  fi
+fi
 # Interactive setup for headless/server installs. Defaults are persistent paths.
 if [ "$MODE" = system ] && [ -t 0 ]; then
   printf "\nM-Group server setup (press Enter to accept the default)\n"
@@ -219,6 +244,7 @@ if [ "$MODE" = system ]; then
   if [ -z "$ADMIN_TOKEN" ]; then ADMIN_TOKEN=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(40))'); GENERATED_TOKEN=1; fi
   umask 077
   cat > "$ENV_FILE" <<EOF
+M_GROUP_PREFIX=$PREFIX
 M_GROUP_HOST=$HOST
 M_GROUP_PORT=$PORT
 M_GROUP_DATA_DIR=$DATA
