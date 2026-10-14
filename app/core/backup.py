@@ -3,6 +3,7 @@ import io
 import json
 import sqlite3
 import zipfile
+from app.core.db import Database
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -105,16 +106,39 @@ def create_native_backup(db, target, include_excel=True):
     return target
 
 def restore_native_backup(db, archive):
-    archive=Path(archive)
+    archive = Path(archive)
+    max_archive_bytes = 100 * 1024 * 1024
+    max_expanded_bytes = 250 * 1024 * 1024
+    if archive.stat().st_size > max_archive_bytes:
+        raise ValueError("backup_archive_too_large")
+
     with zipfile.ZipFile(archive) as z:
-        manifest=json.loads(z.read("manifest.json"))
-        dump=z.read("database.sql")
-        expected=z.read("checksum.sha256").decode().split()[0]
-        if hashlib.sha256(dump).hexdigest()!=expected:
+        infos = z.infolist()
+        names = [info.filename for info in infos]
+        required = {"manifest.json", "database.sql", "checksum.sha256"}
+        if len(names) != len(set(names)) or not required.issubset(names):
+            raise ValueError("invalid_backup_archive")
+        if len(infos) > 1000 or sum(info.file_size for info in infos) > max_expanded_bytes:
+            raise ValueError("backup_archive_too_large")
+        info_by_name = {info.filename: info for info in infos}
+        if info_by_name["manifest.json"].file_size > 1024 * 1024:
+            raise ValueError("backup_manifest_too_large")
+        if info_by_name["database.sql"].file_size > 200 * 1024 * 1024:
+            raise ValueError("backup_database_too_large")
+        manifest = json.loads(z.read("manifest.json"))
+        if not isinstance(manifest, dict) or manifest.get("format") != "M-Group-native-backup-v1":
+            raise ValueError("unsupported_backup_format")
+        dump = z.read("database.sql")
+        checksum_parts = z.read("checksum.sha256").decode("ascii").split()
+        if not checksum_parts or len(checksum_parts[0]) != 64:
+            raise ValueError("invalid_backup_checksum")
+        expected = checksum_parts[0]
+        if hashlib.sha256(dump).hexdigest() != expected:
             raise ValueError("backup_checksum_mismatch")
-        sql=dump.decode()
-    # Validate the SQL dump in an isolated temporary SQLite database first.
-    # Only replace the live database after the dump has been proven loadable.
+        sql = dump.decode("utf-8")
+
+    # Validate, migrate and integrity-check a temporary copy first. Never replace
+    # the active database until the complete restore path is known to be usable.
     tmp = archive.with_suffix(".restore.db")
     tmp.unlink(missing_ok=True)
     probe = None
@@ -126,6 +150,16 @@ def restore_native_backup(db, archive):
         probe.close()
         probe = None
 
+        restored_db = Database(tmp)
+        restored_db.migrate()
+        with restored_db.connect() as check:
+            integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
+            foreign_key_errors = check.execute("PRAGMA foreign_key_check").fetchall()
+            if integrity != "ok":
+                raise ValueError("restored_database_integrity_check_failed")
+            if foreign_key_errors:
+                raise ValueError("restored_database_foreign_key_check_failed")
+
         live = Path(db.path)
         live.parent.mkdir(parents=True, exist_ok=True)
         tmp.replace(live)
@@ -133,6 +167,9 @@ def restore_native_backup(db, archive):
         if probe is not None:
             probe.close()
         tmp.unlink(missing_ok=True)
+        Path(str(tmp) + "-journal").unlink(missing_ok=True)
+        Path(str(tmp) + "-wal").unlink(missing_ok=True)
+        Path(str(tmp) + "-shm").unlink(missing_ok=True)
         raise
     return manifest
 
