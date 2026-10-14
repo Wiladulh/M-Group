@@ -68,7 +68,7 @@ def test_device_heartbeat_and_vending_product_sync():
             assert sync.json()["machine"]["machine_id"] == "vm-01"
             assert sync.json()["products"][0]["product_id"] == "water-01"
 
-            dashboard = client.get("/api/v1/dashboard")
+            dashboard = client.get("/api/v1/dashboard", headers={"X-M-Group-Admin-Token": "admin-secret"})
             assert dashboard.status_code == 200
             devices = {x["device_id"]: x for x in dashboard.json()["devices"]}
             assert devices["cashier-01"]["status"] == "active"
