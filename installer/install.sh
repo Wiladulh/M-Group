@@ -165,7 +165,23 @@ export M_GROUP_DATA_DIR="$DATA"
 exec "$VENV/bin/m-group" "\$@"
 EOF
 chmod 0755 "$BIN_DIR/m-group"
-cat > "$BIN_DIR/m-group-server" <<EOF
+if [ "$MODE" = system ]; then
+  cat > "$BIN_DIR/m-group-server" <<EOF
+#!/bin/sh
+set -eu
+umask 077
+if [ -r "$CONFIG_DIR/m-group.env" ]; then
+  set -a
+  . "$CONFIG_DIR/m-group.env"
+  set +a
+fi
+export M_GROUP_DATA_DIR="$DATA"
+export M_GROUP_HOST="\${M_GROUP_HOST:-$HOST}"
+export M_GROUP_PORT="\${M_GROUP_PORT:-$PORT}"
+exec "$VENV/bin/uvicorn" app.main:app --host "\$M_GROUP_HOST" --port "\$M_GROUP_PORT"
+EOF
+else
+  cat > "$BIN_DIR/m-group-server" <<EOF
 #!/bin/sh
 set -eu
 umask 077
@@ -174,6 +190,7 @@ export M_GROUP_HOST="\${M_GROUP_HOST:-$HOST}"
 export M_GROUP_PORT="\${M_GROUP_PORT:-$PORT}"
 exec "$VENV/bin/uvicorn" app.main:app --host "\$M_GROUP_HOST" --port "\$M_GROUP_PORT"
 EOF
+fi
 chmod 0755 "$BIN_DIR/m-group-server"
 if [ "$MODE" = system ]; then
   ENV_FILE="$CONFIG_DIR/m-group.env"
