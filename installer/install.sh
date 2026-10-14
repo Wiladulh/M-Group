@@ -263,6 +263,26 @@ EOF
       echo "Warning: cannot create service user; service will run as root." >&2
     fi
   fi
+  # Initialize/migrate before registering the service. This also hashes an
+  # optional first-run operator PIN, so plaintext can be removed even when
+  # M_GROUP_SKIP_SERVICE=1 and no daemon will start during installation.
+  "$BIN_DIR/m-group" init
+  if [ -n "$OPERATOR_PIN" ]; then
+    if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
+import sqlite3, sys
+try:
+    with sqlite3.connect(sys.argv[1]) as c:
+        row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
+    raise SystemExit(0 if row and row[0] else 1)
+except Exception:
+    raise SystemExit(1)
+PY
+    then
+      sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
+    else
+      echo "Warning: the initial operator PIN was not confirmed in the database; it remains in the protected config file." >&2
+    fi
+  fi
   if [ "$SERVICE_USER" != root ]; then chown -R "$SERVICE_USER" "$DATA"; fi
   chmod 0750 "$DATA"
   # OpenRC starts the wrapper as SERVICE_USER, so its environment file must be
@@ -327,29 +347,6 @@ EOF
     echo "OpenRC service enabled and started."
   else
     echo "No active systemd/OpenRC detected; service was not registered."
-  fi
-  # Remove the one-time PIN from plaintext config after the DB has stored its hash.
-  if [ -n "$OPERATOR_PIN" ] && [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ]; then
-    attempt=0
-    while [ "$attempt" -lt 10 ]; do
-      if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
-import sqlite3, sys
-try:
-    with sqlite3.connect(sys.argv[1]) as c:
-        row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
-    raise SystemExit(0 if row and row[0] else 1)
-except Exception:
-    raise SystemExit(1)
-PY
-      then
-        sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
-        chown root:"$SERVICE_USER" "$ENV_FILE"
-        chmod 0640 "$ENV_FILE"
-        break
-      fi
-      attempt=$((attempt + 1))
-      sleep 1
-    done
   fi
   echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
   if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi
