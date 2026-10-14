@@ -12,10 +12,12 @@ function switchTab(tabName) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function load(){
- try{
-  const h=await fetch('/api/v1/health').then(r=>r.json());$('status').textContent='● '+(h.status||'online');
-  const d=await fetch('/api/v1/dashboard').then(r=>r.json());
+async function loadDashboard(token){
+  const {r,d}=await json('/api/v1/dashboard',{headers:{'X-M-Group-Admin-Token':token}});
+  if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
+  for(const key of ['members','accounts','payments','loans','machines','products','devices']){
+    if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
+  }
   $('summary').innerHTML=[['Anggota',d.members.length],['Rekening',d.accounts.length],['Pembayaran',d.payments.length],['Pinjaman',d.loans.length],['Vending',d.machines.length],['Perangkat',d.devices.length]].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join('');
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
@@ -24,8 +26,21 @@ async function load(){
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
   $('products').innerHTML=table(d.products.map(x=>({...x,price:money(x.price),enabled:x.enabled?'yes':'no'})),['product_id','machine_id','name','price','stock','slot','capacity','servo_channel','enabled']);
   $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
- }catch(e){$('status').textContent='● API offline'}
+  $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
+async function load(){
+ try{
+  const h=await fetch('/api/v1/health').then(r=>{if(!r.ok)throw new Error('health_http_'+r.status);return r.json()});
+  $('status').textContent='● '+(h.status||'online');
+  const token=$('dashboardAdminToken')?.value.trim();
+  if(token)await loadDashboard(token);
+ }catch(e){
+  console.error('M-Group WebUI load failed:',e);
+  $('status').textContent='● Gagal memuat WebUI/API';
+  const result=$('dashboardResult');if(result)result.textContent=e.message||'Gagal memuat data.';
+ }
+}
+$('dashboardForm').onsubmit=async e=>{e.preventDefault();await load()};
 async function loadMembers(){
   const token=$('memberAdminToken').value.trim();
   if(!token){$('memberAuthResult').textContent='Admin Token wajib diisi';return}
