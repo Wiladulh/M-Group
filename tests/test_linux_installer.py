@@ -59,3 +59,17 @@ def test_linux_installer_documents_automatic_dependencies():
     docs = (ROOT / "installer" / "README.md").read_text()
     assert "automatically" in docs
     assert "postmarketOS" in docs
+
+
+def test_system_reinstall_preserves_existing_config_unless_environment_overrides():
+    installer = (ROOT / "installer" / "install.sh").read_text()
+    config_load = installer.index('if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then')
+    prompt_start = installer.index('# Interactive setup for headless/server installs.')
+    config_write = installer.index('cat > "$ENV_FILE" <<EOF')
+    for key in ("M_GROUP_PREFIX", "M_GROUP_DATA_DIR", "M_GROUP_HOST", "M_GROUP_PORT", "M_GROUP_ADMIN_TOKEN"):
+        assert f"sed -n 's/^{key}=//p'" in installer
+    assert config_load < prompt_start < config_write
+    assert 'M_GROUP_PREFIX=$PREFIX' in installer
+    # Installer deliberately parses only recognized settings; it must not source
+    # an existing config file while running as root.
+    assert '. "$CONFIG_DIR/m-group.env"' not in installer[:config_write]
