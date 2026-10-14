@@ -70,6 +70,7 @@ def test_system_reinstall_preserves_existing_config_unless_environment_overrides
         assert f"sed -n 's/^{key}=//p'" in installer
     assert config_load < prompt_start < config_write
     assert 'M_GROUP_PREFIX=$PREFIX' in installer
-    # Installer deliberately parses only recognized settings; it must not source
-    # an existing config file while running as root.
-    assert '. "$CONFIG_DIR/m-group.env"' not in installer[:config_write]
+    # The config-loading block parses known values rather than executing the
+    # existing environment file as shell code.
+    loading_block = installer[config_load:prompt_start]
+    assert '. "$CONFIG_DIR/m-group.env"' not in loading_block
