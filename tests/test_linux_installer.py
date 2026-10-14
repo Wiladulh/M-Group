@@ -96,6 +96,8 @@ def test_upgrade_script_takes_verified_database_backup_before_package_upgrade():
     assert "M-Group_PRE_UPGRADE_" in script
     assert 'os.chmod(backup_path, 0o600)' in script
     assert 'source_path + "?mode=ro"' in script
+    assert 'refusing to upgrade without a verified pre-upgrade snapshot' in script
+    assert 'exit 1' in script
 
 
 def test_upgrade_script_shell_syntax():
