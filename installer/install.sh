@@ -134,6 +134,9 @@ if [ "$MODE" = system ] && [ -t 0 ]; then
     fi
   fi
 fi
+# Interactive prompts may override PREFIX; derive install paths only after all overrides.
+VENV="$PREFIX/venv"
+BIN_DIR="$PREFIX/bin"
 case "$HOST" in ""|*[!A-Za-z0-9.:_-]*) echo "M_GROUP_HOST must be an IP address or hostname (use 0.0.0.0 for all interfaces)." >&2; exit 2 ;; esac
 case "$PORT" in ""|*[!0-9]*) echo "M_GROUP_PORT must be a TCP port number." >&2; exit 2 ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "M_GROUP_PORT must be 1..65535." >&2; exit 2; }
