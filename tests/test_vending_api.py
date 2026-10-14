@@ -12,7 +12,7 @@ def seed(client):
         c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('vm-01','esp32-s3-vending','active',?)",
                   (hashlib.sha256(b'vm-secret').hexdigest(),))
         c.execute("INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES('v1','Vending 1','active','vm-01')")
-        c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock) VALUES('water','v1','Water',5000,1)")
+        c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,slot,capacity,servo_channel) VALUES('water','v1','Water',5000,1,1,1,1)")
         c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc1','nfc','m1','active',1)")
         c.commit()
 
@@ -31,7 +31,7 @@ def test_vending_api_payment_and_dispense():
             assert products.json()["products"][0]["effective_price"] == 5000
             assert products.json()["products"][0]["discount_amount"] == 0
             tx = client.post("/api/v1/vending/v1/transactions", json={
-                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "product_id":"1","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-api-1"} , headers={"X-M-Group-Device-Key":"vm-secret"})
             assert tx.status_code == 200
             tid = tx.json()["transaction_id"]
@@ -58,7 +58,7 @@ def test_vending_api_failed_dispense_refunds():
             client = TestClient(main.create_app())
             seed(client)
             tx = client.post("/api/v1/vending/v1/transactions", json={
-                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "product_id":"1","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-api-fail"}, headers={"X-M-Group-Device-Key":"vm-secret"}).json()
             tid = tx["transaction_id"]
             assert client.post(f"/api/v1/vending/transactions/{tid}/authorize", headers={"X-M-Group-Device-Key":"vm-secret"}).status_code == 200
@@ -94,7 +94,7 @@ def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal
             client = TestClient(main.create_app())
             seed(client)
             tx = client.post("/api/v1/vending/v1/transactions", json={
-                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "product_id":"1","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-reconcile-1"
             }, headers={"X-M-Group-Device-Key":"vm-secret"}).json()
             tid = tx["transaction_id"]
@@ -122,12 +122,12 @@ def test_vending_idempotency_key_cannot_be_reused_for_different_product():
             seed(client)
             headers = {"X-M-Group-Device-Key":"vm-secret"}
             first = client.post("/api/v1/vending/v1/transactions", json={
-                "product_id":"water","credential_id":"nfc1","account_id":"a1",
+                "product_id":"1","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-reused-key"
             }, headers=headers)
             assert first.status_code == 200
             conflict = client.post("/api/v1/vending/v1/transactions", json={
-                "product_id":"different-product","credential_id":"nfc1","account_id":"a1",
+                "product_id":"2","credential_id":"nfc1","account_id":"a1",
                 "idempotency_key":"vend-reused-key"
             }, headers=headers)
             assert conflict.status_code == 400
