@@ -158,12 +158,26 @@ chmod 0700 "$DATA"
 "$PYTHON" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --upgrade pip
 "$VENV/bin/python" -m pip install "$SOURCE_DIR"
-cat > "$BIN_DIR/m-group" <<EOF
+if [ "$MODE" = system ]; then
+  cat > "$BIN_DIR/m-group" <<EOF
+#!/bin/sh
+umask 077
+if [ -r "$CONFIG_DIR/m-group.env" ]; then
+  set -a
+  . "$CONFIG_DIR/m-group.env"
+  set +a
+fi
+export M_GROUP_DATA_DIR="$DATA"
+exec "$VENV/bin/m-group" "\$@"
+EOF
+else
+  cat > "$BIN_DIR/m-group" <<EOF
 #!/bin/sh
 umask 077
 export M_GROUP_DATA_DIR="$DATA"
 exec "$VENV/bin/m-group" "\$@"
 EOF
+fi
 chmod 0755 "$BIN_DIR/m-group"
 if [ "$MODE" = system ]; then
   cat > "$BIN_DIR/m-group-server" <<EOF
