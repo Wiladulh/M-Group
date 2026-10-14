@@ -120,3 +120,22 @@ def test_credential_pin_is_blocked_after_five_failed_attempts():
             assert str(exc) == "credential_pin_blocked"
         identity.unblock_credential_pin("cred-1")
         assert identity.verify_credential_pin("cred-1", "1234") is True
+
+
+def test_payment_idempotency_rejects_different_credential_for_same_account():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO identity_credentials(credential_id,member_id,credential_type) VALUES('cred-2','member-1','nfc')"
+            )
+            c.commit()
+        p = PaymentService(db)
+        p.pay("cred-1", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+        try:
+            p.pay("cred-2", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+            assert False, "a different credential must not replay the prior payment"
+        except ValueError as exc:
+            assert str(exc) == "idempotency_key_conflict"
