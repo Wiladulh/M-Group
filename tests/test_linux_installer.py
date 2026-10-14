@@ -24,6 +24,9 @@ def test_linux_installer_defaults_to_all_interfaces_and_prompts_for_configuratio
     assert "/etc/m-group/m-group.env" in docs
     assert "DHCP" in docs
     assert "TLS reverse proxy" in docs
+    assert 'chown root:"$SERVICE_USER" "$ENV_FILE"' in installer
+    assert 'chmod 0640 "$ENV_FILE"' in installer
+    assert 'chown "$SERVICE_USER:$SERVICE_USER" /var/log/m-group.log' in installer
 
 
 def test_linux_installer_has_supported_prerequisite_bootstrap():
