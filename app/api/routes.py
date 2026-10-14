@@ -1172,11 +1172,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(413,"backup_upload_too_large")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
+        # Preserve the current live database before replacing it. Keep the
+        # snapshot even if validation/restoration fails so operators can recover.
+        import datetime as dt
+        snapshot=root/f"M-Group_PRE_RESTORE_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}.mgroup.zip"
         path=root/f"restore-upload-{uuid4().hex}.mgroup.zip"
         try:
+            create_native_backup(db,snapshot,include_excel=False)
             path.write_bytes(content)
             result=restore_native_backup(db,path)
-            return {"status":"restored","manifest":result}
+            return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name}
         except HTTPException:
             raise
         except Exception:
