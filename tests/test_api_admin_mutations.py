@@ -31,9 +31,9 @@ def test_financial_and_vending_mutations_require_admin_token():
                 "/api/v1/vending", json={"machine_id": "machine-2", "name": "Test"}
             ).status_code == 401
             assert client.put(
-                "/api/v1/vending/machine-1/products/product-1",
+                "/api/v1/vending/machine-1/products/1",
                 json={
-                    "product_id": "product-1", "name": "Water", "price": 100,
+                    "product_id": "1", "name": "Water", "price": 100,
                     "stock": 1, "slot": 1, "capacity": 1, "servo_channel": 1,
                 },
             ).status_code == 401
@@ -46,10 +46,10 @@ def test_financial_and_vending_mutations_require_admin_token():
             )
             assert credit.status_code == 200, credit.text
             product = client.put(
-                "/api/v1/vending/machine-1/products/product-1",
+                "/api/v1/vending/machine-1/products/1",
                 headers=admin,
                 json={
-                    "product_id": "product-1", "name": "Water", "price": 100,
+                    "product_id": "1", "name": "Water", "price": 100,
                     "stock": 1, "slot": 1, "capacity": 1, "servo_channel": 1,
                 },
             )
