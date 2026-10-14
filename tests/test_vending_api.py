@@ -53,7 +53,7 @@ def test_vending_api_payment_and_dispense():
 def test_vending_api_failed_dispense_refunds():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -74,7 +74,7 @@ def test_vending_api_failed_dispense_refunds():
 def test_vending_credential_resolves_primary_savings_account():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -89,7 +89,7 @@ def test_vending_credential_resolves_primary_savings_account():
 def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal_state():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -116,7 +116,7 @@ def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal
 def test_vending_idempotency_key_cannot_be_reused_for_different_product():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
