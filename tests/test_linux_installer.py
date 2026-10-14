@@ -96,3 +96,12 @@ def test_upgrade_script_takes_verified_database_backup_before_package_upgrade():
     assert "M-Group_PRE_UPGRADE_" in script
     assert 'os.chmod(backup_path, 0o600)' in script
     assert 'source_path + "?mode=ro"' in script
+
+
+def test_upgrade_script_shell_syntax():
+    result = subprocess.run(
+        ["sh", "-n", str(ROOT / "installer" / "upgrade.sh")],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
