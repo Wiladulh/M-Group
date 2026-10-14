@@ -53,7 +53,7 @@ def test_vending_registry_api():
             })
             assert created.status_code==200
             assert created.json()["status"]=="active"
-            detail=client.get("/api/v1/vending/api-v1")
+            detail=client.get("/api/v1/vending/api-v1",headers=admin)
             assert detail.status_code==200
             assert len(detail.json()["slots"])==5
             updated=client.patch("/api/v1/vending/api-v1",headers=admin,json={"location":"Gate"})
