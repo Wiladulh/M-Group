@@ -56,12 +56,18 @@ def test_vending_excel_export_handles_joined_created_at_and_date_filter(monkeypa
 
         all_rows_path = root / "all.xlsx"
         backup.export_excel(db, all_rows_path)
-        with load_workbook(all_rows_path, read_only=True, data_only=True) as workbook:
+        workbook = load_workbook(all_rows_path, read_only=True, data_only=True)
+        try:
             all_rows = list(workbook["vending"].iter_rows(values_only=True))
+        finally:
+            workbook.close()
         assert [row[0] for row in all_rows[1:]] == ["before", "inside", "after"]
 
         filtered_path = root / "filtered.xlsx"
         backup.export_excel(db, filtered_path, "2026-01-01", "2026-01-02")
-        with load_workbook(filtered_path, read_only=True, data_only=True) as workbook:
+        workbook = load_workbook(filtered_path, read_only=True, data_only=True)
+        try:
             filtered_rows = list(workbook["vending"].iter_rows(values_only=True))
+        finally:
+            workbook.close()
         assert [row[0] for row in filtered_rows[1:]] == ["inside"]
