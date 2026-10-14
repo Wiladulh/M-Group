@@ -225,6 +225,10 @@ class VendingService:
             if p["stock"]<=0: raise ValueError("out_of_stock")
             promo_product_id = str(p["slot"]) if product_id in self.PRODUCT_IDS else product_id
             promo=self.promos.resolve(machine_id,promo_product_id,payment_method,payment_provider)
+            if not promo and product_id in self.PRODUCT_IDS:
+                # Preserve legacy product-scoped promotions whose key was the
+                # pre-contract internal product ID rather than the public slot ID.
+                promo=self.promos.resolve(machine_id,p["product_id"],payment_method,payment_provider)
             discount=0
             promo_id=None
             if promo:
