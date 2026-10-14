@@ -8,7 +8,7 @@ def seed(db):
         c.execute("INSERT INTO identity_members(member_id,name) VALUES('vm-member','Vending Test')")
         c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('vm-acct','vm-member','savings')")
         c.execute("INSERT INTO vending_machines(machine_id,name,status) VALUES('vm-01','Test Vending','active')")
-        c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock) VALUES('water','vm-01','Water',5000,2)")
+        c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,slot,capacity,servo_channel) VALUES('water','vm-01','Water',5000,2,1,2,1)")
         c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('vm-nfc','nfc','vm-member','active',1)")
         c.commit()
 
