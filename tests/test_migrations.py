@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 import stat
+import hashlib
+import secrets
 from tempfile import TemporaryDirectory
 
 from app.core.db import Database
@@ -39,3 +41,56 @@ def test_canonical_migrations_are_repeatable_and_integrity_clean():
                 for row in c.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall()
             }
             assert "trg_vending_transaction_integrity_update" in triggers
+
+
+def test_upgrade_removes_only_the_known_legacy_default_operator_pin():
+    with TemporaryDirectory() as directory:
+        db = Database(Path(directory) / "m-group.db")
+        db.migrate()
+        salt = secrets.token_hex(16)
+        default_hash = hashlib.pbkdf2_hmac("sha256", b"9992", salt.encode(), 120000).hex()
+        with db.connect() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO system_meta(key,value) VALUES('cashier_operator_pin_hash',?)",
+                (salt + ":" + default_hash,),
+            )
+            c.execute("DELETE FROM system_meta WHERE key='cashier_operator_pin_security_version'")
+            c.commit()
+        db.migrate()
+        with db.connect() as c:
+            assert c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+            ).fetchone() is None
+
+        # A custom operator PIN hash must survive the same one-time migration.
+        salt = secrets.token_hex(16)
+        custom_hash = hashlib.pbkdf2_hmac("sha256", b"4321", salt.encode(), 120000).hex()
+        with db.connect() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO system_meta(key,value) VALUES('cashier_operator_pin_hash',?)",
+                (salt + ":" + custom_hash,),
+            )
+            c.execute("DELETE FROM system_meta WHERE key='cashier_operator_pin_security_version'")
+            c.commit()
+        db.migrate()
+        with db.connect() as c:
+            stored = c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+            ).fetchone()[0]
+            stored_salt, stored_hash = stored.split(":", 1)
+            expected = hashlib.pbkdf2_hmac("sha256", b"4321", stored_salt.encode(), 120000).hex()
+            assert secrets.compare_digest(stored_hash, expected)
+
+
+def test_installer_supplied_operator_pin_is_hashed_on_initialization(monkeypatch):
+    with TemporaryDirectory() as directory:
+        monkeypatch.setenv("M_GROUP_CASHIER_OPERATOR_PIN", "2468")
+        db = Database(Path(directory) / "m-group.db")
+        db.migrate()
+        with db.connect() as c:
+            stored = c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+            ).fetchone()[0]
+        salt, digest = stored.split(":", 1)
+        expected = hashlib.pbkdf2_hmac("sha256", b"2468", salt.encode(), 120000).hex()
+        assert secrets.compare_digest(digest, expected)
