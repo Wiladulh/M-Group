@@ -23,6 +23,24 @@ def test_dashboard_exposes_financial_payment_and_vending_data():
             assert data["members"][0]["member_id"] == "m1"
             assert data["accounts"][0]["balance"] == 50000
             assert data["machines"][0]["machine_id"] == "v1"
+            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            for path in (
+                "/api/v1/audit",
+                "/api/v1/devices/private-device/events",
+                "/api/v1/accounts/a1/balance",
+                "/api/v1/accounts/a1/ledger",
+                "/api/v1/credentials/private-credential/account",
+                "/api/v1/access/private-credential",
+                "/api/v1/vending",
+                "/api/v1/vending/v1",
+                "/api/v1/vending/v1/products",
+            ):
+                assert client.get(path).status_code == 401, path
+            assert client.get("/api/v1/audit", headers=admin).status_code == 200
+            assert client.get("/api/v1/accounts/a1/balance", headers=admin).json()["balance"] == 50000
+            assert client.get("/api/v1/accounts/a1/ledger", headers=admin).status_code == 200
+            assert client.get("/api/v1/vending", headers=admin).status_code == 200
+            assert client.get("/api/v1/vending/v1/products", headers=admin).status_code == 200
             assert client.get("/").status_code == 200
         finally:
             main.get_settings = old
