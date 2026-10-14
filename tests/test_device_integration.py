@@ -63,7 +63,7 @@ def test_device_heartbeat_and_vending_product_sync():
             assert product.status_code == 200
             assert product.json()["stock"] == 12
 
-            sync = client.get("/api/v1/vending/vm-01/products")
+            sync = client.get("/api/v1/vending/vm-01/products", headers={"X-M-Group-Device-Key": vending_key})
             assert sync.status_code == 200
             assert sync.json()["machine"]["machine_id"] == "vm-01"
             assert sync.json()["products"][0]["product_id"] == "water-01"
