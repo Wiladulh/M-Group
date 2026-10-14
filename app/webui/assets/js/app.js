@@ -24,7 +24,7 @@ async function loadDashboard(token){
   $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
-  $('products').innerHTML=table(d.products.map(x=>({...x,price:money(x.price),enabled:x.enabled?'yes':'no'})),['product_id','machine_id','name','price','stock','slot','capacity','servo_channel','enabled']);
+  $('products').innerHTML=table(d.products.map(x=>({...x,price:money(x.price),enabled:x.enabled?'yes':'no'})),['product_id','machine_id','name','price','stock','capacity','enabled']);
   $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
@@ -217,7 +217,7 @@ async function loadVendingCatalog(machineId){
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{headers:{'X-M-Group-Admin-Token':token}});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
   vendingCatalog=d.products||[];
-  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','servo_channel','enabled']);
+  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','enabled']);
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
