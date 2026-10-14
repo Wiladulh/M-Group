@@ -738,11 +738,11 @@ def build_router(db, app_settings=None):
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
-            if str(q.product_id) not in VendingService.PRODUCT_IDS:
-                raise HTTPException(400,"product_id_must_be_1_to_5")
             machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
+            if str(q.product_id) not in VendingService.PRODUCT_IDS:
+                raise HTTPException(400,"product_id_must_be_1_to_5")
             return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
