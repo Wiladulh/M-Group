@@ -47,7 +47,7 @@ def test_vending_requires_device_key():
                 c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,slot,capacity,servo_channel) VALUES(?,?,?,?,?,?,?,?)",("p1","v1","P1",1000,1,1,1,1))
                 c.commit()
             denied=client.post("/api/v1/vending/v1/transactions",
-                               json={"product_id":"p1","credential_id":"nfc1","idempotency_key":"x"})
+                               json={"product_id":"1","credential_id":"nfc1","idempotency_key":"x"})
             assert denied.status_code==401
             ok=client.post("/api/v1/vending/v1/transactions",
                            json={"product_id":"p1","credential_id":"nfc1","idempotency_key":"x"},
