@@ -161,7 +161,7 @@ class VendingService:
                 # A key may only replay the same logical request. Otherwise a
                 # client bug could accidentally reuse a paid transaction.
                 if (old["machine_id"] != machine_id or old["product_id"] != product_id
-                    or old["credential_id"] != credential_id
+                    or old["credential_id"] != credential_id or old["account_id"] != account_id
                     or old["payment_method"] != payment_method
                     or old["payment_provider"] != payment_provider):
                     raise ValueError("idempotency_key_conflict")
