@@ -14,7 +14,8 @@ def test_vending_registry_supports_many_machines_and_five_slots():
             assert m["machine_id"]==f"vm-{i}"
         assert len(f.machines())==5
         assert [x["slot"] for x in f.slots("vm-3")]==[1,2,3,4,5]
-        assert all(x["product_id"] is None for x in f.slots("vm-3"))
+        assert [x["product_id"] for x in f.slots("vm-3")] == ["1", "2", "3", "4", "5"]
+        assert all(x["name"] is None for x in f.slots("vm-3"))
 
 def test_vending_registry_isolates_machine_slots():
     with TemporaryDirectory() as d:
