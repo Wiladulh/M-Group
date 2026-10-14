@@ -1,5 +1,6 @@
 import sqlite3
 import hashlib
+import os
 import secrets
 from pathlib import Path
 from importlib.resources import files as resource_files
@@ -10,7 +11,15 @@ class Database:
 
     def connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # The database contains identity and financial data. Keep SQLite files
+        # and their journal/WAL sidecars private even when launched manually.
+        os.umask(0o077)
         c = sqlite3.connect(self.path)
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            c.close()
+            raise
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA foreign_keys=ON")
         return c
