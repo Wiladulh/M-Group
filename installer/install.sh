@@ -139,11 +139,13 @@ fi
 case "$PORT" in ''|*[!0-9]*) echo "M_GROUP_PORT must be a TCP port number." >&2; exit 2 ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "M_GROUP_PORT must be 1..65535." >&2; exit 2; }
 mkdir -p "$PREFIX" "$DATA" "$BIN_DIR"
+chmod 0700 "$DATA"
 "$PYTHON" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --upgrade pip
 "$VENV/bin/python" -m pip install "$SOURCE_DIR"
 cat > "$BIN_DIR/m-group" <<EOF
 #!/bin/sh
+umask 077
 export M_GROUP_DATA_DIR="$DATA"
 exec "$VENV/bin/m-group" "\$@"
 EOF
@@ -151,6 +153,7 @@ chmod 0755 "$BIN_DIR/m-group"
 cat > "$BIN_DIR/m-group-server" <<EOF
 #!/bin/sh
 set -eu
+umask 077
 export M_GROUP_DATA_DIR="$DATA"
 export M_GROUP_HOST="\${M_GROUP_HOST:-$HOST}"
 export M_GROUP_PORT="\${M_GROUP_PORT:-$PORT}"
@@ -185,6 +188,7 @@ EOF
     fi
   fi
   if [ "$SERVICE_USER" != root ]; then chown -R "$SERVICE_USER" "$DATA"; fi
+  chmod 0750 "$DATA"
   # OpenRC starts the wrapper as SERVICE_USER, so its environment file must be
   # readable by that account without exposing the token to other local users.
   chown root:"$SERVICE_USER" "$CONFIG_DIR"
