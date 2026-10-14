@@ -52,6 +52,13 @@ class FinancialService:
                     (idempotency_key,),
                 ).fetchone()
                 if existing:
+                    if (
+                        existing["account_id"] != account_id
+                        or existing["amount"] != amount
+                        or existing["transaction_type"] != transaction_type
+                        or existing["reference"] != reference
+                    ):
+                        raise ValueError("idempotency_key_conflict")
                     return dict(existing)
 
             account = self._account(c, account_id)
