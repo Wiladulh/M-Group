@@ -61,11 +61,23 @@ def export_excel(db, target, start=None, end=None):
     wb=Workbook()
     wb.remove(wb.active)
     for name,sql in SHEETS.items():
-        if start and "WHERE" not in sql.upper():
-            sql=sql.replace("ORDER BY","WHERE created_at>=? AND created_at<? ORDER BY")
+        args=()
+        if start:
+            # Filter the selected result columns in an outer query. This avoids
+            # ambiguous created_at references in joined exports (notably vending,
+            # which joins vending_transactions and vending_machines).
+            order_by = sql.upper().rfind("ORDER BY")
+            if order_by >= 0:
+                base_sql = sql[:order_by].rstrip()
+                order_clause = sql[order_by:].strip()
+            else:
+                base_sql = sql.rstrip().rstrip(";")
+                order_clause = "ORDER BY created_at"
+            sql = (
+                "SELECT * FROM (" + base_sql + ") AS export_rows "
+                "WHERE created_at>=? AND created_at<? " + order_clause
+            )
             args=(start,end)
-        else:
-            args=()
         with db.connect() as c:
             cur=c.execute(sql,args)
             headers=[d[0] for d in cur.description]
