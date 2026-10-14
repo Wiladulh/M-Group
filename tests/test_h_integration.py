@@ -109,7 +109,7 @@ def test_h_full_integration_one_by_one():
             assert payment.json()["final_amount"] == 5000
 
             # H-05 Ledger/saldo
-            balance = client.get("/api/v1/accounts/acct-h/balance")
+            balance = client.get("/api/v1/accounts/acct-h/balance", headers=admin)
             assert balance.status_code == 200
             assert balance.json()["balance"] == 15000
 
