@@ -234,7 +234,8 @@ def build_router(db, app_settings=None):
     def system(): return {"service": "M-Group", "api_version": "v1"}
 
     @r.get("/audit")
-    def audit(limit: int = 100):
+    def audit(limit: int = 100, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
@@ -263,14 +264,16 @@ def build_router(db, app_settings=None):
         return {**dict(row), "handshake": "accepted"}
 
     @r.get("/devices/{device_id}/events")
-    def device_events(device_id,limit:int=100):
+    def device_events(device_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
         return {"device_id":device_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
-    def dashboard():
+    def dashboard(x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         with db.connect() as c:
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
@@ -547,7 +550,8 @@ def build_router(db, app_settings=None):
         return {"device_id":device_id,"device_type":q.device_type,"status":q.status}
 
     @r.post("/access/{credential_id}")
-    def access(credential_id):
+    def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result=identity.authorize_credential(credential_id)
         with db.connect() as c:
             c.execute("INSERT INTO identity_access_events(credential_id,member_id,result,reason) VALUES(?,?,?,?)",
@@ -556,18 +560,21 @@ def build_router(db, app_settings=None):
         return result
 
     @r.get("/credentials/{credential_id}/account")
-    def credential_account(credential_id):
+    def credential_account(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result=identity.account_for_credential(credential_id)
         if not result["authorized"]: raise HTTPException(404,result["reason"])
         return result
 
     @r.get("/accounts/{account_id}/balance")
-    def account_balance(account_id):
+    def account_balance(account_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"balance":financial.balance(account_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.get("/accounts/{account_id}/ledger")
-    def account_ledger(account_id,limit:int=100):
+    def account_ledger(account_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"entries":financial.ledger(account_id,limit)}
         except ValueError as e:raise HTTPException(404,str(e))
 
@@ -632,7 +639,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,str(e))
 
     @r.get("/vending")
-    def vending_list():
+    def vending_list(x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         return {"machines": vending.machines()}
 
     @r.post("/vending")
@@ -642,7 +650,8 @@ def build_router(db, app_settings=None):
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
-    def vending_detail(machine_id):
+    def vending_detail(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"machine":vending.machine(machine_id),"slots":vending.slots(machine_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
@@ -665,13 +674,14 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None)):
+    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None), x_m_group_admin_token: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
-        # WebUI reads may omit a device key; firmware requests are authenticated.
         if x_m_group_device_key:
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
+        else:
+            require_admin(x_m_group_admin_token)
         catalog = vending.products(machine["machine_id"])
         # Preserve base price while exposing the exact NFC/local amount shown
         # by the current firmware. QRIS remains a separately configured,
