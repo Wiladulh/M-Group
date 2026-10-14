@@ -6,7 +6,7 @@ import app.main as main
 def test_dashboard_exposes_financial_payment_and_vending_data():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -15,7 +15,9 @@ def test_dashboard_exposes_financial_payment_and_vending_data():
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',50000,'seed')")
                 c.execute("INSERT INTO vending_machines(machine_id,name) VALUES('v1','Vending 1')")
                 c.commit()
-            r = client.get("/api/v1/dashboard")
+            denied = client.get("/api/v1/dashboard")
+            assert denied.status_code == 401
+            r = client.get("/api/v1/dashboard", headers={"X-M-Group-Admin-Token": "admin-secret"})
             assert r.status_code == 200
             data = r.json()
             assert data["members"][0]["member_id"] == "m1"
