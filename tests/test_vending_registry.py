@@ -56,6 +56,28 @@ def test_vending_registry_api():
             detail=client.get("/api/v1/vending/api-v1",headers=admin)
             assert detail.status_code==200
             assert len(detail.json()["slots"])==5
+            product = client.put("/api/v1/vending/api-v1/products/1", headers=admin, json={
+                "product_id":"1","name":"Water","price":1000,"stock":2,"capacity":5
+            })
+            assert product.status_code == 200, product.text
+            assert product.json()["product_id"] == "1"
+            assert product.json()["slot"] == product.json()["servo_channel"] == 1
+            catalog = client.get("/api/v1/vending/api-v1/products", headers=admin)
+            assert catalog.status_code == 200
+            assert catalog.json()["products"][0]["product_id"] == "1"
+            second = client.post("/api/v1/vending", headers=admin, json={
+                "machine_id":"api-v2","name":"API Vending 2","location":"Back"
+            })
+            assert second.status_code == 200
+            second_product = client.put("/api/v1/vending/api-v2/products/1", headers=admin, json={
+                "product_id":"1","name":"Juice","price":1500,"stock":1,"capacity":3
+            })
+            assert second_product.status_code == 200, second_product.text
+            assert client.get("/api/v1/vending/api-v2/products", headers=admin).json()["products"][0]["product_id"] == "1"
+            invalid = client.put("/api/v1/vending/api-v1/products/water", headers=admin, json={
+                "product_id":"water","name":"Legacy ID","price":1000,"stock":1,"capacity":1
+            })
+            assert invalid.status_code == 400
             updated=client.patch("/api/v1/vending/api-v1",headers=admin,json={"location":"Gate"})
             assert updated.status_code==200
             assert updated.json()["location"]=="Gate"
