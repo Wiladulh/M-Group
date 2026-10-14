@@ -209,7 +209,51 @@ async function saveDevice(deviceId){
 $('deviceAuthForm').onsubmit=async e=>{e.preventDefault();await loadDevices()};
 $('financialForm').onsubmit=async e=>{e.preventDefault();const token=$('financialAdminToken').value.trim();if(!token){$('financialResult').textContent='Admin Token wajib diisi';return}const q={amount:+$('amount').value,reference:$('reference').value||null,idempotency_key:'webui-financial:'+crypto.randomUUID()};const{r,d}=await json('/api/v1/accounts/'+encodeURIComponent($('account').value)+'/'+$('direction').value,{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('financialResult').textContent=JSON.stringify(d,null,2);if(r.ok)load()};
 $('paymentForm').onsubmit=async e=>{e.preventDefault();const token=$('paymentAdminToken').value.trim();if(!token){$('paymentResult').textContent='Admin Token wajib diisi';return}const method=$('method').value,pin=$('paypin').value;if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}const q={credential_id:$('credential').value,account_id:$('payaccount').value,amount:+$('payamount').value,method,provider:$('provider').value||'local',idempotency_key:$('idem').value||null,pin:pin||null};const{r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('paymentResult').textContent=JSON.stringify(d,null,2);if(r.ok){$('paypin').value='';load()}};
-$('productForm').onsubmit=async e=>{e.preventDefault();const token=$('vendingAdminToken').value.trim(),mid=$('machineId').value.trim(),pid=$('productId').value.trim();if(!token){$('productResult').textContent='Admin Token wajib diisi';return}const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};const{r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('productResult').textContent=JSON.stringify(d,null,2);if(r.ok)load()};
+let vendingCatalog=[];
+async function loadVendingCatalog(machineId){
+  const token=$('vendingAdminToken').value.trim();
+  if(!token)throw new Error('Admin Token wajib diisi');
+  if(!machineId)return;
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{headers:{'X-M-Group-Admin-Token':token}});
+  if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
+  vendingCatalog=d.products||[];
+  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','servo_channel','enabled']);
+  $('productId').dispatchEvent(new Event('change'));
+}
+async function loadVendingMachines(){
+  const token=$('vendingAdminToken').value.trim();
+  if(!token){$('productResult').textContent='Admin Token wajib diisi';return}
+  try{
+    const {r,d}=await json('/api/v1/vending',{headers:{'X-M-Group-Admin-Token':token}});
+    if(!r.ok)throw new Error(d.detail||'Gagal memuat daftar mesin');
+    const rows=d.machines||[],sel=$('machineId'),current=sel.value;
+    sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
+    if(rows.some(x=>x.machine_id===current))sel.value=current;
+    else if(rows.length)sel.value=rows[0].machine_id;
+    if(sel.value)await loadVendingCatalog(sel.value);
+    $('productResult').textContent=rows.length?'Daftar mesin berhasil dimuat.':'Belum ada vending machine terdaftar.';
+  }catch(e){$('productResult').textContent=e.message}
+}
+$('loadVendingMachines').onclick=loadVendingMachines;
+$('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+$('productId').onchange=()=>{
+  const item=vendingCatalog.find(x=>String(x.product_id)===$('productId').value);
+  $('productName').value=item?.name||'';
+  $('productPrice').value=item?.price??'';
+  $('productStock').value=item?.stock??0;
+  $('productCapacity').value=item?.capacity??0;
+  $('productEnabled').checked=item?!!item.enabled:true;
+};
+$('productForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('vendingAdminToken').value.trim(),mid=$('machineId').value.trim(),pid=$('productId').value.trim();
+  if(!token){$('productResult').textContent='Admin Token wajib diisi';return}
+  if(!mid||!pid){$('productResult').textContent='Muat daftar mesin lalu pilih mesin dan Product ID';return}
+  const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});
+  $('productResult').textContent=JSON.stringify(d,null,2);
+  if(r.ok){await loadVendingCatalog(mid);await load()}
+};
 async function adminToken(){const t=$('adminToken').value.trim();if(!t)throw new Error('Admin Token wajib diisi');return t}
 async function loadAudit(){
   try{
