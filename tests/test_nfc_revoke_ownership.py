@@ -21,7 +21,7 @@ def test_nfc_revoke_rejects_card_owned_by_another_member():
             members = MemberManagementService(client.app.state.db)
             members.create("member-a", "Member A")
             members.create("member-b", "Member B")
-            members.add_card("member-b", "card-uid-b", "credential-b")
+            members.add_card("member-b", "card-uid-b")
 
             with client.app.state.db.connect() as c:
                 card = c.execute(
