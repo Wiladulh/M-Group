@@ -46,6 +46,6 @@ def test_manual_nfc_payment_requires_and_verifies_member_pin():
             valid = client.post("/api/v1/payments", headers=admin, json={**base, "pin": "1234"})
             assert valid.status_code == 200, valid.text
             assert valid.json()["final_amount"] == 1000
-            assert client.get("/api/v1/accounts/account-1/balance").json()["balance"] == 9000
+            assert client.get("/api/v1/accounts/account-1/balance", headers=admin).json()["balance"] == 9000
         finally:
             main.get_settings = old
