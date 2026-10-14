@@ -12,6 +12,7 @@ def test_cashier_deposit_and_audit_are_separate_from_vending():
         })()
         try:
             client=TestClient(main.create_app())
+            assert client.post("/api/v1/cashier/operator-pin",json={"pin":"9992"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
