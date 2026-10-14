@@ -85,3 +85,14 @@ def test_system_installer_initializes_database_before_optional_service_start():
     assert initialize < service_registration
     assert initialize < pin_cleanup < service_registration
     assert "M_GROUP_SKIP_SERVICE=1" in installer
+
+
+def test_upgrade_script_takes_verified_database_backup_before_package_upgrade():
+    script = (ROOT / "installer" / "upgrade.sh").read_text()
+    backup = script.index("source.backup(target)")
+    integrity = script.index('PRAGMA integrity_check')
+    pip_upgrade = script.index('"$PYTHON" -m pip install --upgrade')
+    assert backup < integrity < pip_upgrade
+    assert "M-Group_PRE_UPGRADE_" in script
+    assert 'os.chmod(backup_path, 0o600)' in script
+    assert 'source_path + "?mode=ro"' in script
