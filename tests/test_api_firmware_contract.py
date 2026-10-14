@@ -84,11 +84,11 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
             products = client.get("/api/v1/vending/vm-01/products", headers=headers)
             assert products.status_code == 200, products.text
             assert products.json()["machine"]["machine_id"] == "machine-front"
-            assert products.json()["products"][0]["product_id"] == "water"
+            assert products.json()["products"][0]["product_id"] == "1"
 
             begun = client.post(
                 "/api/v1/vending/vm-01/transactions",
-                json={"product_id": "water", "credential_id": "nfc-a1b2", "idempotency_key": "vm-01:contract-1"},
+                json={"product_id": "1", "credential_id": "nfc-a1b2", "idempotency_key": "vm-01:contract-1"},
                 headers=headers,
             )
             assert begun.status_code == 200, begun.text
