@@ -391,10 +391,12 @@ def build_router(db, app_settings=None):
     def member_revoke_nfc(member_id,card_id,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
         try:
-            result = members.revoke_card(card_id)
-            if result["member_id"] != member_id:
+            member = members.get(member_id)
+            if member is None or not any(
+                card["card_id"] == card_id for card in member["nfc_cards"]
+            ):
                 raise HTTPException(404,"nfc_card_not_found")
-            return result
+            return members.revoke_card(card_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
