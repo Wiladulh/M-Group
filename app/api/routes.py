@@ -1136,10 +1136,13 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
+        # Reuse the endpoint's authorization and parameter validation, passing
+        # the already-validated token explicitly because this is a direct call.
+        data=audit_report(source,period,date,x_m_group_admin_token)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
-        path=root/f"audit-{source.lower()}-{period}-{date or 'today'}.xlsx"
-        data=audit_report(source,period,date)
+        # Use normalized values from the validated report for the filename.
+        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['start']}.xlsx"
         export_rows_excel(data["transactions"],path)
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
