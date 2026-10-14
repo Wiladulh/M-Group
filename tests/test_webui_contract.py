@@ -23,3 +23,14 @@ def test_dashboard_data_fetch_requires_admin_token_and_reports_loading_errors():
     assert "dashboardAdminToken" in js
     assert "Gagal memuat JavaScript WebUI" in index
     assert "unhandledrejection" in index
+
+
+def test_vending_ui_uses_fixed_product_ids_and_server_machine_list():
+    page = (ROOT / "app" / "webui" / "pages" / "vending.html").read_text(encoding="utf-8")
+    js = (ROOT / "app" / "webui" / "assets" / "js" / "app.js").read_text(encoding="utf-8")
+    assert 'id="productSlot"' not in page
+    assert 'value="1">Product ID 1' in page
+    assert 'value="5">Product ID 5' in page
+    assert 'id="loadVendingMachines"' in page
+    assert "function loadVendingMachines" in js
+    assert "product_id_must_be_1_to_5" not in js
