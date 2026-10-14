@@ -301,7 +301,9 @@ EOF
   fi
   # Remove the one-time PIN from plaintext config after the DB has stored its hash.
   if [ -n "$OPERATOR_PIN" ] && [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ]; then
-    if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
+    attempt=0
+    while [ "$attempt" -lt 10 ]; do
+      if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
 import sqlite3, sys
 try:
     with sqlite3.connect(sys.argv[1]) as c:
@@ -310,11 +312,15 @@ try:
 except Exception:
     raise SystemExit(1)
 PY
-    then
-      sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
-      chown root:"$SERVICE_USER" "$ENV_FILE"
-      chmod 0640 "$ENV_FILE"
-    fi
+      then
+        sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
+        chown root:"$SERVICE_USER" "$ENV_FILE"
+        chmod 0640 "$ENV_FILE"
+        break
+      fi
+      attempt=$((attempt + 1))
+      sleep 1
+    done
   fi
   echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
   if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi
