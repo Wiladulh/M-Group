@@ -35,7 +35,7 @@ def test_cashier_deposit_is_atomic_and_idempotency_conflicts_are_rejected():
                 c.commit()
 
             assert client.post("/api/v1/members/member-1/pin", headers=admin, json={
-                "pin": "1234", "operator_id": "admin", "identity_verified": True, "reason": "test"
+                "pin": "1234", "operator_id": "admin", "identity_verified": True, "reason": "test cashier deposit"
             }).status_code == 200
             assert client.post("/api/v1/cashier/operator-pin", headers=admin, json={"pin": "6789"}).status_code == 200
 
