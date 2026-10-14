@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import stat
 from tempfile import TemporaryDirectory
 
 from app.core.db import Database
@@ -9,6 +11,8 @@ def test_canonical_migrations_are_repeatable_and_integrity_clean():
         db = Database(Path(directory) / "m-group.db")
         db.migrate()
         db.migrate()
+        if os.name == "posix":
+            assert stat.S_IMODE(db.path.stat().st_mode) == 0o600
         with db.connect() as c:
             assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert c.execute("PRAGMA foreign_key_check").fetchall() == []
