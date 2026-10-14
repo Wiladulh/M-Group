@@ -74,3 +74,14 @@ def test_system_reinstall_preserves_existing_config_unless_environment_overrides
     # existing environment file as shell code.
     loading_block = installer[config_load:prompt_start]
     assert '. "$CONFIG_DIR/m-group.env"' not in loading_block
+
+
+
+def test_system_installer_initializes_database_before_optional_service_start():
+    installer = (ROOT / "installer" / "install.sh").read_text()
+    initialize = installer.index('"$BIN_DIR/m-group" init')
+    service_registration = installer.index('if [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ] && command -v systemctl')
+    pin_cleanup = installer.index("sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' \"$ENV_FILE\"")
+    assert initialize < service_registration
+    assert initialize < pin_cleanup < service_registration
+    assert "M_GROUP_SKIP_SERVICE=1" in installer
