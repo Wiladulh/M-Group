@@ -46,7 +46,7 @@ def test_vending_api_payment_and_dispense():
             assert retry.status_code == 200
             assert retry.json()["status"] == "completed"
             assert client.get("/api/v1/accounts/a1/balance", headers={"X-M-Group-Admin-Token":"admin-secret"}).json()["balance"] == 5000
-            assert client.get("/api/v1/vending/v1/products").json()["products"][0]["stock"] == 0
+            assert client.get("/api/v1/vending/v1/products", headers={"X-M-Group-Device-Key":"vm-secret"}).json()["products"][0]["stock"] == 0
         finally:
             main.get_settings = old
 
@@ -66,8 +66,8 @@ def test_vending_api_failed_dispense_refunds():
             assert failed.status_code == 200
             assert failed.json()["status"] == "refunded"
             assert failed.json()["dispense_status"] == "failed"
-            assert client.get("/api/v1/accounts/a1/balance").json()["balance"] == 10000
-            assert client.get("/api/v1/vending/v1/products").json()["products"][0]["stock"] == 1
+            assert client.get("/api/v1/accounts/a1/balance", headers={"X-M-Group-Admin-Token":"admin-secret"}).json()["balance"] == 10000
+            assert client.get("/api/v1/vending/v1/products", headers={"X-M-Group-Device-Key":"vm-secret"}).json()["products"][0]["stock"] == 1
         finally:
             main.get_settings = old
 
