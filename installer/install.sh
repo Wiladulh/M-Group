@@ -173,7 +173,6 @@ M_GROUP_DATA_DIR=$DATA
 M_GROUP_DB_PATH=$DATA/M-Group.db
 M_GROUP_ADMIN_TOKEN=$ADMIN_TOKEN
 EOF
-  chmod 0600 "$ENV_FILE"
   SERVICE_USER=m-group
   if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then
@@ -186,6 +185,12 @@ EOF
     fi
   fi
   if [ "$SERVICE_USER" != root ]; then chown -R "$SERVICE_USER" "$DATA"; fi
+  # OpenRC starts the wrapper as SERVICE_USER, so its environment file must be
+  # readable by that account without exposing the token to other local users.
+  chown root:"$SERVICE_USER" "$CONFIG_DIR"
+  chmod 0750 "$CONFIG_DIR"
+  chown root:"$SERVICE_USER" "$ENV_FILE"
+  chmod 0640 "$ENV_FILE"
   cat > "$BIN_DIR/m-group-server-openrc" <<EOF
 #!/bin/sh
 set -eu
@@ -220,6 +225,9 @@ EOF
     systemctl enable --now m-group.service
     echo "systemd service enabled and started."
   elif [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ] && command -v rc-update >/dev/null 2>&1 && [ -d /etc/init.d ]; then
+    touch /var/log/m-group.log
+    chown "$SERVICE_USER:$SERVICE_USER" /var/log/m-group.log
+    chmod 0640 /var/log/m-group.log
     cat > /etc/init.d/m-group <<EOF
 #!/sbin/openrc-run
 name="M-Group"
@@ -240,7 +248,7 @@ EOF
   else
     echo "No active systemd/OpenRC detected; service was not registered."
   fi
-  echo "Configuration stored in $ENV_FILE (permissions 0600); keep it secret."
+  echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
   if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi
 fi
 echo "M-Group installed successfully."
