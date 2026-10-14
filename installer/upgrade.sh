@@ -45,7 +45,8 @@ os.chmod(backup_path, 0o600)
 PY
   echo "Verified pre-upgrade database backup: $BACKUP"
 else
-  echo "Database not found at $DB_PATH; no pre-upgrade database snapshot was created." >&2
+  echo "Database not found at $DB_PATH; refusing to upgrade without a verified pre-upgrade snapshot." >&2
+  exit 1
 fi
 
 "$PYTHON" -m pip install --upgrade "$SOURCE_DIR"
