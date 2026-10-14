@@ -47,7 +47,7 @@ class FinancialService:
             existing = None
             if idempotency_key:
                 existing = c.execute(
-                    "SELECT transaction_id,status,amount,transaction_type,reference "
+                    "SELECT transaction_id,status,amount,transaction_type,reference,account_id "
                     "FROM financial_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
                 ).fetchone()
@@ -101,7 +101,7 @@ class FinancialService:
             raise ValueError("amount_must_be_positive_integer")
         if idempotency_key:
             row = c.execute(
-                "SELECT transaction_id,status,amount,transaction_type,reference "
+                "SELECT transaction_id,status,amount,transaction_type,reference,account_id "
                 "FROM financial_transactions WHERE idempotency_key=?",
                 (idempotency_key,),
             ).fetchone()
