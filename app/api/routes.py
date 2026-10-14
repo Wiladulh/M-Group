@@ -1108,7 +1108,9 @@ def build_router(db, app_settings=None):
         import datetime as dt
         date=date or dt.date.today().isoformat()
         if period=="day":
-            start=date; end=date+" 23:59:59"
+            selected_day=dt.date.fromisoformat(date)
+            start=selected_day.isoformat()
+            end=(selected_day+dt.timedelta(days=1)).isoformat()
         elif period=="month":
             y,m=map(int,date[:7].split("-")); start=f"{y:04d}-{m:02d}-01"
             end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
