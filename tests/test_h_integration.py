@@ -213,6 +213,6 @@ def test_h_full_integration_one_by_one():
             ).status_code == 401
 
             # Final ledger invariant after all successful debits: 20,000 - 5,000 - 2,000 - 3,000.
-            assert client.get("/api/v1/accounts/acct-h/balance").json()["balance"] == 10000
+            assert client.get("/api/v1/accounts/acct-h/balance", headers=admin).json()["balance"] == 10000
         finally:
             main.get_settings = old
