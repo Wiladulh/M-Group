@@ -145,3 +145,16 @@ Prinsip wajib:
 - Demo browser menggunakan data ilustrasi untuk memperlihatkan interaksi dan bentuk visual saja. Angka serta peringkat demo bukan data aktual dan tidak boleh digunakan untuk keputusan bisnis.
 - Implementasi produksi memerlukan query agregasi dari backend/database, zona waktu yang konsisten, dan filter periode yang sama untuk semua komponen dashboard.
 
+
+
+## 11. Kontrak Product ID tetap pada API produksi
+
+Implementasi server/WebUI yang aktif mengikuti kontrak katalog tetap:
+- ID publik setiap mesin adalah string `1` sampai `5`; ID yang sama boleh ada pada mesin berbeda.
+- API menolak ID produk di luar rentang tersebut. Slot dan kanal servo selalu diturunkan dari Product ID, bukan nilai yang dapat dipilih terpisah.
+- Database tetap menyimpan kunci internal produk yang stabil agar data lama dan relasi transaksi tidak perlu dihapus atau dirombak. Katalog API hanya menampilkan identitas publik 1–5 untuk slot valid.
+- Produk lama dipetakan menurut slot hasil migrasi yang sudah ada; promosi yang masih memakai ID internal lama tetap dicoba sebagai fallback.
+- Pengujian kontrak mencakup pemakaian Product ID 1 pada dua mesin berbeda, pemetaan servo, penolakan ID lama/arbitrer melalui API, dan katalog yang dikonsumsi firmware.
+- Endpoint katalog memerlukan kunci perangkat terdaftar untuk firmware atau Admin Token untuk WebUI.
+
+Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diuji; pengujian perangkat nyata tetap wajib sebelum vending dioperasikan dengan saldo nyata.
