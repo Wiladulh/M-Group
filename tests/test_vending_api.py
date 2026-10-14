@@ -19,11 +19,11 @@ def seed(client):
 def test_vending_api_payment_and_dispense():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
         try:
             client = TestClient(main.create_app())
             seed(client)
-            products = client.get("/api/v1/vending/v1/products")
+            products = client.get("/api/v1/vending/v1/products", headers={"X-M-Group-Device-Key":"vm-secret"})
             assert products.status_code == 200
             assert products.json()["products"][0]["stock"] == 1
             assert products.json()["products"][0]["enabled"] is True
@@ -45,7 +45,7 @@ def test_vending_api_payment_and_dispense():
             retry = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-M-Group-Device-Key":"vm-secret"})
             assert retry.status_code == 200
             assert retry.json()["status"] == "completed"
-            assert client.get("/api/v1/accounts/a1/balance").json()["balance"] == 5000
+            assert client.get("/api/v1/accounts/a1/balance", headers={"X-M-Group-Admin-Token":"admin-secret"}).json()["balance"] == 5000
             assert client.get("/api/v1/vending/v1/products").json()["products"][0]["stock"] == 0
         finally:
             main.get_settings = old
@@ -78,7 +78,7 @@ def test_vending_credential_resolves_primary_savings_account():
         try:
             client = TestClient(main.create_app())
             seed(client)
-            result = client.get("/api/v1/credentials/nfc1/account")
+            result = client.get("/api/v1/credentials/nfc1/account", headers={"X-M-Group-Admin-Token":"admin-secret"})
             assert result.status_code == 200
             assert result.json()["account_id"] == "a1"
             assert result.json()["member_id"] == "m1"
