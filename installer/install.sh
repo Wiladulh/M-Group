@@ -207,6 +207,7 @@ M_GROUP_PORT=$PORT
 M_GROUP_DATA_DIR=$DATA
 M_GROUP_DB_PATH=$DATA/M-Group.db
 M_GROUP_ADMIN_TOKEN=$ADMIN_TOKEN
+M_GROUP_CASHIER_OPERATOR_PIN=$OPERATOR_PIN
 EOF
   SERVICE_USER=m-group
   if ! id "$SERVICE_USER" >/dev/null 2>&1; then
@@ -283,6 +284,23 @@ EOF
     echo "OpenRC service enabled and started."
   else
     echo "No active systemd/OpenRC detected; service was not registered."
+  fi
+  # Remove the one-time PIN from plaintext config after the DB has stored its hash.
+  if [ -n "$OPERATOR_PIN" ] && [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ]; then
+    if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
+import sqlite3, sys
+try:
+    with sqlite3.connect(sys.argv[1]) as c:
+        row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
+    raise SystemExit(0 if row and row[0] else 1)
+except Exception:
+    raise SystemExit(1)
+PY
+    then
+      sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
+      chown root:"$SERVICE_USER" "$ENV_FILE"
+      chmod 0640 "$ENV_FILE"
+    fi
   fi
   echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
   if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi
