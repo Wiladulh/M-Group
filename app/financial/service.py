@@ -113,6 +113,13 @@ class FinancialService:
                 (idempotency_key,),
             ).fetchone()
             if row:
+                if (
+                    row["account_id"] != account_id
+                    or row["amount"] != amount
+                    or row["transaction_type"] != "debit"
+                    or row["reference"] != reference
+                ):
+                    raise ValueError("idempotency_key_conflict")
                 return dict(row)
 
         account = self._account(c, account_id)
