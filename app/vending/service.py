@@ -1,9 +1,11 @@
 from uuid import uuid4
+import hashlib
 from app.payment.service import PaymentService
 from app.vending.promo import PromotionService
 
 class VendingService:
     VALID_STATUSES = {"active", "disabled", "maintenance"}
+    PRODUCT_IDS = {"1", "2", "3", "4", "5"}
 
     def __init__(self, db):
         self.db=db
@@ -71,38 +73,59 @@ class VendingService:
     def slots(self,machine_id):
         self.machine(machine_id)
         with self.db.connect() as c:
-            rows = {
-                r["slot"]: dict(r) for r in c.execute(
-                    "SELECT product_id,slot,name,price,stock,capacity,servo_channel,enabled "
-                    "FROM vending_products WHERE machine_id=? ORDER BY slot",
-                    (machine_id,)
-                ).fetchall() if r["slot"] is not None
-            }
+            rows = {}
+            for row in c.execute(
+                "SELECT product_id,slot,name,price,stock,capacity,servo_channel,enabled "
+                "FROM vending_products WHERE machine_id=? ORDER BY slot",
+                (machine_id,),
+            ).fetchall():
+                slot = row["slot"]
+                if slot not in range(1, 6):
+                    continue
+                item = dict(row)
+                item["product_id"] = str(slot)
+                item["servo_channel"] = slot
+                item["enabled"] = bool(item["enabled"])
+                rows[slot] = item
         return [
             rows.get(slot, {
-                "product_id": None, "slot": slot, "name": None, "price": None,
+                "product_id": str(slot), "slot": slot, "name": None, "price": None,
                 "stock": 0, "capacity": 0, "servo_channel": slot, "enabled": False
             })
-            for slot in range(1,6)
+            for slot in range(1, 6)
         ]
-
     def products(self,machine_id):
         self.machine(machine_id)
         with self.db.connect() as c:
             rows = c.execute(
                 "SELECT product_id,name,price,stock,enabled,slot,capacity,servo_channel "
-                "FROM vending_products WHERE machine_id=? ORDER BY slot,product_id",
+                "FROM vending_products WHERE machine_id=? AND slot BETWEEN 1 AND 5 ORDER BY slot",
                 (machine_id,)
             ).fetchall()
-        # SQLite stores enabled as 0/1; the public API contract is a JSON boolean.
-        return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
+        # The physical product identity is the fixed slot number. The database
+        # product_id remains an internal key so each machine can have slots 1-5.
+        return [
+            {**dict(row), "product_id": str(row["slot"]),
+             "servo_channel": row["slot"], "enabled": bool(row["enabled"])}
+            for row in rows
+        ]
+    def _internal_product_id(self, machine_id, slot):
+        machine_key = hashlib.sha256(machine_id.encode("utf-8")).hexdigest()
+        return f"mgroup-product-{machine_key}-{slot}"
 
     def upsert_product(self,machine_id,product_id,name,price,stock,enabled=True,slot=None,capacity=None,servo_channel=None):
         self.machine(machine_id)
-        if not product_id.strip() or not name.strip(): raise ValueError("product_required")
+        product_id = str(product_id).strip()
+        if not product_id or not name.strip(): raise ValueError("product_required")
         if not isinstance(price,int) or isinstance(price,bool) or price<=0: raise ValueError("price_must_be_positive_integer")
         if not isinstance(stock,int) or isinstance(stock,bool) or stock<0: raise ValueError("stock_must_be_nonnegative_integer")
-        if slot is None:
+        fixed_slot_id = product_id in self.PRODUCT_IDS
+        if fixed_slot_id:
+            fixed_slot = int(product_id)
+            if slot is not None and slot != fixed_slot:
+                raise ValueError("product_slot_mismatch")
+            slot = fixed_slot
+        elif slot is None:
             with self.db.connect() as c:
                 existing=c.execute("SELECT slot FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)).fetchone()
                 if existing and existing["slot"] is not None:
@@ -119,28 +142,54 @@ class VendingService:
         if servo_channel is None: servo_channel=slot
         if servo_channel != slot: raise ValueError("servo_must_match_slot")
         with self.db.connect() as c:
+            if fixed_slot_id:
+                existing_at_slot=c.execute(
+                    "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=?",
+                    (machine_id,slot)
+                ).fetchone()
+                storage_product_id = existing_at_slot["product_id"] if existing_at_slot else self._internal_product_id(machine_id,slot)
+            else:
+                global_existing=c.execute(
+                    "SELECT machine_id FROM vending_products WHERE product_id=?",
+                    (product_id,)
+                ).fetchone()
+                if global_existing and global_existing["machine_id"] != machine_id:
+                    raise ValueError("product_id_already_exists")
+                storage_product_id=product_id
             conflict=c.execute(
                 "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=? AND product_id<>?",
-                (machine_id,slot,product_id)
+                (machine_id,slot,storage_product_id)
             ).fetchone()
             if conflict: raise ValueError("slot_already_configured")
             c.execute("""INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel)
                 VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(product_id) DO UPDATE SET
-                machine_id=excluded.machine_id,name=excluded.name,price=excluded.price,stock=excluded.stock,
-                enabled=excluded.enabled,slot=excluded.slot,capacity=excluded.capacity,servo_channel=excluded.servo_channel""",
-                (product_id,machine_id,name,price,stock,1 if enabled else 0,slot,capacity,servo_channel))
+                name=excluded.name,price=excluded.price,stock=excluded.stock,
+                enabled=excluded.enabled,slot=excluded.slot,capacity=excluded.capacity,servo_channel=excluded.servo_channel
+                WHERE vending_products.machine_id=excluded.machine_id""",
+                (storage_product_id,machine_id,name,price,stock,1 if enabled else 0,slot,capacity,slot))
             c.commit()
         return self.get_product(machine_id,product_id)
-
     def get_product(self,machine_id,product_id):
+        product_id = str(product_id)
         with self.db.connect() as c:
-            r=c.execute(
-                "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel "
-                "FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)
-            ).fetchone()
+            if product_id in self.PRODUCT_IDS:
+                r=c.execute(
+                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel "
+                    "FROM vending_products WHERE machine_id=? AND slot=?",
+                    (machine_id,int(product_id))
+                ).fetchone()
+            else:
+                r=c.execute(
+                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel "
+                    "FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)
+                ).fetchone()
         if not r: raise ValueError("product_not_found")
-        return dict(r)
-
+        result = dict(r)
+        if result["slot"] in range(1, 6):
+            result["product_id"] = str(result["slot"])
+            result["servo_channel"] = result["slot"]
+        result["enabled"] = bool(result["enabled"])
+        return result
     def begin(self,machine_id,product_id,credential_id,account_id,idempotency_key,payment_method="NFC",payment_provider="local"):
         machine=self.machine(machine_id)
         resolved=self.payment.identity.account_for_credential(credential_id)
@@ -155,22 +204,27 @@ class VendingService:
         if payment_method not in {"NFC","QRIS"}: raise ValueError("unsupported_vending_payment_method")
         if payment_method=="NFC" and payment_provider!="local": raise ValueError("invalid_nfc_provider")
         if payment_method=="QRIS" and not payment_provider: raise ValueError("qris_provider_required")
+        product_id = str(product_id)
         with self.db.connect() as c:
+            if product_id in self.PRODUCT_IDS:
+                p=c.execute("SELECT * FROM vending_products WHERE machine_id=? AND slot=?",(machine_id,int(product_id))).fetchone()
+                expected_product_key = p["product_id"] if p else self._internal_product_id(machine_id,int(product_id))
+            else:
+                p=c.execute("SELECT * FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)).fetchone()
+                expected_product_key = p["product_id"] if p else product_id
             old=c.execute("SELECT * FROM vending_transactions WHERE idempotency_key=?",(idempotency_key,)).fetchone()
             if old:
-                # A key may only replay the same logical request. Otherwise a
-                # client bug could accidentally reuse a paid transaction.
-                if (old["machine_id"] != machine_id or old["product_id"] != product_id
+                if (old["machine_id"] != machine_id or old["product_id"] != expected_product_key
                     or old["credential_id"] != credential_id or old["account_id"] != account_id
                     or old["payment_method"] != payment_method
                     or old["payment_provider"] != payment_provider):
                     raise ValueError("idempotency_key_conflict")
                 return dict(old)
-            p=c.execute("SELECT * FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)).fetchone()
             if not p: raise ValueError("product_not_found")
             if not p["enabled"]: raise ValueError("product_disabled")
             if p["stock"]<=0: raise ValueError("out_of_stock")
-            promo=self.promos.resolve(machine_id,product_id,payment_method,payment_provider)
+            promo_product_id = str(p["slot"]) if product_id in self.PRODUCT_IDS else product_id
+            promo=self.promos.resolve(machine_id,promo_product_id,payment_method,payment_provider)
             discount=0
             promo_id=None
             if promo:
@@ -182,11 +236,10 @@ class VendingService:
                 (transaction_id,machine_id,product_id,credential_id,account_id,base_amount,discount_amount,amount,
                  payment_method,payment_provider,payment_status,status,dispense_status,idempotency_key,promo_id)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (tx,machine_id,product_id,credential_id,account_id,p["price"],discount,final_amount,payment_method,payment_provider,
+                (tx,machine_id,p["product_id"],credential_id,account_id,p["price"],discount,final_amount,payment_method,payment_provider,
                  "pending","pending","pending",idempotency_key,promo_id))
             c.commit()
         return self.get(tx)
-
     def authorize(self,transaction_id):
         tx=self.get(transaction_id)
         if tx["status"] in {"authorized","completed","refunding","failed","refunded"}: return tx
