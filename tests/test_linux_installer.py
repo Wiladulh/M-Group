@@ -27,6 +27,11 @@ def test_linux_installer_defaults_to_all_interfaces_and_prompts_for_configuratio
     assert 'chown root:"$SERVICE_USER" "$ENV_FILE"' in installer
     assert 'chmod 0640 "$ENV_FILE"' in installer
     assert 'chown "$SERVICE_USER:$SERVICE_USER" /var/log/m-group.log' in installer
+    assert "Initial Cashier operator PIN" in installer
+    assert "M_GROUP_CASHIER_OPERATOR_PIN=$OPERATOR_PIN" in installer
+    assert 'umask 077' in installer
+    assert 'chmod 0750 "$DATA"' in installer
+    assert 'if [ -r "$CONFIG_DIR/m-group.env" ]; then' in installer
 
 
 def test_linux_installer_has_supported_prerequisite_bootstrap():
