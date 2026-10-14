@@ -224,14 +224,13 @@ EOF
 #!/sbin/openrc-run
 name="M-Group"
 description="M-Group server"
-command="$BIN_DIR/m-group-server"
+command="$BIN_DIR/m-group-server-openrc"
 command_user="$SERVICE_USER:$SERVICE_USER"
 command_background="yes"
 pidfile="/run/m-group.pid"
 output_log="/var/log/m-group.log"
 error_log="/var/log/m-group.log"
 directory="$PREFIX"
-start_stop_daemon_args="--env-file $ENV_FILE"
 depend() { need net; after firewall; }
 EOF
     chmod 0755 /etc/init.d/m-group
