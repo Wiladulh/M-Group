@@ -99,3 +99,24 @@ def test_nfc_payment_records_100_percent_promo_without_ledger_debit():
         assert result["ledger_reference"] is None
         assert result["balance_before"] == 100000
         assert result["balance_after"] == 100000
+
+
+def test_credential_pin_is_blocked_after_five_failed_attempts():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        identity = PaymentService(db).identity
+        identity.set_pin("member-1", "1234")
+        for _ in range(identity.PIN_MAX_ATTEMPTS):
+            assert identity.verify_credential_pin("cred-1", "9999") is False
+        result = identity.authorize_credential("cred-1")
+        assert result["authorized"] is False
+        assert result["reason"] == "credential_pin_blocked"
+        try:
+            identity.verify_credential_pin("cred-1", "1234")
+            assert False, "blocked credentials must not accept a correct PIN"
+        except PermissionError as exc:
+            assert str(exc) == "credential_pin_blocked"
+        identity.unblock_credential_pin("cred-1")
+        assert identity.verify_credential_pin("cred-1", "1234") is True
