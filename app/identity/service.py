@@ -33,6 +33,11 @@ class IdentityService:
                 "UPDATE identity_members SET pin_salt=?,pin_hash=? WHERE member_id=?",
                 (salt, digest, member_id),
             )
+            for table in ("identity_credentials", "credential_registry"):
+                c.execute(
+                    f"UPDATE {table} SET pin_failed_attempts=0,pin_blocked=0 WHERE member_id=?",
+                    (member_id,),
+                )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
                 "VALUES(?,?,?,?)",
