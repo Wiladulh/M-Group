@@ -94,6 +94,7 @@ CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}
 HOST=${M_GROUP_HOST:-0.0.0.0}
 PORT=${M_GROUP_PORT:-8011}
 ADMIN_TOKEN=${M_GROUP_ADMIN_TOKEN:-}
+OPERATOR_PIN=${M_GROUP_CASHIER_OPERATOR_PIN:-}
 # Interactive setup for headless/server installs. Defaults are persistent paths.
 if [ "$MODE" = system ] && [ -t 0 ]; then
   printf "\nM-Group server setup (press Enter to accept the default)\n"
@@ -122,6 +123,16 @@ if [ "$MODE" = system ] && [ -t 0 ]; then
       IFS= read -r ADMIN_TOKEN || ADMIN_TOKEN=
     fi
   fi
+  if [ -z "$OPERATOR_PIN" ]; then
+    printf "Initial Cashier operator PIN (4-6 digits; blank lets you set it later in WebUI, hidden): "
+    if stty -echo 2>/dev/null; then
+      IFS= read -r OPERATOR_PIN || OPERATOR_PIN=
+      stty echo 2>/dev/null || true
+      printf "\n"
+    else
+      IFS= read -r OPERATOR_PIN || OPERATOR_PIN=
+    fi
+  fi
 fi
 case "$HOST" in ""|*[!A-Za-z0-9.:_-]*) echo "M_GROUP_HOST must be an IP address or hostname (use 0.0.0.0 for all interfaces)." >&2; exit 2 ;; esac
 case "$PORT" in ""|*[!0-9]*) echo "M_GROUP_PORT must be a TCP port number." >&2; exit 2 ;; esac
@@ -135,6 +146,10 @@ done
 if [ -n "$ADMIN_TOKEN" ]; then
   case "$ADMIN_TOKEN" in *[!A-Za-z0-9._~-]*) echo "Admin token may contain only letters, numbers, dot, underscore, tilde, and hyphen." >&2; exit 2 ;; esac
   [ "${#ADMIN_TOKEN}" -ge 24 ] || { echo "Admin token must be at least 24 characters." >&2; exit 2; }
+fi
+if [ -n "$OPERATOR_PIN" ]; then
+  case "$OPERATOR_PIN" in *[!0-9]*) echo "Cashier operator PIN must contain digits only." >&2; exit 2 ;; esac
+  [ "${#OPERATOR_PIN}" -ge 4 ] && [ "${#OPERATOR_PIN}" -le 6 ] || { echo "Cashier operator PIN must be 4-6 digits." >&2; exit 2; }
 fi
 case "$PORT" in ''|*[!0-9]*) echo "M_GROUP_PORT must be a TCP port number." >&2; exit 2 ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "M_GROUP_PORT must be 1..65535." >&2; exit 2; }
