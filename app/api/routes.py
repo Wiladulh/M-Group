@@ -227,6 +227,17 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             raise HTTPException(404, str(e))
 
+    def public_vending_transaction(tx):
+        result = dict(tx)
+        with db.connect() as c:
+            row = c.execute(
+                "SELECT slot FROM vending_products WHERE product_id=? AND machine_id=?",
+                (result.get("product_id"), result.get("machine_id")),
+            ).fetchone()
+        if row and row["slot"] in range(1, 6):
+            result["product_id"] = str(row["slot"])
+        return result
+
     @r.get("/health")
     def health(): return {"status": "ok", "service": "M-Group"}
 
@@ -283,8 +294,8 @@ def build_router(db, app_settings=None):
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
             machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
-            products=c.execute("""SELECT product_id,machine_id,name,price,stock,capacity,slot,servo_channel,enabled
-                   FROM vending_products ORDER BY machine_id,slot,product_id""").fetchall()
+            products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
+                   FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
             devices=c.execute("SELECT device_id,device_type,status,last_seen FROM device_registry ORDER BY device_id").fetchall()
             cashier_count=c.execute(
                 "SELECT COUNT(*) FROM payment_transactions WHERE transaction_source='CASHIER' AND status='completed'"
@@ -702,17 +713,29 @@ def build_router(db, app_settings=None):
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(machine_id,product_id,q:VendingProductRequest,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
+        if product_id not in VendingService.PRODUCT_IDS:
+            raise HTTPException(400,"product_id_must_be_1_to_5")
         if q.product_id!=product_id:raise HTTPException(400,"product_id_mismatch")
-        try:return vending.upsert_product(machine_id,product_id,q.name,q.price,q.stock,q.enabled,q.slot,q.capacity,q.servo_channel)
+        slot = int(product_id)
+        if q.slot is not None and q.slot != slot:
+            raise HTTPException(400,"product_slot_mismatch")
+        if q.servo_channel is not None and q.servo_channel != slot:
+            raise HTTPException(400,"servo_must_match_slot")
+        try:
+            result = vending.upsert_product(machine_id,product_id,q.name,q.price,q.stock,q.enabled,slot,q.capacity,slot)
+            result["product_id"] = str(result["slot"])
+            return result
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
 
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
+            if str(q.product_id) not in VendingService.PRODUCT_IDS:
+                raise HTTPException(400,"product_id_must_be_1_to_5")
             machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
+            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.get("/vending/transactions/{transaction_id}")
@@ -724,7 +747,7 @@ def build_router(db, app_settings=None):
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
-            return tx
+            return public_vending_transaction(tx)
         except HTTPException:
             raise
         except ValueError as e:
@@ -737,7 +760,7 @@ def build_router(db, app_settings=None):
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.authorize(transaction_id)
+            return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:raise HTTPException(400,str(e))
 
@@ -748,7 +771,7 @@ def build_router(db, app_settings=None):
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.dispense(transaction_id,q.success)
+            return public_vending_transaction(vending.dispense(transaction_id,q.success))
         except ValueError as e:raise HTTPException(409,str(e))
 
     @r.post("/payments")
