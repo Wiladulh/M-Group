@@ -34,7 +34,7 @@ Then open `http://127.0.0.1:8011` locally.
 
 To bind only to a specific interface, set `M_GROUP_HOST` to that interface address in the configuration file. Do not expose the raw API port publicly without HTTPS and appropriate network controls.
 
-System install configuration and the admin API token are stored in `/etc/m-group/m-group.env` by default with mode `0600`. Keep this file secret. During installation, the default locations are `/opt/M-Group` (application), `/var/lib/M-Group` (database/data), and `/etc/m-group` (configuration); the installer lets you change these locations interactively. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
+System install configuration and the admin API token are stored in `/etc/m-group/m-group.env` by default with mode `0640`, owned by root and readable only by root and the service group. Keep this file secret. During installation, the default locations are `/opt/M-Group` (application), `/var/lib/M-Group` (database/data), and `/etc/m-group` (configuration); the installer lets you change these locations interactively. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
 
 - systemd: `sudo systemctl restart m-group`
 - OpenRC: `sudo rc-service m-group restart`
