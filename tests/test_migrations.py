@@ -16,6 +16,10 @@ def test_canonical_migrations_are_repeatable_and_integrity_clean():
         with db.connect() as c:
             assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+            operator_pin = c.execute(
+                "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
+            ).fetchone()
+            assert operator_pin is None or not operator_pin["value"]
             tables = {
                 row[0]
                 for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
