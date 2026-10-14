@@ -118,7 +118,7 @@ def test_credential_pin_is_blocked_after_five_failed_attempts():
             assert False, "blocked credentials must not accept a correct PIN"
         except PermissionError as exc:
             assert str(exc) == "credential_pin_blocked"
-        identity.unblock_credential_pin("cred-1")
+        identity.set_pin("member-1", "1234", actor_id="admin-reset")
         assert identity.verify_credential_pin("cred-1", "1234") is True
 
 
