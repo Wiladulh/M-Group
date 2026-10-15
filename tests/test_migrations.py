@@ -134,3 +134,121 @@ def test_exclusive_database_lock_waits_for_open_connections():
         worker.join(timeout=3)
         assert not worker.is_alive(), "exclusive lock worker did not finish"
         assert not worker_errors, worker_errors
+
+
+
+def test_legacy_database_upgrade_preserves_financial_and_vending_records():
+    """Exercise a real forward upgrade from the pre-hardening schema with live rows."""
+    import shutil
+
+    migrations = Path(__file__).resolve().parents[1] / "app" / "migrations"
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        legacy_migrations = root / "legacy-migrations"
+        legacy_migrations.mkdir()
+        for migration in sorted(migrations.glob("*.sql")):
+            if int(migration.name[:3]) <= 10:
+                shutil.copy2(migration, legacy_migrations / migration.name)
+
+        db = Database(root / "legacy-m-group.db")
+        # Build the legacy schema using only migrations that existed before
+        # NFC-payment and vending-promotion table rebuilds.
+        db.migrate(migrations_dir=legacy_migrations)
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
+                ("member-legacy", "Legacy Member"),
+            )
+            c.execute(
+                "INSERT INTO identity_credentials(credential_id,member_id,credential_type,status) "
+                "VALUES(?,?,?,?)",
+                ("cred-legacy", "member-legacy", "nfc", "active"),
+            )
+            c.execute(
+                "INSERT INTO financial_accounts(account_id,member_id,account_type,status) "
+                "VALUES(?,?,?,?)",
+                ("acct-legacy", "member-legacy", "savings", "active"),
+            )
+            c.execute(
+                "INSERT INTO financial_ledger(account_id,direction,amount,reference) "
+                "VALUES(?,?,?,?)",
+                ("acct-legacy", "credit", 5000, "legacy-seed"),
+            )
+            c.execute(
+                "INSERT INTO vending_machines(machine_id,name,status) VALUES(?,?,?)",
+                ("machine-legacy", "Legacy machine", "active"),
+            )
+            c.execute(
+                "INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled) "
+                "VALUES(?,?,?,?,?,?)",
+                ("product-legacy", "machine-legacy", "Legacy product", 1250, 7, 1),
+            )
+            c.execute(
+                "INSERT INTO payment_transactions(transaction_id,credential_id,account_id,amount,status) "
+                "VALUES(?,?,?,?,?)",
+                ("payment-legacy", "cred-legacy", "acct-legacy", 1250, "completed"),
+            )
+            c.execute(
+                "INSERT INTO vending_transactions("
+                "transaction_id,machine_id,product_id,credential_id,account_id,amount,status) "
+                "VALUES(?,?,?,?,?,?,?)",
+                ("vending-legacy", "machine-legacy", "product-legacy",
+                 "cred-legacy", "acct-legacy", 1250, "completed"),
+            )
+            c.execute(
+                "INSERT INTO device_registry(device_id,device_type,status,last_seen) "
+                "VALUES(?,?,?,?)",
+                ("device-legacy", "cashier", "active", "2025-01-02 03:04:05"),
+            )
+            c.commit()
+
+        # Upgrade that populated old database through every current migration.
+        db.migrate()
+
+        with db.connect() as c:
+            assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+
+            assert c.execute(
+                "SELECT name FROM identity_members WHERE member_id='member-legacy'"
+            ).fetchone()[0] == "Legacy Member"
+            assert c.execute(
+                "SELECT account_id FROM financial_accounts WHERE account_id='acct-legacy'"
+            ).fetchone()[0] == "acct-legacy"
+            assert c.execute(
+                "SELECT direction,amount,reference FROM financial_ledger WHERE account_id='acct-legacy'"
+            ).fetchone()[:] == ("credit", 5000, "legacy-seed")
+
+            payment = c.execute(
+                "SELECT transaction_id,amount,status,original_amount,final_amount "
+                "FROM payment_transactions WHERE transaction_id='payment-legacy'"
+            ).fetchone()
+            assert payment[:] == ("payment-legacy", 1250, "completed", 1250, 1250)
+
+            vending = c.execute(
+                "SELECT transaction_id,amount,status,base_amount,discount_amount,promo_id "
+                "FROM vending_transactions WHERE transaction_id='vending-legacy'"
+            ).fetchone()
+            assert vending[:] == ("vending-legacy", 1250, "completed", 1250, 0, None)
+
+            product = c.execute(
+                "SELECT stock,price FROM vending_products WHERE product_id='product-legacy'"
+            ).fetchone()
+            assert product[:] == (7, 1250)
+            device = c.execute(
+                "SELECT device_type,status,last_seen,hardware_id FROM device_registry "
+                "WHERE device_id='device-legacy'"
+            ).fetchone()
+            assert device[:] == ("cashier", "active", "2025-01-02 03:04:05", "device-legacy")
+
+        # A second upgrade must be idempotent and must not duplicate or drop rows.
+        db.migrate()
+        with db.connect() as c:
+            assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+            assert c.execute(
+                "SELECT COUNT(*) FROM payment_transactions WHERE transaction_id='payment-legacy'"
+            ).fetchone()[0] == 1
+            assert c.execute(
+                "SELECT COUNT(*) FROM vending_transactions WHERE transaction_id='vending-legacy'"
+            ).fetchone()[0] == 1
