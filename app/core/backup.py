@@ -204,7 +204,9 @@ def restore_native_backup(db, archive):
         Path(str(tmp) + "-journal").unlink(missing_ok=True)
         Path(str(tmp) + "-wal").unlink(missing_ok=True)
         Path(str(tmp) + "-shm").unlink(missing_ok=True)
+        Path(str(tmp) + ".lock").unlink(missing_ok=True)
         raise
+    Path(str(tmp) + ".lock").unlink(missing_ok=True)
     return manifest
 
 def import_excel(db, source):
