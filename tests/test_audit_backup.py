@@ -84,3 +84,54 @@ def test_native_restore_replaces_database_atomically():
                 assert db.execute("SELECT 1 FROM identity_members WHERE member_id='live-only'").fetchone() is None
         finally:
             main.get_settings=old
+
+
+def test_native_restore_checkpoints_wal_before_swapping_database():
+    from app.core.backup import create_native_backup, restore_native_backup
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            app = main.create_app()
+            db = app.state.db
+            with db.connect() as connection:
+                assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+                connection.execute(
+                    "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
+                    ("restore-wal-member", "Restored member"),
+                )
+                connection.commit()
+
+            archive = root / "wal-backup.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
+                    ("live-wal-only", "Must not survive restore"),
+                )
+                connection.commit()
+
+            restore_native_backup(db, archive)
+
+            with db.connect() as connection:
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='restore-wal-member'"
+                ).fetchone()
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='live-wal-only'"
+                ).fetchone() is None
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+            assert not Path(str(db.path) + "-wal").exists()
+            assert not Path(str(db.path) + "-shm").exists()
+        finally:
+            main.get_settings = old
