@@ -24,7 +24,7 @@ DB_PATH=${DB_OVERRIDE:-${CONFIG_DB:-"$DATA/M-Group.db"}}
 PYTHON="$PREFIX/venv/bin/python"
 [ -x "$PYTHON" ] || { echo "M-Group Python environment not found at $PYTHON." >&2; exit 1; }
 [ -d "$SOURCE_DIR/app" ] || { echo "Application source not found at $SOURCE_DIR/app." >&2; exit 1; }
-[ -f "$DB_PATH" ] || { echo "Database not found at $DB_PATH; refusing upgrade without a verified backup." >&2; exit 1; }
+[ -f "$DB_PATH" ] || { echo "Database not found at $DB_PATH; refusing to upgrade without a verified pre-upgrade snapshot." >&2; exit 1; }
 
 # Preserve the original service state. Never start a service that was stopped.
 MANAGER=none
