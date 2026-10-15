@@ -2,9 +2,57 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SOURCE_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-PREFIX=${M_GROUP_PREFIX:-/opt/M-Group}
-[ -x "$PREFIX/venv/bin/python" ] || { echo "M-Group not found at $PREFIX." >&2; exit 1; }
-"$PREFIX/venv/bin/python" -m pip install --upgrade "$SOURCE_DIR"
+CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}
+PREFIX_OVERRIDE=${M_GROUP_PREFIX:-}
+DATA_OVERRIDE=${M_GROUP_DATA_DIR:-}
+DB_OVERRIDE=${M_GROUP_DB_PATH:-}
+# Read only known settings from the installer-owned config; do not execute it
+# as shell code. Explicit environment overrides always take precedence.
+read_config_value() {
+  key=$1
+  [ -r "$CONFIG_DIR/m-group.env" ] || return 0
+  sed -n "s/^${key}=//p" "$CONFIG_DIR/m-group.env" | head -n 1
+}
+CONFIG_PREFIX=$(read_config_value M_GROUP_PREFIX)
+CONFIG_DATA=$(read_config_value M_GROUP_DATA_DIR)
+CONFIG_DB=$(read_config_value M_GROUP_DB_PATH)
+PREFIX=${PREFIX_OVERRIDE:-${CONFIG_PREFIX:-/opt/M-Group}}
+DATA=${DATA_OVERRIDE:-${CONFIG_DATA:-/var/lib/M-Group}}
+DB_PATH=${DB_OVERRIDE:-${CONFIG_DB:-"$DATA/M-Group.db"}}
+PYTHON="$PREFIX/venv/bin/python"
+[ -x "$PYTHON" ] || { echo "M-Group not found at $PREFIX." >&2; exit 1; }
+
+# Take and verify an online SQLite backup before pip changes the installed
+# package; the app may be running and the database may use WAL mode.
+if [ -f "$DB_PATH" ]; then
+  mkdir -p "$DATA/backups"
+  chmod 0750 "$DATA/backups"
+  BACKUP="$DATA/backups/M-Group_PRE_UPGRADE_$(date +%Y%m%d_%H%M%S)_$$.sqlite3"
+  "$PYTHON" - "$DB_PATH" "$BACKUP" <<'PY'
+import os, sqlite3, sys
+source_path, backup_path = sys.argv[1:3]
+source = sqlite3.connect("file:" + source_path + "?mode=ro", uri=True, timeout=30)
+target = None
+try:
+    target = sqlite3.connect(backup_path)
+    source.backup(target)
+    result = target.execute("PRAGMA integrity_check").fetchone()[0]
+    if result != "ok":
+        raise SystemExit("Pre-upgrade database backup failed integrity_check: " + str(result))
+    target.commit()
+finally:
+    source.close()
+    if target is not None:
+        target.close()
+os.chmod(backup_path, 0o600)
+PY
+  echo "Verified pre-upgrade database backup: $BACKUP"
+else
+  echo "Database not found at $DB_PATH; refusing to upgrade without a verified pre-upgrade snapshot." >&2
+  exit 1
+fi
+
+"$PYTHON" -m pip install --upgrade "$SOURCE_DIR"
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet m-group; then
   systemctl restart m-group
 elif command -v rc-service >/dev/null 2>&1 && rc-service m-group status >/dev/null 2>&1; then

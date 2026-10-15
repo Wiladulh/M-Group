@@ -94,3 +94,17 @@ def test_installer_supplied_operator_pin_is_hashed_on_initialization(monkeypatch
         salt, digest = stored.split(":", 1)
         expected = hashlib.pbkdf2_hmac("sha256", b"2468", salt.encode(), 120000).hex()
         assert secrets.compare_digest(digest, expected)
+
+
+
+def test_context_managed_database_connection_is_closed():
+    with TemporaryDirectory() as directory:
+        db = Database(Path(directory) / "m-group.db")
+        with db.connect() as connection:
+            connection.execute("CREATE TABLE connection_lifecycle_test (value INTEGER)")
+        try:
+            connection.execute("SELECT 1")
+        except Exception as exc:
+            assert "closed" in str(exc).lower()
+        else:
+            raise AssertionError("Database context manager left the SQLite connection open")

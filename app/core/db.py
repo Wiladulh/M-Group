@@ -5,6 +5,16 @@ import secrets
 from pathlib import Path
 from importlib.resources import files as resource_files
 
+class ClosingConnection(sqlite3.Connection):
+    """SQLite connection that releases file handles after a context-managed unit of work."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -14,7 +24,7 @@ class Database:
         # The database contains identity and financial data. Keep SQLite files
         # and their journal/WAL sidecars private even when launched manually.
         os.umask(0o077)
-        c = sqlite3.connect(self.path)
+        c = sqlite3.connect(self.path, factory=ClosingConnection)
         try:
             self.path.chmod(0o600)
         except OSError:

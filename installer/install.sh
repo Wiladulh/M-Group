@@ -95,6 +95,31 @@ HOST=${M_GROUP_HOST:-0.0.0.0}
 PORT=${M_GROUP_PORT:-8011}
 ADMIN_TOKEN=${M_GROUP_ADMIN_TOKEN:-}
 OPERATOR_PIN=${M_GROUP_CASHIER_OPERATOR_PIN:-}
+# Reuse the existing system configuration on reinstall unless the operator
+# explicitly overrides a value through the environment or interactive prompt.
+# Read only known key/value lines; never source the old file during installation.
+if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then
+  ENV_FILE="$CONFIG_DIR/m-group.env"
+  if [ "${M_GROUP_PREFIX+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_PREFIX=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || PREFIX=$saved
+  fi
+  if [ "${M_GROUP_DATA_DIR+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_DATA_DIR=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || DATA=$saved
+  fi
+  if [ "${M_GROUP_HOST+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_HOST=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || HOST=$saved
+  fi
+  if [ "${M_GROUP_PORT+x}" != x ]; then
+    saved=$(sed -n 's/^M_GROUP_PORT=//p' "$ENV_FILE" | head -n 1)
+    [ -z "$saved" ] || PORT=$saved
+  fi
+  if [ -z "$ADMIN_TOKEN" ]; then
+    ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
+  fi
+fi
 # Interactive setup for headless/server installs. Defaults are persistent paths.
 if [ "$MODE" = system ] && [ -t 0 ]; then
   printf "\nM-Group server setup (press Enter to accept the default)\n"
@@ -134,6 +159,9 @@ if [ "$MODE" = system ] && [ -t 0 ]; then
     fi
   fi
 fi
+# Interactive prompts may override PREFIX; derive install paths only after all overrides.
+VENV="$PREFIX/venv"
+BIN_DIR="$PREFIX/bin"
 case "$HOST" in ""|*[!A-Za-z0-9.:_-]*) echo "M_GROUP_HOST must be an IP address or hostname (use 0.0.0.0 for all interfaces)." >&2; exit 2 ;; esac
 case "$PORT" in ""|*[!0-9]*) echo "M_GROUP_PORT must be a TCP port number." >&2; exit 2 ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "M_GROUP_PORT must be 1..65535." >&2; exit 2; }
@@ -216,6 +244,7 @@ if [ "$MODE" = system ]; then
   if [ -z "$ADMIN_TOKEN" ]; then ADMIN_TOKEN=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(40))'); GENERATED_TOKEN=1; fi
   umask 077
   cat > "$ENV_FILE" <<EOF
+M_GROUP_PREFIX=$PREFIX
 M_GROUP_HOST=$HOST
 M_GROUP_PORT=$PORT
 M_GROUP_DATA_DIR=$DATA
@@ -232,6 +261,26 @@ EOF
     else
       SERVICE_USER=root
       echo "Warning: cannot create service user; service will run as root." >&2
+    fi
+  fi
+  # Initialize/migrate before registering the service. This also hashes an
+  # optional first-run operator PIN, so plaintext can be removed even when
+  # M_GROUP_SKIP_SERVICE=1 and no daemon will start during installation.
+  "$BIN_DIR/m-group" init
+  if [ -n "$OPERATOR_PIN" ]; then
+    if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
+import sqlite3, sys
+try:
+    with sqlite3.connect(sys.argv[1]) as c:
+        row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
+    raise SystemExit(0 if row and row[0] else 1)
+except Exception:
+    raise SystemExit(1)
+PY
+    then
+      sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
+    else
+      echo "Warning: the initial operator PIN was not confirmed in the database; it remains in the protected config file." >&2
     fi
   fi
   if [ "$SERVICE_USER" != root ]; then chown -R "$SERVICE_USER" "$DATA"; fi
@@ -298,29 +347,6 @@ EOF
     echo "OpenRC service enabled and started."
   else
     echo "No active systemd/OpenRC detected; service was not registered."
-  fi
-  # Remove the one-time PIN from plaintext config after the DB has stored its hash.
-  if [ -n "$OPERATOR_PIN" ] && [ "${M_GROUP_SKIP_SERVICE:-0}" != 1 ]; then
-    attempt=0
-    while [ "$attempt" -lt 10 ]; do
-      if "$VENV/bin/python" - "$DATA/M-Group.db" <<'PY'
-import sqlite3, sys
-try:
-    with sqlite3.connect(sys.argv[1]) as c:
-        row = c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
-    raise SystemExit(0 if row and row[0] else 1)
-except Exception:
-    raise SystemExit(1)
-PY
-      then
-        sed -i '/^M_GROUP_CASHIER_OPERATOR_PIN=/d' "$ENV_FILE"
-        chown root:"$SERVICE_USER" "$ENV_FILE"
-        chmod 0640 "$ENV_FILE"
-        break
-      fi
-      attempt=$((attempt + 1))
-      sleep 1
-    done
   fi
   echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
   if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi

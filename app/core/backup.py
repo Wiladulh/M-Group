@@ -26,7 +26,7 @@ SHEETS = {
                dispense_status,status
         FROM vending_transactions v
         LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
-        ORDER BY created_at
+        ORDER BY v.created_at
     """,
     "payments": """
         SELECT transaction_id,created_at,transaction_source,device_id,credential_id,
@@ -61,11 +61,18 @@ def export_excel(db, target, start=None, end=None):
     wb=Workbook()
     wb.remove(wb.active)
     for name,sql in SHEETS.items():
-        if start and "WHERE" not in sql.upper():
-            sql=sql.replace("ORDER BY","WHERE created_at>=? AND created_at<? ORDER BY")
+        args=()
+        if start:
+            # Filter the selected result columns in an outer query. This avoids
+            # ambiguous created_at references in joined exports (notably vending,
+            # which joins vending_transactions and vending_machines).
+            order_by = sql.upper().rfind("ORDER BY")
+            base_sql = sql[:order_by].rstrip() if order_by >= 0 else sql.rstrip().rstrip(";")
+            sql = (
+                "SELECT * FROM (" + base_sql + ") AS export_rows "
+                "WHERE created_at>=? AND created_at<? ORDER BY created_at"
+            )
             args=(start,end)
-        else:
-            args=()
         with db.connect() as c:
             cur=c.execute(sql,args)
             headers=[d[0] for d in cur.description]

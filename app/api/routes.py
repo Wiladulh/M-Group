@@ -391,10 +391,12 @@ def build_router(db, app_settings=None):
     def member_revoke_nfc(member_id,card_id,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
         try:
-            result = members.revoke_card(card_id)
-            if result["member_id"] != member_id:
+            member = members.get(member_id)
+            if member is None or not any(
+                card["card_id"] == card_id for card in member["nfc_cards"]
+            ):
                 raise HTTPException(404,"nfc_card_not_found")
-            return result
+            return members.revoke_card(card_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
@@ -558,13 +560,25 @@ def build_router(db, app_settings=None):
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
+        # Heartbeat is telemetry, not an administrative status mutation. Only an
+        # admin may disable/maintain a device; accepting status from firmware lets
+        # a device accidentally lock itself out or write arbitrary registry states.
+        if q.status != "active":
+            raise HTTPException(400,"invalid_heartbeat_status")
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400,"invalid_device_type")
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
-            c.execute("""UPDATE device_registry SET device_type=?,status=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
-                      (q.device_type,q.status,device_id))
+            row = c.execute(
+                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if not row or row["device_type"] != q.device_type:
+                raise HTTPException(409,"device_type_mismatch")
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
+                      (device_id,))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",(device_id,"heartbeat",q.model_dump_json()))
             c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,"status":q.status}
+        return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
     def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
@@ -1108,7 +1122,9 @@ def build_router(db, app_settings=None):
         import datetime as dt
         date=date or dt.date.today().isoformat()
         if period=="day":
-            start=date; end=date+" 23:59:59"
+            selected_day=dt.date.fromisoformat(date)
+            start=selected_day.isoformat()
+            end=(selected_day+dt.timedelta(days=1)).isoformat()
         elif period=="month":
             y,m=map(int,date[:7].split("-")); start=f"{y:04d}-{m:02d}-01"
             end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
@@ -1134,10 +1150,13 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
+        # Reuse the endpoint's authorization and parameter validation, passing
+        # the already-validated token explicitly because this is a direct call.
+        data=audit_report(source,period,date,x_m_group_admin_token)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
-        path=root/f"audit-{source.lower()}-{period}-{date or 'today'}.xlsx"
-        data=audit_report(source,period,date)
+        # Use normalized values from the validated report for the filename.
+        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['start']}.xlsx"
         export_rows_excel(data["transactions"],path)
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -1165,11 +1184,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(413,"backup_upload_too_large")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
+        # Preserve the current live database before replacing it. Keep the
+        # snapshot even if validation/restoration fails so operators can recover.
+        import datetime as dt
+        snapshot=root/f"M-Group_PRE_RESTORE_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}.mgroup.zip"
         path=root/f"restore-upload-{uuid4().hex}.mgroup.zip"
         try:
+            create_native_backup(db,snapshot,include_excel=False)
             path.write_bytes(content)
             result=restore_native_backup(db,path)
-            return {"status":"restored","manifest":result}
+            return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name}
         except HTTPException:
             raise
         except Exception:

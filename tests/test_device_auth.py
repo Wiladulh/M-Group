@@ -22,6 +22,28 @@ def test_device_authentication_and_provisioning():
                            json={"device_type":"esp32-cashier"},
                            headers={"X-M-Group-Device-Key":key})
             assert ok.status_code==200
+            assert ok.json()["status"] == "active"
+
+            # A device heartbeat must not be able to change its own registry status.
+            status_change=client.post(
+                "/api/v1/devices/cashier-01/heartbeat",
+                json={"device_type":"esp32-cashier","status":"disabled"},
+                headers={"X-M-Group-Device-Key":key},
+            )
+            assert status_change.status_code == 400
+            type_change=client.post(
+                "/api/v1/devices/cashier-01/heartbeat",
+                json={"device_type":"esp32-s3-vending"},
+                headers={"X-M-Group-Device-Key":key},
+            )
+            assert type_change.status_code == 409
+            with client.app.state.db.connect() as c:
+                row = c.execute(
+                    "SELECT status,device_type FROM device_registry WHERE device_id='cashier-01'"
+                ).fetchone()
+                assert row["status"] == "active"
+                assert row["device_type"] == "esp32-cashier"
+
             bad=client.post("/api/v1/devices/cashier-01/heartbeat",
                             json={"device_type":"esp32-cashier"},
                             headers={"X-M-Group-Device-Key":"wrong"})
