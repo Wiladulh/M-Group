@@ -565,10 +565,17 @@ def build_router(db, app_settings=None):
         # a device accidentally lock itself out or write arbitrary registry states.
         if q.status != "active":
             raise HTTPException(400,"invalid_heartbeat_status")
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400,"invalid_device_type")
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
-            c.execute("""UPDATE device_registry SET device_type=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
-                      (q.device_type,device_id))
+            row = c.execute(
+                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if not row or row["device_type"] != q.device_type:
+                raise HTTPException(409,"device_type_mismatch")
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
+                      (device_id,))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",(device_id,"heartbeat",q.model_dump_json()))
             c.commit()
         return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
