@@ -2,11 +2,27 @@ import sqlite3
 import hashlib
 import os
 import secrets
+import fcntl
+from contextlib import contextmanager
 from pathlib import Path
 from importlib.resources import files as resource_files
 
 class ClosingConnection(sqlite3.Connection):
-    """SQLite connection that releases file handles after a context-managed unit of work."""
+    """SQLite connection that releases its process-wide shared DB lock on close."""
+
+    _lock_fd = None
+
+    def close(self):
+        lock_fd = self._lock_fd
+        self._lock_fd = None
+        try:
+            return super().close()
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
 
     def __exit__(self, exc_type, exc_value, traceback):
         try:
@@ -19,20 +35,55 @@ class Database:
     def __init__(self, path: Path):
         self.path = Path(path)
 
+    def _acquire_lock(self, exclusive=False):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = Path(str(self.path) + ".lock")
+        os.umask(0o077)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            return fd
+        except Exception:
+            os.close(fd)
+            raise
+
+    @contextmanager
+    def exclusive_lock(self):
+        """Block new DB users and wait for active managed connections to finish."""
+        fd = self._acquire_lock(exclusive=True)
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+
     def connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # The database contains identity and financial data. Keep SQLite files
-        # and their journal/WAL sidecars private even when launched manually.
-        os.umask(0o077)
-        c = sqlite3.connect(self.path, factory=ClosingConnection)
+        # Every app connection holds a shared OS-level lock for its entire
+        # lifetime. Restore/maintenance can then obtain an exclusive lock that
+        # coordinates requests across server worker processes, not just threads.
+        lock_fd = self._acquire_lock(exclusive=False)
+        c = None
         try:
+            os.umask(0o077)
+            c = sqlite3.connect(self.path, factory=ClosingConnection)
+            c._lock_fd = lock_fd
             self.path.chmod(0o600)
-        except OSError:
-            c.close()
+            c.row_factory = sqlite3.Row
+            c.execute("PRAGMA foreign_keys=ON")
+            return c
+        except Exception:
+            if c is not None:
+                c.close()
+            else:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
             raise
-        c.row_factory = sqlite3.Row
-        c.execute("PRAGMA foreign_keys=ON")
-        return c
 
     def migrate(self, migrations_dir: Path | None = None):
         if migrations_dir is not None:
