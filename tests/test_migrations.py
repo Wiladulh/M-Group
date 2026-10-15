@@ -4,6 +4,7 @@ import stat
 import hashlib
 import secrets
 from tempfile import TemporaryDirectory
+from threading import Event, Thread
 
 from app.core.db import Database
 
@@ -108,3 +109,28 @@ def test_context_managed_database_connection_is_closed():
             assert "closed" in str(exc).lower()
         else:
             raise AssertionError("Database context manager left the SQLite connection open")
+
+
+def test_exclusive_database_lock_waits_for_open_connections():
+    with TemporaryDirectory() as directory:
+        db = Database(Path(directory) / "m-group.db")
+        db.migrate()
+        acquired = Event()
+        worker_errors = []
+
+        def take_exclusive_lock():
+            try:
+                with db.exclusive_lock():
+                    acquired.set()
+            except Exception as exc:
+                worker_errors.append(exc)
+
+        with db.connect():
+            worker = Thread(target=take_exclusive_lock, daemon=True)
+            worker.start()
+            assert not acquired.wait(0.15), "exclusive lock bypassed an open database connection"
+
+        assert acquired.wait(3), "exclusive lock did not proceed after the connection closed"
+        worker.join(timeout=3)
+        assert not worker.is_alive(), "exclusive lock worker did not finish"
+        assert not worker_errors, worker_errors
