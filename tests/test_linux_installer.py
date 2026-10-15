@@ -107,3 +107,14 @@ def test_upgrade_script_shell_syntax():
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+def test_upgrade_script_reads_known_config_values_without_sourcing():
+    script = (ROOT / "installer" / "upgrade.sh").read_text()
+    assert "read_config_value()" in script
+    for key in ("M_GROUP_PREFIX", "M_GROUP_DATA_DIR", "M_GROUP_DB_PATH"):
+        assert f"read_config_value {key}" in script
+    assert '. "$CONFIG_DIR/m-group.env"' not in script
+    assert "PREFIX_OVERRIDE" in script
+    assert "DATA_OVERRIDE" in script
+    assert "DB_OVERRIDE" in script
+
