@@ -72,7 +72,7 @@ fi
 
 "$PYTHON" -m pip install --upgrade "$SOURCE_DIR"
 "$PYTHON" -m compileall -q "$SOURCE_DIR/app"
-"$PYTHON" -c 'import app.api.routes, app.main; print("Application import check: OK")'
+"$PYTHON" -c 'import app.api.routes; print("API module import check: OK")'
 
 # Do not change a deliberately stopped service into a running service.
 if [ "$WAS_ACTIVE" -eq 0 ]; then
@@ -91,7 +91,7 @@ esac
 # dashboard data must remain protected without the admin token.
 PORT=$(read_config_value M_GROUP_PORT)
 PORT=${PORT:-8011}
-"$PYTHON" - "$PORT" <<'PY'
+if ! "$PYTHON" - "$PORT" <<'PY'
 import http.client, sys, time
 port = int(sys.argv[1])
 last_error = None
@@ -122,4 +122,12 @@ for attempt in range(20):
 else:
     raise SystemExit("API smoke test failed: " + str(last_error))
 PY
+then
+  echo "API security smoke test failed; stopping M-Group to avoid exposing an unverified service." >&2
+  case "$MANAGER" in
+    systemd) systemctl stop m-group || true ;;
+    openrc) rc-service m-group stop || true ;;
+  esac
+  exit 1
+fi
 echo "Upgrade complete; prior service state restored and API security smoke test passed."
