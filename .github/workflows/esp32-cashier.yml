@@ -2,6 +2,11 @@ name: ESP32 Cashier Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "esp32/cashier/**"
+      - "platformio.ini"
+      - ".github/workflows/esp32-cashier.yml"
   push:
     paths:
       - "esp32/cashier/**"
