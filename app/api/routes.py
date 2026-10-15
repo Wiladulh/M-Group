@@ -560,13 +560,18 @@ def build_router(db, app_settings=None):
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
+        # Heartbeat is telemetry, not an administrative status mutation. Only an
+        # admin may disable/maintain a device; accepting status from firmware lets
+        # a device accidentally lock itself out or write arbitrary registry states.
+        if q.status != "active":
+            raise HTTPException(400,"invalid_heartbeat_status")
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
-            c.execute("""UPDATE device_registry SET device_type=?,status=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
-                      (q.device_type,q.status,device_id))
+            c.execute("""UPDATE device_registry SET device_type=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
+                      (q.device_type,device_id))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",(device_id,"heartbeat",q.model_dump_json()))
             c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,"status":q.status}
+        return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
     def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
