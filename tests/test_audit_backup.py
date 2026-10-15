@@ -195,3 +195,85 @@ def test_native_restore_failure_preserves_live_database():
         finally:
             main.get_settings = old
 
+
+
+
+def test_native_restore_waits_for_inflight_database_users():
+    from app.core.backup import create_native_backup, restore_native_backup
+    from threading import Event, Thread
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            db = main.create_app().state.db
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("from-backup", "Backup member"),
+                )
+                connection.commit()
+
+            archive = root / "concurrent-restore.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("live-only", "Current live member"),
+                )
+                connection.commit()
+
+            connection_open = Event()
+            release_connection = Event()
+            restore_finished = Event()
+            restore_errors = []
+
+            def hold_database_connection():
+                with db.connect():
+                    connection_open.set()
+                    if not release_connection.wait(5):
+                        raise AssertionError("test did not release active database connection")
+
+            def restore_in_background():
+                try:
+                    restore_native_backup(db, archive)
+                except Exception as exc:
+                    restore_errors.append(exc)
+                finally:
+                    restore_finished.set()
+
+            holder = Thread(target=hold_database_connection, daemon=True)
+            holder.start()
+            assert connection_open.wait(3), "database holder did not start"
+
+            restorer = Thread(target=restore_in_background, daemon=True)
+            restorer.start()
+            assert not restore_finished.wait(0.2), (
+                "restore swapped the live database while a managed connection was active"
+            )
+
+            release_connection.set()
+            holder.join(timeout=3)
+            restorer.join(timeout=5)
+            assert not holder.is_alive(), "database holder thread did not finish"
+            assert not restorer.is_alive(), "restore thread did not finish"
+            assert not restore_errors, restore_errors
+
+            with db.connect() as connection:
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='from-backup'"
+                ).fetchone()
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='live-only'"
+                ).fetchone() is None
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        finally:
+            main.get_settings = old
