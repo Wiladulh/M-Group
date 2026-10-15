@@ -36,3 +36,23 @@ def test_financial_idempotency_and_insufficient_balance():
             assert str(e) == "insufficient_balance"
 
 # Financial core CI trigger: run against the complete main tree.
+
+
+def test_financial_idempotency_rejects_different_logical_requests():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        f = FinancialService(db)
+        f.credit("acct-fin-1", 5000, reference="deposit-a", idempotency_key="conflict-key")
+        for amount, transaction_type, reference in (
+            (6000, "credit", "deposit-a"),
+            (5000, "debit", "deposit-a"),
+            (5000, "credit", "deposit-b"),
+        ):
+            try:
+                f._post("acct-fin-1", amount, transaction_type, reference, "conflict-key")
+                assert False, "conflicting request must not replay a prior transaction"
+            except ValueError as exc:
+                assert str(exc) == "idempotency_key_conflict"
+        assert f.balance("acct-fin-1") == 5000

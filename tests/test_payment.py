@@ -99,3 +99,43 @@ def test_nfc_payment_records_100_percent_promo_without_ledger_debit():
         assert result["ledger_reference"] is None
         assert result["balance_before"] == 100000
         assert result["balance_after"] == 100000
+
+
+def test_credential_pin_is_blocked_after_five_failed_attempts():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        identity = PaymentService(db).identity
+        identity.set_pin("member-1", "1234")
+        for _ in range(identity.PIN_MAX_ATTEMPTS):
+            assert identity.verify_credential_pin("cred-1", "9999") is False
+        result = identity.authorize_credential("cred-1")
+        assert result["authorized"] is False
+        assert result["reason"] == "credential_pin_blocked"
+        try:
+            identity.verify_credential_pin("cred-1", "1234")
+            assert False, "blocked credentials must not accept a correct PIN"
+        except PermissionError as exc:
+            assert str(exc) == "credential_pin_blocked"
+        identity.set_pin("member-1", "1234", actor_id="admin-reset")
+        assert identity.verify_credential_pin("cred-1", "1234") is True
+
+
+def test_payment_idempotency_rejects_different_credential_for_same_account():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO identity_credentials(credential_id,member_id,credential_type) VALUES('cred-2','member-1','nfc')"
+            )
+            c.commit()
+        p = PaymentService(db)
+        p.pay("cred-1", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+        try:
+            p.pay("cred-2", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+            assert False, "a different credential must not replay the prior payment"
+        except ValueError as exc:
+            assert str(exc) == "idempotency_key_conflict"

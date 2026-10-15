@@ -47,11 +47,18 @@ class FinancialService:
             existing = None
             if idempotency_key:
                 existing = c.execute(
-                    "SELECT transaction_id,status,amount,transaction_type,reference "
+                    "SELECT transaction_id,status,amount,transaction_type,reference,account_id "
                     "FROM financial_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
                 ).fetchone()
                 if existing:
+                    if (
+                        existing["account_id"] != account_id
+                        or existing["amount"] != amount
+                        or existing["transaction_type"] != transaction_type
+                        or existing["reference"] != reference
+                    ):
+                        raise ValueError("idempotency_key_conflict")
                     return dict(existing)
 
             account = self._account(c, account_id)
@@ -96,16 +103,69 @@ class FinancialService:
     def credit(self, account_id, amount, reference=None, idempotency_key=None):
         return self._post(account_id, amount, "credit", reference, idempotency_key)
 
+    def credit_on_connection(self, c, account_id, amount, reference=None, idempotency_key=None):
+        """Post a credit inside a caller-owned transaction."""
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            raise ValueError("amount_must_be_positive_integer")
+        if idempotency_key:
+            row = c.execute(
+                "SELECT transaction_id,status,amount,transaction_type,reference,account_id "
+                "FROM financial_transactions WHERE idempotency_key=?",
+                (idempotency_key,),
+            ).fetchone()
+            if row:
+                if (
+                    row["account_id"] != account_id
+                    or row["amount"] != amount
+                    or row["transaction_type"] != "credit"
+                    or row["reference"] != reference
+                ):
+                    raise ValueError("idempotency_key_conflict")
+                return dict(row)
+
+        account = self._account(c, account_id)
+        transaction_id = "fin-" + uuid4().hex
+        c.execute(
+            "INSERT INTO financial_transactions "
+            "(transaction_id,account_id,transaction_type,amount,reference,idempotency_key,status) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (transaction_id, account_id, "credit", amount, reference, idempotency_key, "completed"),
+        )
+        c.execute(
+            "INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES(?,?,?,?)",
+            (account_id, "credit", amount, transaction_id),
+        )
+        c.execute(
+            "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+            ("financial", "financial_transaction", transaction_id,
+             f"credit:{amount}:account={account['account_id']}"),
+        )
+        return {
+            "transaction_id": transaction_id,
+            "account_id": account_id,
+            "transaction_type": "credit",
+            "amount": amount,
+            "reference": reference,
+            "status": "completed",
+        }
+
     def debit_on_connection(self, c, account_id, amount, reference=None, idempotency_key=None):
         if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
             raise ValueError("amount_must_be_positive_integer")
         if idempotency_key:
             row = c.execute(
-                "SELECT transaction_id,status,amount,transaction_type,reference "
+                "SELECT transaction_id,status,amount,transaction_type,reference,account_id "
                 "FROM financial_transactions WHERE idempotency_key=?",
                 (idempotency_key,),
             ).fetchone()
             if row:
+                if (
+                    row["account_id"] != account_id
+                    or row["amount"] != amount
+                    or row["transaction_type"] != "debit"
+                    or row["reference"] != reference
+                ):
+                    raise ValueError("idempotency_key_conflict")
                 return dict(row)
 
         account = self._account(c, account_id)

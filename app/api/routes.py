@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import hashlib
 import secrets
+import io
+import zipfile
 from app.identity.service import IdentityService
 from app.identity.management import MemberManagementService
 from app.device.management import DeviceManagementService
@@ -13,6 +15,10 @@ from app.vending.service import VendingService
 from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
 from pathlib import Path
 from uuid import uuid4
+
+MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
+MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_EXCEL_EXPANDED_BYTES = 100 * 1024 * 1024
 
 class PaymentRequest(BaseModel):
     credential_id: str
@@ -227,6 +233,17 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             raise HTTPException(404, str(e))
 
+    def public_vending_transaction(tx):
+        result = dict(tx)
+        with db.connect() as c:
+            row = c.execute(
+                "SELECT slot FROM vending_products WHERE product_id=? AND machine_id=?",
+                (result.get("product_id"), result.get("machine_id")),
+            ).fetchone()
+        if row and row["slot"] in range(1, 6):
+            result["product_id"] = str(row["slot"])
+        return result
+
     @r.get("/health")
     def health(): return {"status": "ok", "service": "M-Group"}
 
@@ -234,7 +251,8 @@ def build_router(db, app_settings=None):
     def system(): return {"service": "M-Group", "api_version": "v1"}
 
     @r.get("/audit")
-    def audit(limit: int = 100):
+    def audit(limit: int = 100, x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
@@ -263,14 +281,16 @@ def build_router(db, app_settings=None):
         return {**dict(row), "handshake": "accepted"}
 
     @r.get("/devices/{device_id}/events")
-    def device_events(device_id,limit:int=100):
+    def device_events(device_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
         return {"device_id":device_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
-    def dashboard():
+    def dashboard(x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         with db.connect() as c:
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
@@ -280,8 +300,8 @@ def build_router(db, app_settings=None):
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
             machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
-            products=c.execute("""SELECT product_id,machine_id,name,price,stock,capacity,slot,servo_channel,enabled
-                   FROM vending_products ORDER BY machine_id,slot,product_id""").fetchall()
+            products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
+                   FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
             devices=c.execute("SELECT device_id,device_type,status,last_seen FROM device_registry ORDER BY device_id").fetchall()
             cashier_count=c.execute(
                 "SELECT COUNT(*) FROM payment_transactions WHERE transaction_source='CASHIER' AND status='completed'"
@@ -371,10 +391,12 @@ def build_router(db, app_settings=None):
     def member_revoke_nfc(member_id,card_id,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
         try:
-            result = members.revoke_card(card_id)
-            if result["member_id"] != member_id:
+            member = members.get(member_id)
+            if member is None or not any(
+                card["card_id"] == card_id for card in member["nfc_cards"]
+            ):
                 raise HTTPException(404,"nfc_card_not_found")
-            return result
+            return members.revoke_card(card_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
@@ -538,16 +560,29 @@ def build_router(db, app_settings=None):
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
+        # Heartbeat is telemetry, not an administrative status mutation. Only an
+        # admin may disable/maintain a device; accepting status from firmware lets
+        # a device accidentally lock itself out or write arbitrary registry states.
+        if q.status != "active":
+            raise HTTPException(400,"invalid_heartbeat_status")
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400,"invalid_device_type")
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
-            c.execute("""UPDATE device_registry SET device_type=?,status=?,last_seen=CURRENT_TIMESTAMP WHERE device_id=?""",
-                      (q.device_type,q.status,device_id))
+            row = c.execute(
+                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if not row or row["device_type"] != q.device_type:
+                raise HTTPException(409,"device_type_mismatch")
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
+                      (device_id,))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",(device_id,"heartbeat",q.model_dump_json()))
             c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,"status":q.status}
+        return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
-    def access(credential_id):
+    def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result=identity.authorize_credential(credential_id)
         with db.connect() as c:
             c.execute("INSERT INTO identity_access_events(credential_id,member_id,result,reason) VALUES(?,?,?,?)",
@@ -556,18 +591,21 @@ def build_router(db, app_settings=None):
         return result
 
     @r.get("/credentials/{credential_id}/account")
-    def credential_account(credential_id):
+    def credential_account(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         result=identity.account_for_credential(credential_id)
         if not result["authorized"]: raise HTTPException(404,result["reason"])
         return result
 
     @r.get("/accounts/{account_id}/balance")
-    def account_balance(account_id):
+    def account_balance(account_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"balance":financial.balance(account_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.get("/accounts/{account_id}/ledger")
-    def account_ledger(account_id,limit:int=100):
+    def account_ledger(account_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"entries":financial.ledger(account_id,limit)}
         except ValueError as e:raise HTTPException(404,str(e))
 
@@ -632,7 +670,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,str(e))
 
     @r.get("/vending")
-    def vending_list():
+    def vending_list(x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         return {"machines": vending.machines()}
 
     @r.post("/vending")
@@ -642,7 +681,8 @@ def build_router(db, app_settings=None):
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
-    def vending_detail(machine_id):
+    def vending_detail(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
         try:return {"machine":vending.machine(machine_id),"slots":vending.slots(machine_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
@@ -665,13 +705,14 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None)):
+    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None), x_m_group_admin_token: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
-        # WebUI reads may omit a device key; firmware requests are authenticated.
         if x_m_group_device_key:
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
+        else:
+            require_admin(x_m_group_admin_token)
         catalog = vending.products(machine["machine_id"])
         # Preserve base price while exposing the exact NFC/local amount shown
         # by the current firmware. QRIS remains a separately configured,
@@ -682,6 +723,14 @@ def build_router(db, app_settings=None):
             item["discount_amount"] = 0
             item["promo_id"] = None
             promo = promos.resolve(machine["machine_id"], item["product_id"], "NFC", "local")
+            if not promo:
+                with db.connect() as c:
+                    legacy = c.execute(
+                        "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=?",
+                        (machine["machine_id"], int(item["product_id"])),
+                    ).fetchone()
+                if legacy:
+                    promo = promos.resolve(machine["machine_id"], legacy["product_id"], "NFC", "local")
             if promo:
                 discount, _ = promos.calculate(item["price"], promo["discount_percent"])
                 item["discount_amount"] = discount
@@ -692,8 +741,18 @@ def build_router(db, app_settings=None):
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(machine_id,product_id,q:VendingProductRequest,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
+        if product_id not in VendingService.PRODUCT_IDS:
+            raise HTTPException(400,"product_id_must_be_1_to_5")
         if q.product_id!=product_id:raise HTTPException(400,"product_id_mismatch")
-        try:return vending.upsert_product(machine_id,product_id,q.name,q.price,q.stock,q.enabled,q.slot,q.capacity,q.servo_channel)
+        slot = int(product_id)
+        if q.slot is not None and q.slot != slot:
+            raise HTTPException(400,"product_slot_mismatch")
+        if q.servo_channel is not None and q.servo_channel != slot:
+            raise HTTPException(400,"servo_must_match_slot")
+        try:
+            result = vending.upsert_product(machine_id,product_id,q.name,q.price,q.stock,q.enabled,slot,q.capacity,slot)
+            result["product_id"] = str(result["slot"])
+            return result
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
 
     @r.post("/vending/{machine_id}/transactions")
@@ -702,7 +761,9 @@ def build_router(db, app_settings=None):
             machine = resolve_vending_machine(machine_id)
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider)
+            if str(q.product_id) not in VendingService.PRODUCT_IDS:
+                raise HTTPException(400,"product_id_must_be_1_to_5")
+            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.get("/vending/transactions/{transaction_id}")
@@ -714,7 +775,7 @@ def build_router(db, app_settings=None):
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
-            return tx
+            return public_vending_transaction(tx)
         except HTTPException:
             raise
         except ValueError as e:
@@ -727,7 +788,7 @@ def build_router(db, app_settings=None):
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.authorize(transaction_id)
+            return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:raise HTTPException(400,str(e))
 
@@ -738,7 +799,7 @@ def build_router(db, app_settings=None):
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device(machine["device_id"],x_m_group_device_key)
-            return vending.dispense(transaction_id,q.success)
+            return public_vending_transaction(vending.dispense(transaction_id,q.success))
         except ValueError as e:raise HTTPException(409,str(e))
 
     @r.post("/payments")
@@ -952,33 +1013,85 @@ def build_router(db, app_settings=None):
                 raise HTTPException(403, "device_not_active")
             device_id = matches[0]["device_id"]
         require_device(device_id,x_m_group_device_key)
-        if not verify_operator_pin(q.operator_pin): raise HTTPException(403,"invalid_operator_pin")
-        if not q.idempotency_key: raise HTTPException(400,"idempotency_key_required")
-        if not isinstance(q.amount,int) or q.amount<=0: raise HTTPException(400,"amount_must_be_positive_integer")
+        if not verify_operator_pin(q.operator_pin):
+            raise HTTPException(403,"invalid_operator_pin")
+        if not q.idempotency_key:
+            raise HTTPException(400,"idempotency_key_required")
+        if not isinstance(q.amount,int) or isinstance(q.amount,bool) or q.amount<=0:
+            raise HTTPException(400,"amount_must_be_positive_integer")
+
+        financial_key = "cashier-deposit:" + q.idempotency_key
+        with db.connect() as c:
+            old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
+            if old:
+                if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                    or old["amount"] != q.amount):
+                    raise HTTPException(409,"idempotency_key_conflict")
+                fin = c.execute(
+                    "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
+                    (financial_key,),
+                ).fetchone()
+                result = dict(old)
+                result["financial_transaction_id"] = fin["transaction_id"] if fin else None
+                return result
+
         auth=identity.authorize_credential(q.credential_id)
-        if not auth["authorized"]: raise HTTPException(403,auth["reason"])
+        if not auth["authorized"]:
+            raise HTTPException(403,auth["reason"])
         account=identity.account_for_credential(q.credential_id)
-        if not account["authorized"]: raise HTTPException(404,account["reason"])
+        if not account["authorized"]:
+            raise HTTPException(404,account["reason"])
         try:
             pin_ok=identity.verify_credential_pin(q.credential_id,q.member_pin)
         except PermissionError as e:
             raise HTTPException(403,str(e))
-        if not pin_ok: raise HTTPException(403,"invalid_pin")
-        with db.connect() as c:
-            old=c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
-        if old: return dict(old)
-        before=financial.balance(account["account_id"])
-        fin=financial.credit(account["account_id"],q.amount,reference="cashier-deposit:"+q.idempotency_key,idempotency_key="cashier-deposit:"+q.idempotency_key)
-        after=before+q.amount
-        tid="cash-"+uuid4().hex
-        with db.connect() as c:
-            c.execute("""INSERT INTO cashier_deposits
-                (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
-            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                      ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
-            c.commit()
+        if not pin_ok:
+            raise HTTPException(403,"invalid_pin")
+
+        before = 0
+        tid = "cash-" + uuid4().hex
+        try:
+            with db.connect() as c:
+                c.execute("BEGIN IMMEDIATE")
+                # Recheck under a write lock to make retries/concurrent taps atomic.
+                old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
+                if old:
+                    if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                        or old["amount"] != q.amount):
+                        raise HTTPException(409,"idempotency_key_conflict")
+                    fin = c.execute(
+                        "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
+                        (financial_key,),
+                    ).fetchone()
+                    result = dict(old)
+                    result["financial_transaction_id"] = fin["transaction_id"] if fin else None
+                    return result
+                orphan = c.execute(
+                    "SELECT transaction_id,account_id,amount,transaction_type,reference FROM financial_transactions WHERE idempotency_key=?",
+                    (financial_key,),
+                ).fetchone()
+                if orphan:
+                    raise HTTPException(409,"cashier_deposit_reconciliation_required")
+                before = int(c.execute(
+                    "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) "
+                    "FROM financial_ledger WHERE account_id=?",
+                    (account["account_id"],),
+                ).fetchone()[0])
+                fin = financial.credit_on_connection(
+                    c, account["account_id"], q.amount,
+                    reference=financial_key, idempotency_key=financial_key,
+                )
+                after = before + q.amount
+                c.execute("""INSERT INTO cashier_deposits
+                    (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                    (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
+                c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
+                c.commit()
+        except ValueError as e:
+            code = str(e)
+            raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
         return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
@@ -1009,7 +1122,9 @@ def build_router(db, app_settings=None):
         import datetime as dt
         date=date or dt.date.today().isoformat()
         if period=="day":
-            start=date; end=date+" 23:59:59"
+            selected_day=dt.date.fromisoformat(date)
+            start=selected_day.isoformat()
+            end=(selected_day+dt.timedelta(days=1)).isoformat()
         elif period=="month":
             y,m=map(int,date[:7].split("-")); start=f"{y:04d}-{m:02d}-01"
             end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
@@ -1035,10 +1150,13 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
+        # Reuse the endpoint's authorization and parameter validation, passing
+        # the already-validated token explicitly because this is a direct call.
+        data=audit_report(source,period,date,x_m_group_admin_token)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
-        path=root/f"audit-{source.lower()}-{period}-{date or 'today'}.xlsx"
-        data=audit_report(source,period,date)
+        # Use normalized values from the validated report for the filename.
+        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['start']}.xlsx"
         export_rows_excel(data["transactions"],path)
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -1059,24 +1177,62 @@ def build_router(db, app_settings=None):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        if not file.filename or not file.filename.endswith(".mgroup.zip"): raise HTTPException(400,"invalid_backup_file")
+        if not file.filename or not file.filename.endswith(".mgroup.zip"):
+            raise HTTPException(400,"invalid_backup_file")
+        content = await file.read(MAX_BACKUP_UPLOAD_BYTES + 1)
+        if len(content) > MAX_BACKUP_UPLOAD_BYTES:
+            raise HTTPException(413,"backup_upload_too_large")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
-        root.mkdir(parents=True,exist_ok=True); path=root/"restore-upload.mgroup.zip"
-        path.write_bytes(await file.read())
-        try: result=restore_native_backup(db,path)
-        except Exception as e: raise HTTPException(400,str(e))
-        return {"status":"restored","manifest":result}
+        root.mkdir(parents=True,exist_ok=True)
+        # Preserve the current live database before replacing it. Keep the
+        # snapshot even if validation/restoration fails so operators can recover.
+        import datetime as dt
+        snapshot=root/f"M-Group_PRE_RESTORE_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}.mgroup.zip"
+        path=root/f"restore-upload-{uuid4().hex}.mgroup.zip"
+        try:
+            create_native_backup(db,snapshot,include_excel=False)
+            path.write_bytes(content)
+            result=restore_native_backup(db,path)
+            return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name}
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400,"invalid_backup_archive")
+        finally:
+            path.unlink(missing_ok=True)
+            await file.close()
 
     @r.post("/backup/import-excel")
     async def backup_import_excel(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
-        if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400,"invalid_excel_file")
+        if not file.filename or not file.filename.lower().endswith(".xlsx"):
+            raise HTTPException(400,"invalid_excel_file")
+        content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
+        if len(content) > MAX_EXCEL_UPLOAD_BYTES:
+            raise HTTPException(413,"excel_upload_too_large")
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                infos = archive.infolist()
+                names = {info.filename for info in infos}
+                if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+                    raise ValueError("invalid_excel_archive")
+                if len(infos) > 1000 or sum(info.file_size for info in infos) > MAX_EXCEL_EXPANDED_BYTES:
+                    raise ValueError("excel_archive_too_large")
+        except Exception:
+            raise HTTPException(400,"invalid_excel_archive")
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"imports"
-        root.mkdir(parents=True,exist_ok=True); path=root/"import.xlsx"; path.write_bytes(await file.read())
-        try: result=import_excel(db,path)
-        except Exception as e: raise HTTPException(400,str(e))
-        return {"status":"imported","result":result}
+        root.mkdir(parents=True,exist_ok=True)
+        path=root/f"import-{uuid4().hex}.xlsx"
+        try:
+            path.write_bytes(content)
+            result=import_excel(db,path)
+            return {"status":"imported","result":result}
+        except Exception:
+            raise HTTPException(400,"invalid_excel_archive")
+        finally:
+            path.unlink(missing_ok=True)
+            await file.close()
 
     return r

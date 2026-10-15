@@ -34,7 +34,7 @@ Operational transactions are separated by source:
 - The server is the source of truth; ESP32 is not the primary transaction archive.
 - Operational transaction retention is **12 months** on the server, with backup/archive before purge.
 - Audit reports support **day, week and month** filters and can be restricted to Cashier or Vending.
-- Cashier savings deposits use a separate operator PIN (default **9992**, changeable from WebUI) plus the member NFC PIN.
+- Cashier savings deposits require an explicitly configured operator PIN (set during system installation or from the admin WebUI) plus the member NFC PIN. There is no shared default operator PIN.
 - Native M-Group backup archives contain a database dump, manifest and checksum and may include an Excel-compatible export.
 - XLSX export is intended for audit/reporting and preserves stable transaction columns.
 - Excel import is validation-gated and is not the primary recovery format; native M-Group backup is the authoritative restore format.

@@ -6,6 +6,7 @@ from app.core.db import Database
 
 class IdentityService:
     PIN_ITERATIONS = 120000
+    PIN_MAX_ATTEMPTS = 5
 
     def __init__(self, db: Database):
         self.db = db
@@ -32,6 +33,11 @@ class IdentityService:
                 "UPDATE identity_members SET pin_salt=?,pin_hash=? WHERE member_id=?",
                 (salt, digest, member_id),
             )
+            for table in ("identity_credentials", "credential_registry"):
+                c.execute(
+                    f"UPDATE {table} SET pin_failed_attempts=0,pin_blocked=0 WHERE member_id=?",
+                    (member_id,),
+                )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
                 "VALUES(?,?,?,?)",
@@ -122,9 +128,10 @@ class IdentityService:
                 return True
 
             c.execute(
-                f"UPDATE {table} SET pin_failed_attempts=pin_failed_attempts+1 "
+                f"UPDATE {table} SET pin_failed_attempts=pin_failed_attempts+1, "
+                "pin_blocked=CASE WHEN pin_failed_attempts+1>=? THEN 1 ELSE pin_blocked END "
                 "WHERE credential_id=?",
-                (credential_id,),
+                (self.PIN_MAX_ATTEMPTS, credential_id),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "

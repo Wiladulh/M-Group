@@ -109,7 +109,7 @@ def test_h_full_integration_one_by_one():
             assert payment.json()["final_amount"] == 5000
 
             # H-05 Ledger/saldo
-            balance = client.get("/api/v1/accounts/acct-h/balance")
+            balance = client.get("/api/v1/accounts/acct-h/balance", headers=admin)
             assert balance.status_code == 200
             assert balance.json()["balance"] == 15000
 
@@ -156,7 +156,7 @@ def test_h_full_integration_one_by_one():
                 "/api/v1/vending/machine-h/transactions",
                 headers={"X-M-Group-Device-Key": vending_key},
                 json={
-                    "product_id": "water-h",
+                    "product_id": "1",
                     "credential_id": credential_id,
                     "account_id": "acct-h",
                     "idempotency_key": "h-vending-1",
@@ -190,7 +190,7 @@ def test_h_full_integration_one_by_one():
             root = client.get("/")
             assert root.status_code == 200
             assert "M-Group" in root.text
-            dashboard = client.get("/api/v1/dashboard")
+            dashboard = client.get("/api/v1/dashboard", headers=admin)
             assert dashboard.status_code == 200
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
 
@@ -206,13 +206,13 @@ def test_h_full_integration_one_by_one():
             assert client.post(
                 "/api/v1/vending/machine-h/transactions",
                 json={
-                    "product_id": "water-h",
+                    "product_id": "1",
                     "credential_id": credential_id,
                     "idempotency_key": "h-vending-auth-fail",
                 },
             ).status_code == 401
 
             # Final ledger invariant after all successful debits: 20,000 - 5,000 - 2,000 - 3,000.
-            assert client.get("/api/v1/accounts/acct-h/balance").json()["balance"] == 10000
+            assert client.get("/api/v1/accounts/acct-h/balance", headers=admin).json()["balance"] == 10000
         finally:
             main.get_settings = old

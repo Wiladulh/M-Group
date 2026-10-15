@@ -29,7 +29,9 @@
    if(!r.ok)throw new Error('Gagal memuat halaman '+name);
    document.getElementById('page-'+name).outerHTML=await r.text();
  }));
- const s=document.createElement('script');s.src='/assets/js/app.js';document.body.appendChild(s);
+ const s=document.createElement('script');s.src='/assets/js/app.js';s.onerror=()=>{document.getElementById('status').textContent='● Gagal memuat JavaScript WebUI';};document.body.appendChild(s);
 })().catch(e=>{document.getElementById('status').textContent='● WebUI gagal dimuat';console.error(e)});
+window.addEventListener('error',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan JavaScript WebUI';console.error('M-Group WebUI error:',e.message,e.filename,e.lineno)});
+window.addEventListener('unhandledrejection',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan proses WebUI';console.error('M-Group WebUI rejected promise:',e.reason)});
 </script>
 </body></html>

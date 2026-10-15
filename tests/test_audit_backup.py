@@ -12,6 +12,7 @@ def test_cashier_deposit_and_audit_are_separate_from_vending():
         })()
         try:
             client=TestClient(main.create_app())
+            assert client.post("/api/v1/cashier/operator-pin",json={"pin":"9992"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
@@ -83,3 +84,196 @@ def test_native_restore_replaces_database_atomically():
                 assert db.execute("SELECT 1 FROM identity_members WHERE member_id='live-only'").fetchone() is None
         finally:
             main.get_settings=old
+
+
+def test_native_restore_checkpoints_wal_before_swapping_database():
+    from app.core.backup import create_native_backup, restore_native_backup
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            app = main.create_app()
+            db = app.state.db
+            with db.connect() as connection:
+                assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+                connection.execute(
+                    "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
+                    ("restore-wal-member", "Restored member"),
+                )
+                connection.commit()
+
+            archive = root / "wal-backup.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
+                    ("live-wal-only", "Must not survive restore"),
+                )
+                connection.commit()
+
+            restore_native_backup(db, archive)
+
+            with db.connect() as connection:
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='restore-wal-member'"
+                ).fetchone()
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='live-wal-only'"
+                ).fetchone() is None
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+            assert not Path(str(db.path) + "-wal").exists()
+            assert not Path(str(db.path) + "-shm").exists()
+        finally:
+            main.get_settings = old
+
+
+def test_native_restore_failure_preserves_live_database():
+    from app.core.backup import create_native_backup, restore_native_backup
+    from zipfile import ZipFile
+    import json
+    import sqlite3
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            app = main.create_app()
+            db = app.state.db
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("must-survive", "Live database"),
+                )
+                connection.commit()
+
+            archive = root / "broken-restore.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            # Make the archive checksum valid but the SQL payload invalid. This
+            # exercises failure after archive validation and before live swap.
+            with ZipFile(archive, "r") as source:
+                entries = {item.filename: source.read(item.filename) for item in source.infolist()}
+            entries["database.sql"] = b"THIS IS NOT VALID SQLITE SQL;"
+            entries["checksum.sha256"] = (
+                hashlib.sha256(entries["database.sql"]).hexdigest() + "  database.sql\n"
+            ).encode("ascii")
+            with ZipFile(archive, "w") as target:
+                for name, payload in entries.items():
+                    target.writestr(name, payload)
+
+            try:
+                restore_native_backup(db, archive)
+            except sqlite3.Error:
+                pass
+            else:
+                raise AssertionError("invalid restore SQL unexpectedly succeeded")
+
+            with db.connect() as connection:
+                row = connection.execute(
+                    "SELECT name FROM identity_members WHERE member_id=?",
+                    ("must-survive",),
+                ).fetchone()
+                assert row is not None and row["name"] == "Live database"
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        finally:
+            main.get_settings = old
+
+
+
+
+def test_native_restore_waits_for_inflight_database_users():
+    from app.core.backup import create_native_backup, restore_native_backup
+    from threading import Event, Thread
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            db = main.create_app().state.db
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("from-backup", "Backup member"),
+                )
+                connection.commit()
+
+            archive = root / "concurrent-restore.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("live-only", "Current live member"),
+                )
+                connection.commit()
+
+            connection_open = Event()
+            release_connection = Event()
+            restore_finished = Event()
+            restore_errors = []
+
+            def hold_database_connection():
+                with db.connect():
+                    connection_open.set()
+                    if not release_connection.wait(5):
+                        raise AssertionError("test did not release active database connection")
+
+            def restore_in_background():
+                try:
+                    restore_native_backup(db, archive)
+                except Exception as exc:
+                    restore_errors.append(exc)
+                finally:
+                    restore_finished.set()
+
+            holder = Thread(target=hold_database_connection, daemon=True)
+            holder.start()
+            assert connection_open.wait(3), "database holder did not start"
+
+            restorer = Thread(target=restore_in_background, daemon=True)
+            restorer.start()
+            assert not restore_finished.wait(0.2), (
+                "restore swapped the live database while a managed connection was active"
+            )
+
+            release_connection.set()
+            holder.join(timeout=3)
+            restorer.join(timeout=5)
+            assert not holder.is_alive(), "database holder thread did not finish"
+            assert not restorer.is_alive(), "restore thread did not finish"
+            assert not restore_errors, restore_errors
+
+            with db.connect() as connection:
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='from-backup'"
+                ).fetchone()
+                assert connection.execute(
+                    "SELECT 1 FROM identity_members WHERE member_id='live-only'"
+                ).fetchone() is None
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        finally:
+            main.get_settings = old

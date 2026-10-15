@@ -65,7 +65,7 @@ class PaymentService:
         with self.db.connect() as c:
             if idempotency_key:
                 row = c.execute(
-                    "SELECT transaction_id,status,original_amount,discount_amount,final_amount,"
+                    "SELECT transaction_id,status,credential_id,device_id,original_amount,discount_amount,final_amount,"
                     "method,provider,account_id,balance_before,balance_after,promo_id "
                     "FROM payment_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
@@ -73,10 +73,14 @@ class PaymentService:
                 if row:
                     if (
                         row["account_id"] != account_id
+                        or row["credential_id"] != credential_id
+                        or row["device_id"] != device_id
                         or row["method"] != method
                         or row["provider"] != provider
                         or row["original_amount"] != original_amount
                         or row["discount_amount"] != discount_amount
+                        or row["promo_id"] != promo_id
+                        or (reference is not None and row["transaction_id"] != reference)
                     ):
                         raise ValueError("idempotency_key_conflict")
                     return {

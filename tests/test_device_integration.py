@@ -50,10 +50,10 @@ def test_device_heartbeat_and_vending_product_sync():
                 c.commit()
 
             product = client.put(
-                "/api/v1/vending/vm-01/products/water-01",
+                "/api/v1/vending/vm-01/products/1",
                 headers={"X-M-Group-Admin-Token": "admin-secret"},
                 json={
-                    "product_id": "water-01",
+                    "product_id": "1",
                     "name": "Air Mineral",
                     "price": 3000,
                     "stock": 12,
@@ -63,12 +63,12 @@ def test_device_heartbeat_and_vending_product_sync():
             assert product.status_code == 200
             assert product.json()["stock"] == 12
 
-            sync = client.get("/api/v1/vending/vm-01/products")
+            sync = client.get("/api/v1/vending/vm-01/products", headers={"X-M-Group-Device-Key": vending_key})
             assert sync.status_code == 200
             assert sync.json()["machine"]["machine_id"] == "vm-01"
-            assert sync.json()["products"][0]["product_id"] == "water-01"
+            assert sync.json()["products"][0]["product_id"] == "1"
 
-            dashboard = client.get("/api/v1/dashboard")
+            dashboard = client.get("/api/v1/dashboard", headers={"X-M-Group-Admin-Token": "admin-secret"})
             assert dashboard.status_code == 200
             devices = {x["device_id"]: x for x in dashboard.json()["devices"]}
             assert devices["cashier-01"]["status"] == "active"

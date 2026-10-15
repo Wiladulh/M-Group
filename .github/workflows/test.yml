@@ -6,6 +6,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,6 +30,8 @@ jobs:
               "app/webui/index.html",
               "app/webui/pages/dashboard.html",
               "app/webui/assets/js/app.js",
+              "app/migrations/001_initial.sql",
+              "app/migrations/020_vending_integrity.sql",
           ]
           missing = [path for path in required if path not in names]
           if missing:

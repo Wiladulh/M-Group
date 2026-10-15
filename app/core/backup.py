@@ -3,6 +3,7 @@ import io
 import json
 import sqlite3
 import zipfile
+from app.core.db import Database
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,7 +26,7 @@ SHEETS = {
                dispense_status,status
         FROM vending_transactions v
         LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
-        ORDER BY created_at
+        ORDER BY v.created_at
     """,
     "payments": """
         SELECT transaction_id,created_at,transaction_source,device_id,credential_id,
@@ -60,11 +61,18 @@ def export_excel(db, target, start=None, end=None):
     wb=Workbook()
     wb.remove(wb.active)
     for name,sql in SHEETS.items():
-        if start and "WHERE" not in sql.upper():
-            sql=sql.replace("ORDER BY","WHERE created_at>=? AND created_at<? ORDER BY")
+        args=()
+        if start:
+            # Filter the selected result columns in an outer query. This avoids
+            # ambiguous created_at references in joined exports (notably vending,
+            # which joins vending_transactions and vending_machines).
+            order_by = sql.upper().rfind("ORDER BY")
+            base_sql = sql[:order_by].rstrip() if order_by >= 0 else sql.rstrip().rstrip(";")
+            sql = (
+                "SELECT * FROM (" + base_sql + ") AS export_rows "
+                "WHERE created_at>=? AND created_at<? ORDER BY created_at"
+            )
             args=(start,end)
-        else:
-            args=()
         with db.connect() as c:
             cur=c.execute(sql,args)
             headers=[d[0] for d in cur.description]
@@ -105,16 +113,39 @@ def create_native_backup(db, target, include_excel=True):
     return target
 
 def restore_native_backup(db, archive):
-    archive=Path(archive)
+    archive = Path(archive)
+    max_archive_bytes = 100 * 1024 * 1024
+    max_expanded_bytes = 250 * 1024 * 1024
+    if archive.stat().st_size > max_archive_bytes:
+        raise ValueError("backup_archive_too_large")
+
     with zipfile.ZipFile(archive) as z:
-        manifest=json.loads(z.read("manifest.json"))
-        dump=z.read("database.sql")
-        expected=z.read("checksum.sha256").decode().split()[0]
-        if hashlib.sha256(dump).hexdigest()!=expected:
+        infos = z.infolist()
+        names = [info.filename for info in infos]
+        required = {"manifest.json", "database.sql", "checksum.sha256"}
+        if len(names) != len(set(names)) or not required.issubset(names):
+            raise ValueError("invalid_backup_archive")
+        if len(infos) > 1000 or sum(info.file_size for info in infos) > max_expanded_bytes:
+            raise ValueError("backup_archive_too_large")
+        info_by_name = {info.filename: info for info in infos}
+        if info_by_name["manifest.json"].file_size > 1024 * 1024:
+            raise ValueError("backup_manifest_too_large")
+        if info_by_name["database.sql"].file_size > 200 * 1024 * 1024:
+            raise ValueError("backup_database_too_large")
+        manifest = json.loads(z.read("manifest.json"))
+        if not isinstance(manifest, dict) or manifest.get("format") != "M-Group-native-backup-v1":
+            raise ValueError("unsupported_backup_format")
+        dump = z.read("database.sql")
+        checksum_parts = z.read("checksum.sha256").decode("ascii").split()
+        if not checksum_parts or len(checksum_parts[0]) != 64:
+            raise ValueError("invalid_backup_checksum")
+        expected = checksum_parts[0]
+        if hashlib.sha256(dump).hexdigest() != expected:
             raise ValueError("backup_checksum_mismatch")
-        sql=dump.decode()
-    # Validate the SQL dump in an isolated temporary SQLite database first.
-    # Only replace the live database after the dump has been proven loadable.
+        sql = dump.decode("utf-8")
+
+    # Validate, migrate and integrity-check a temporary copy first. Never replace
+    # the active database until the complete restore path is known to be usable.
     tmp = archive.with_suffix(".restore.db")
     tmp.unlink(missing_ok=True)
     probe = None
@@ -126,14 +157,56 @@ def restore_native_backup(db, archive):
         probe.close()
         probe = None
 
+        restored_db = Database(tmp)
+        restored_db.migrate()
+        with restored_db.connect() as check:
+            integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
+            foreign_key_errors = check.execute("PRAGMA foreign_key_check").fetchall()
+            if integrity != "ok":
+                raise ValueError("restored_database_integrity_check_failed")
+            if foreign_key_errors:
+                raise ValueError("restored_database_foreign_key_check_failed")
+
         live = Path(db.path)
         live.parent.mkdir(parents=True, exist_ok=True)
-        tmp.replace(live)
+
+        # Coordinate across all M-Group workers. Database.connect() holds a
+        # shared OS lock until each request closes its connection; the exclusive
+        # lock below waits for in-flight work and prevents new DB connections
+        # while the live file is switched.
+        with db.exclusive_lock():
+            if live.exists():
+                # Flush any prior WAL content and switch the old database back
+                # to rollback-journal mode before replacing its main file. This
+                # prevents a stale -wal/-shm sidecar from being replayed against
+                # the restored database after the rename.
+                current = sqlite3.connect(live, timeout=30)
+                try:
+                    checkpoint = current.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                    if checkpoint and checkpoint[0] != 0:
+                        raise ValueError("active_database_checkpoint_busy")
+                    journal_mode = current.execute("PRAGMA journal_mode=DELETE").fetchone()
+                    if not journal_mode or str(journal_mode[0]).lower() != "delete":
+                        raise ValueError("active_database_journal_mode_switch_failed")
+                finally:
+                    current.close()
+
+            # Sidecars are safe to remove only after all managed connections
+            # have drained and the old DB has left WAL mode.
+            for suffix in ("-wal", "-shm", "-journal"):
+                Path(str(live) + suffix).unlink(missing_ok=True)
+            tmp.chmod(0o600)
+            tmp.replace(live)
     except Exception:
         if probe is not None:
             probe.close()
         tmp.unlink(missing_ok=True)
+        Path(str(tmp) + "-journal").unlink(missing_ok=True)
+        Path(str(tmp) + "-wal").unlink(missing_ok=True)
+        Path(str(tmp) + "-shm").unlink(missing_ok=True)
+        Path(str(tmp) + ".lock").unlink(missing_ok=True)
         raise
+    Path(str(tmp) + ".lock").unlink(missing_ok=True)
     return manifest
 
 def import_excel(db, source):
