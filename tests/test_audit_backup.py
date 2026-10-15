@@ -135,3 +135,63 @@ def test_native_restore_checkpoints_wal_before_swapping_database():
             assert not Path(str(db.path) + "-shm").exists()
         finally:
             main.get_settings = old
+
+
+def test_native_restore_failure_preserves_live_database():
+    from app.core.backup import create_native_backup, restore_native_backup
+    from zipfile import ZipFile
+    import json
+    import sqlite3
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            app = main.create_app()
+            db = app.state.db
+            with db.connect() as connection:
+                connection.execute(
+                    "INSERT INTO identity_members(member_id, name) VALUES(?, ?)",
+                    ("must-survive", "Live database"),
+                )
+                connection.commit()
+
+            archive = root / "broken-restore.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+
+            # Make the archive checksum valid but the SQL payload invalid. This
+            # exercises failure after archive validation and before live swap.
+            with ZipFile(archive, "r") as source:
+                entries = {item.filename: source.read(item.filename) for item in source.infolist()}
+            entries["database.sql"] = b"THIS IS NOT VALID SQLITE SQL;"
+            entries["checksum.sha256"] = (
+                hashlib.sha256(entries["database.sql"]).hexdigest() + "  database.sql\n"
+            ).encode("ascii")
+            with ZipFile(archive, "w") as target:
+                for name, payload in entries.items():
+                    target.writestr(name, payload)
+
+            try:
+                restore_native_backup(db, archive)
+            except sqlite3.Error:
+                pass
+            else:
+                raise AssertionError("invalid restore SQL unexpectedly succeeded")
+
+            with db.connect() as connection:
+                row = connection.execute(
+                    "SELECT name FROM identity_members WHERE member_id=?",
+                    ("must-survive",),
+                ).fetchone()
+                assert row is not None and row["name"] == "Live database"
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        finally:
+            main.get_settings = old
+
