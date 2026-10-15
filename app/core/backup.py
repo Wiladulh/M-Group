@@ -169,7 +169,34 @@ def restore_native_backup(db, archive):
 
         live = Path(db.path)
         live.parent.mkdir(parents=True, exist_ok=True)
-        tmp.replace(live)
+
+        # Coordinate across all M-Group workers. Database.connect() holds a
+        # shared OS lock until each request closes its connection; the exclusive
+        # lock below waits for in-flight work and prevents new DB connections
+        # while the live file is switched.
+        with db.exclusive_lock():
+            if live.exists():
+                # Flush any prior WAL content and switch the old database back
+                # to rollback-journal mode before replacing its main file. This
+                # prevents a stale -wal/-shm sidecar from being replayed against
+                # the restored database after the rename.
+                current = sqlite3.connect(live, timeout=30)
+                try:
+                    checkpoint = current.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                    if checkpoint and checkpoint[0] != 0:
+                        raise ValueError("active_database_checkpoint_busy")
+                    journal_mode = current.execute("PRAGMA journal_mode=DELETE").fetchone()
+                    if not journal_mode or str(journal_mode[0]).lower() != "delete":
+                        raise ValueError("active_database_journal_mode_switch_failed")
+                finally:
+                    current.close()
+
+            # Sidecars are safe to remove only after all managed connections
+            # have drained and the old DB has left WAL mode.
+            for suffix in ("-wal", "-shm", "-journal"):
+                Path(str(live) + suffix).unlink(missing_ok=True)
+            tmp.chmod(0o600)
+            tmp.replace(live)
     except Exception:
         if probe is not None:
             probe.close()
