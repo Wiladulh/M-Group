@@ -44,7 +44,7 @@ bool pendingPayment=false,pendingDeposit=false;
 String htmlEscape(const String& value){
   String out=value;
   out.replace("&","&amp;"); out.replace("<","&lt;"); out.replace(">","&gt;");
-  out.replace("\\\"","&quot;"); out.replace("'","&#39;");
+  out.replace("\"","&quot;"); out.replace("'","&#39;");
   return out;
 }
 bool validServerUrl(const String& value){
@@ -80,7 +80,7 @@ void startConfigPortal(){
     lcdShow("SETUP AP ERROR","Restart perangkat");
     while(true) delay(1000);
   }
-  Serial.printf("CONFIG AP SSID: %s\\nCONFIG AP PASSWORD: %s\\nBuka http://192.168.4.1\\n",ssid,configPortalPassword.c_str());
+  Serial.printf("CONFIG AP SSID: %s\nCONFIG AP PASSWORD: %s\nBuka http://192.168.4.1\n",ssid,configPortalPassword.c_str());
   lcdShow("SETUP M-Group","Buka 192.168.4.1");
   configServer.on("/",HTTP_GET,[](){configServer.send(200,"text/html; charset=utf-8",configPage());});
   configServer.on("/save",HTTP_POST,[](){
