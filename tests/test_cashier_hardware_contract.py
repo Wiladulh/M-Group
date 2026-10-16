@@ -55,4 +55,8 @@ def test_cashier_uses_oled_and_formats_registration_uid_for_api():
     assert "String uidToCardUid(const uint8_t* uid,uint8_t len)" in CASHIER
     assert "card_uid" in CASHIER
     assert "uidToCardUid(uid,len)" in CASHIER
+    assert "bool waitForCardUID(uint8_t* uid,uint8_t& len,const char* prompt)" in CASHIER
     assert "millis()-scanStarted<20000UL" in CASHIER
+    assert "if(!waitForCardUID(uid,len,\"Topup NFC\")) return;" in CASHIER
+    assert "if(!waitForCardUID(uid,len,\"REGISTRASI NFC\")) return;" in CASHIER
+    assert "while(!card.readUID(uid,len))" not in CASHIER
