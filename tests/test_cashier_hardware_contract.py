@@ -45,3 +45,13 @@ def test_reader_uid_buffer_and_keypad_feedback_contract():
     assert "lcdShow(\"NFC ERROR\",\"Cek reader\")" in CASHIER
     assert "if(k=='*'&&!s.isEmpty())" in CASHIER
     assert "else if(k=='#'&&s.length()>=minDigits)" in CASHIER
+
+
+def test_cashier_uses_oled_and_formats_registration_uid_for_api():
+    assert "#include <Adafruit_SSD1306.h>" in CASHIER
+    assert "OLED_I2C_ADDRESS=0x3C" in CASHIER
+    assert "display.begin(SSD1306_SWITCHCAPVCC,OLED_I2C_ADDRESS)" in CASHIER
+    assert "LiquidCrystal_I2C" not in CASHIER
+    assert "String uidToCardUid(const uint8_t* uid,uint8_t len)" in CASHIER
+    assert '"card_uid\\\\":\\\\\""+uidToCardUid(uid,len)' in CASHIER
+    assert "millis()-scanStarted<20000UL" in CASHIER
