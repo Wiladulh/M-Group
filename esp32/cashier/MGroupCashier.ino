@@ -3,17 +3,20 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "MGroupKeypad.h"
 #include "MGroupCardReader.h"
 
 const char* WIFI_SSID="CHANGE_ME";
 const char* WIFI_PASSWORD="CHANGE_ME";
 // Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
+const char* M_GROUP_BASE_URL="http://192.168.1.24:8011";
 const char* DEVICE_ID="cashier-01";
 const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
-LiquidCrystal_I2C lcd(0x27,16,2);
+static constexpr int OLED_WIDTH=128, OLED_HEIGHT=64;
+static constexpr uint8_t OLED_I2C_ADDRESS=0x3C;
+Adafruit_SSD1306 display(OLED_WIDTH,OLED_HEIGHT,&Wire,-1);
 
 #define PN532_SDA 21
 #define PN532_SCL 22
@@ -112,6 +115,18 @@ String uidToCredential(const uint8_t* uid,uint8_t len){
   out.toLowerCase(); return out;
 }
 
+// Registration API accepts a conventional colon-separated UID, while payment
+// endpoints use the server credential identifier (nfc- followed by hex UID).
+String uidToCardUid(const uint8_t* uid,uint8_t len){
+  String out="";
+  for(uint8_t i=0;i<len;i++){
+    if(i)out+=":";
+    if(uid[i]<16)out+="0";
+    String byteText=String(uid[i],HEX); byteText.toUpperCase(); out+=byteText;
+  }
+  return out;
+}
+
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin){
   if(amount<=0){Serial.println("ERR nominal must be positive");lcdShow("GAGAL","Nominal invalid");delay(1200);return;}
   lcdShow("Memproses bayar","Mohon tunggu");
@@ -202,7 +217,7 @@ void registrationScan(const String& session){
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
-  String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
+  String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+uidToCardUid(uid,len)+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply=postJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration/complete",body,code);
   Serial.printf("NFC REG %d %s\n",code,reply.c_str());
   if(code==200) lcdShow("REGISTRASI","BERHASIL");
@@ -237,10 +252,15 @@ void scanCard(){
 }
 
 void lcdShow(String a,String b){
-  lcd.setCursor(0,0); lcd.print("                ");
-  lcd.setCursor(0,0); lcd.print(a.substring(0,16));
-  lcd.setCursor(0,1); lcd.print("                ");
-  lcd.setCursor(0,1); lcd.print(b.substring(0,16));
+  // Keep the existing UI helper name so the transaction flow stays unchanged.
+  // The physical display is a 128x64 I2C OLED (SSD1306, address 0x3C).
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setTextWrap(false);
+  display.setCursor(0,0); display.print(a.substring(0,21));
+  display.setCursor(0,18); display.print(b.substring(0,21));
+  display.display();
 }
 
 String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits){
@@ -295,7 +315,12 @@ void setup(){
       while(true) delay(1000);
     }
   }
-  lcd.init(); lcd.backlight();
+  Wire.begin(PN532_SDA,PN532_SCL);
+  if(!display.begin(SSD1306_SWITCHCAPVCC,OLED_I2C_ADDRESS)){
+    Serial.println("FATAL: SSD1306 OLED init failed; check I2C wiring/address/controller");
+    while(true) delay(1000);
+  }
+  display.clearDisplay(); display.setTextColor(SSD1306_WHITE); display.display();
   connectWifi(); heartbeat();
   readerReady=card.begin(PN532_SDA,PN532_SCL);
   if(!readerReady){
