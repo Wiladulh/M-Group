@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Preferences.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -8,12 +9,15 @@
 #include "MGroupKeypad.h"
 #include "MGroupCardReader.h"
 
-const char* WIFI_SSID="CHANGE_ME";
-const char* WIFI_PASSWORD="CHANGE_ME";
-// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* M_GROUP_BASE_URL="http://192.168.1.24:8011";
-const char* DEVICE_ID="cashier-01";
-const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
+// These are fallback values only. The local setup WebUI stores actual settings in ESP32 NVS.
+String WIFI_SSID="CHANGE_ME";
+String WIFI_PASSWORD="";
+String M_GROUP_BASE_URL="http://192.168.1.24:8011";
+String DEVICE_ID="cashier-01";
+String M_GROUP_DEVICE_KEY="";
+WebServer configServer(80);
+bool configPortalActive=false;
+String configPortalPassword="";
 static constexpr int OLED_WIDTH=128, OLED_HEIGHT=64;
 static constexpr uint8_t OLED_I2C_ADDRESS=0x3C;
 Adafruit_SSD1306 display(OLED_WIDTH,OLED_HEIGHT,&Wire,-1);
@@ -34,6 +38,86 @@ bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
 bool pendingPayment=false,pendingDeposit=false;
+
+// Configuration portal is available over a temporary, password-protected Wi-Fi AP.
+// Hold '*' while powering on to reopen it after initial provisioning.
+String htmlEscape(const String& value){
+  String out=value;
+  out.replace("&","&amp;"); out.replace("<","&lt;"); out.replace(">","&gt;");
+  out.replace("\\\"","&quot;"); out.replace("'","&#39;");
+  return out;
+}
+bool validServerUrl(const String& value){
+  if(!value.startsWith("http://")) return false;
+  if(value.length()<12 || value.length()>180 || value.indexOf(' ')>=0) return false;
+  return true;
+}
+String configPage(const String& notice=""){
+  String page="<!doctype html><html lang='id'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+  page+="<title>Konfigurasi M-Group Cashier</title><style>body{font:16px system-ui;max-width:560px;margin:24px auto;padding:0 16px;background:#f5f7fa;color:#172033}main{background:white;padding:22px;border-radius:14px}label{display:block;margin-top:14px;font-weight:600}input{box-sizing:border-box;width:100%;padding:11px;margin-top:5px;border:1px solid #aab4c3;border-radius:7px;font:inherit}button{margin-top:20px;padding:12px 16px;border:0;border-radius:8px;background:#175cd3;color:white;font-weight:700}small{color:#526079}.notice{padding:10px;background:#eef6ff;border-radius:8px}</style><main>";
+  page+="<h2>Konfigurasi Cashier M-Group</h2><p>Pengaturan disimpan di memori perangkat (NVS).</p>";
+  if(notice.length()) page+="<p class='notice'>"+htmlEscape(notice)+"</p>";
+  page+="<form method='POST' action='/save'><label>Wi-Fi SSID</label><input name='ssid' maxlength='32' required value='"+htmlEscape(WIFI_SSID)+"'>";
+  page+="<label>Password Wi-Fi</label><input name='wifi_password' type='password' maxlength='64' autocomplete='new-password' placeholder='Kosongkan untuk mempertahankan password tersimpan'>";
+  page+="<label>URL server M-Group</label><input name='server_url' maxlength='180' required value='"+htmlEscape(M_GROUP_BASE_URL)+"' placeholder='http://192.168.1.24:8011'>";
+  page+="<small>Gunakan alamat IP/host yang bisa dijangkau dari Wi-Fi perangkat, tanpa slash di akhir. Saat ini gunakan http:// untuk server LAN.</small>";
+  page+="<label>Device ID</label><input name='device_id' maxlength='64' required value='"+htmlEscape(DEVICE_ID)+"'>";
+  page+="<label>Device Key</label><input name='device_key' type='password' maxlength='200' autocomplete='new-password' placeholder='Kosongkan untuk mempertahankan key tersimpan'>";
+  page+="<small>Key tidak pernah ditampilkan kembali di halaman ini. Jangan membagikan key.</small><button type='submit'>Simpan &amp; restart</button></form></main></html>";
+  return page;
+}
+void startConfigPortal(){
+  configPortalActive=true;
+  WiFi.disconnect(true); delay(100);
+  WiFi.mode(WIFI_AP);
+  uint64_t chip=ESP.getEfuseMac();
+  char ssid[32]; snprintf(ssid,sizeof(ssid),"M-Group-Cashier-%04X",(uint16_t)(chip>>32));
+  char alphabet[]="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  configPortalPassword="";
+  for(int i=0;i<12;i++) configPortalPassword+=alphabet[esp_random()%(sizeof(alphabet)-1)];
+  if(!WiFi.softAP(ssid,configPortalPassword.c_str())){
+    Serial.println("FATAL: configuration AP could not start");
+    lcdShow("SETUP AP ERROR","Restart perangkat");
+    while(true) delay(1000);
+  }
+  Serial.printf("CONFIG AP SSID: %s\\nCONFIG AP PASSWORD: %s\\nBuka http://192.168.4.1\\n",ssid,configPortalPassword.c_str());
+  lcdShow("SETUP M-Group","Buka 192.168.4.1");
+  configServer.on("/",HTTP_GET,[](){configServer.send(200,"text/html; charset=utf-8",configPage());});
+  configServer.on("/save",HTTP_POST,[](){
+    String ssid=configServer.arg("ssid"); ssid.trim();
+    String wifiPass=configServer.arg("wifi_password");
+    String serverUrl=configServer.arg("server_url"); serverUrl.trim();
+    String deviceId=configServer.arg("device_id"); deviceId.trim();
+    String deviceKey=configServer.arg("device_key"); deviceKey.trim();
+    if(ssid.length()==0 || ssid.length()>32 || deviceId.length()==0 || deviceId.length()>64 ||
+       deviceKey.length()>200 || !validServerUrl(serverUrl)){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Input tidak valid. URL harus dimulai http://, SSID dan Device ID wajib diisi."));
+      return;
+    }
+    if(wifiPass.length()>0 && wifiPass.length()<8){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Password Wi-Fi harus minimal 8 karakter, atau kosongkan untuk mempertahankan password tersimpan."));
+      return;
+    }
+    if(deviceKey.length()==0 && M_GROUP_DEVICE_KEY.length()==0){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Device Key wajib diisi pada konfigurasi pertama."));
+      return;
+    }
+    WIFI_SSID=ssid; M_GROUP_BASE_URL=serverUrl; DEVICE_ID=deviceId;
+    if(wifiPass.length()>0) WIFI_PASSWORD=wifiPass;
+    if(deviceKey.length()>0) M_GROUP_DEVICE_KEY=deviceKey;
+    cashierPrefs.putString("wifi_ssid",WIFI_SSID);
+    cashierPrefs.putString("wifi_pass",WIFI_PASSWORD);
+    cashierPrefs.putString("server_url",M_GROUP_BASE_URL);
+    cashierPrefs.putString("device_id",DEVICE_ID);
+    cashierPrefs.putString("device_key",M_GROUP_DEVICE_KEY);
+    cashierPrefs.putBool("cfg_saved",true);
+    configServer.send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Cashier akan restart. Sambungkan kembali ponsel ke Wi-Fi normal Anda.</p>");
+    delay(700); ESP.restart();
+  });
+  configServer.onNotFound([](){configServer.sendHeader("Location","/",true);configServer.send(302,"text/plain","");});
+  configServer.begin();
+  while(true){configServer.handleClient();delay(2);}
+}
 String pendingCredential="",pendingSeq="";
 long pendingAmount=0;
 String pendingDepositCredential="",pendingDepositSeq="";
@@ -314,6 +398,20 @@ long readCashierAmount(){
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("M_GROUP-cashier",false);
+  WIFI_SSID=cashierPrefs.getString("wifi_ssid",WIFI_SSID);
+  WIFI_PASSWORD=cashierPrefs.getString("wifi_pass",WIFI_PASSWORD);
+  M_GROUP_BASE_URL=cashierPrefs.getString("server_url",M_GROUP_BASE_URL);
+  DEVICE_ID=cashierPrefs.getString("device_id",DEVICE_ID);
+  M_GROUP_DEVICE_KEY=cashierPrefs.getString("device_key",M_GROUP_DEVICE_KEY);
+  bool configured=cashierPrefs.getBool("cfg_saved",false);
+  // A short boot window allows deliberate entry to setup mode by holding '*'.
+  bool forceSetup=false;
+  unsigned long setupWindow=millis();
+  while(millis()-setupWindow<1800UL){
+    if(M_GROUPKeypad.getKey()=='*') forceSetup=true;
+    delay(5);
+  }
+  if(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0) startConfigPortal();
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
