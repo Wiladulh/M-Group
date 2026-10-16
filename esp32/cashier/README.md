@@ -1,4 +1,4 @@
-# M-Group ESP32 Cashier — NFC + PIN + LCD + Keypad
+# M-Group ESP32 Cashier — NFC + PIN + OLED + Keypad
 
 ## Cashier payment flow (CSH-04)
 
@@ -18,7 +18,7 @@
 
 ## CSH-06 operator and member feedback
 
-- LCD shows reader readiness, card detection, payment progress, pending outcome, and payment result/error.
+- OLED shows reader readiness, card detection, payment progress, pending outcome, and payment result/error.
 - Keypad input accepts digits, uses `*` to delete the last digit, and `#` to confirm. PIN characters are masked on LCD.
 - Serial logs identify the reader, payment start, and input confirmation without logging the PIN.
 - A buzzer is intentionally deferred. Validate display readability and keypad behavior on the physical hardware.
@@ -43,21 +43,21 @@ Application code uses `M_GROUPCardReader`, not concrete PN532/MFRC522 APIs.
 
 ## Hardware and wiring
 
-- ESP32, LCD 16x2 I2C (default address 0x27), keypad matrix 4x4.
-- LCD: SDA 21, SCL 22.
+- ESP32, OLED I2C 0.96-inch 128x64 (SSD1306, default address 0x3C), keypad matrix 4x4.
+- OLED: SDA 21, SCL 22. The OLED and PN532 (if used) share the I2C bus.
 - PN532: SDA 21, SCL 22, IRQ 39, RESET 5.
 - RC522: SCK 18, MISO 19, MOSI 23, SS/SDA 27, RST 4.
 - Keypad rows: 32,33,25,26. Columns: 13,14,16,17.
 
 GPIO39 is input-only and has no internal pull-up; ensure the PN532 board provides any required IRQ bias. Power reader modules at their supported voltage (RC522 is typically 3.3 V). Do not allow an LCD I2C backpack to pull ESP32 SDA/SCL directly to 5 V.
 
-Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
+Libraries: Adafruit SSD1306, Adafruit GFX Library, Keypad, Adafruit PN532, MFRC522. Install Adafruit SSD1306 and its GFX dependency from Arduino Library Manager.
 
 ## Server configuration
 
 Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino`.
 
-- `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+- `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for default test server `http://192.168.1.24:8011` (change if the server IP differs); replace the example IP and do not add a trailing slash.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
 - Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
 - Configure the operator top-up PIN through the authenticated M-Group API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
