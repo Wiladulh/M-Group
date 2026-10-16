@@ -55,11 +55,21 @@ Libraries: Adafruit SSD1306, Adafruit GFX Library, Keypad, Adafruit PN532, MFRC5
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino`.
+### Local configuration WebUI
 
-- `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for default test server `http://192.168.1.24:8011` (change if the server IP differs); replace the example IP and do not add a trailing slash.
+The server URL and device key no longer need to be compiled into the firmware. On first boot, the cashier starts a temporary password-protected setup Wi-Fi AP.
+
+1. Open Serial Monitor at 115200 baud and note the displayed `CONFIG AP SSID` and randomly generated `CONFIG AP PASSWORD`.
+2. Connect a phone/laptop to that AP, then open `http://192.168.4.1`.
+3. Enter the Wi-Fi SSID/password, M-Group server URL (for example `http://192.168.1.24:8011`), registered `DEVICE_ID`, and active `DEVICE KEY`.
+4. Press **Simpan & restart**. The cashier stores the values in ESP32 NVS and restarts to join the normal Wi-Fi network.
+5. To change configuration later, hold the keypad `*` key while powering on, then repeat the setup steps.
+
+The device key and Wi-Fi password are not echoed back into the page. They are stored in ESP32 NVS; treat physical access to the device as sensitive. The setup page is plain HTTP on the temporary local AP, so only connect a trusted phone/laptop and disconnect it after saving.
+
+- The server URL must be reachable from the cashier's Wi-Fi network and should not have a trailing slash. This firmware setup page currently accepts `http://` URLs for the LAN server.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
-- Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
+- Provision the device using the exact `DEVICE_ID` and paste the active key returned by the server.
 - Configure the operator top-up PIN through the authenticated M-Group API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
 
 The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
