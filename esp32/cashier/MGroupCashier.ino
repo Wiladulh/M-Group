@@ -67,6 +67,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
 void scanTopup(const String& operatorPin);
 void registrationScan(const String& session);
 void scanCard();
+bool waitForCardUID(uint8_t* uid,uint8_t& len,const char* prompt);
 
 String getJson(const String& path,int& code){
   HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(M_GROUP_BASE_URL)+path);
@@ -125,6 +126,23 @@ String uidToCardUid(const uint8_t* uid,uint8_t len){
     String byteText=String(uid[i],HEX); byteText.toUpperCase(); out+=byteText;
   }
   return out;
+}
+
+bool waitForCardUID(uint8_t* uid,uint8_t& len,const char* prompt){
+  if(!readerReady){
+    lcdShow("NFC ERROR","Cek reader");
+    delay(1500);
+    return false;
+  }
+  lcdShow(prompt,"Tempelkan kartu");
+  unsigned long scanStarted=millis();
+  while(!card.readUID(uid,len) && millis()-scanStarted<20000UL) delay(20);
+  if(len==0){
+    lcdShow("WAKTU HABIS","Coba lagi");
+    delay(1500);
+    return false;
+  }
+  return true;
 }
 
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin){
@@ -199,9 +217,8 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
 void scanTopup(const String& operatorPin){
   long amount=readCashierAmount();
   if(amount<=0)return;
-  lcdShow("Topup","Tap kartu");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  while(!card.readUID(uid,len)){ delay(20); }
+  if(!waitForCardUID(uid,len,"Topup NFC")) return;
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN:");
   String memberPin=readKeyDigits("PIN:",true,4,6);
@@ -211,10 +228,8 @@ void scanTopup(const String& operatorPin){
 }
 
 void registrationScan(const String& session){
-  lcdShow("REGISTRASI NFC","Silahkan scan");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  while(!card.readUID(uid,len)){ delay(20); }
-  String credential=uidToCredential(uid,len);
+  if(!waitForCardUID(uid,len,"REGISTRASI NFC")) return;
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+uidToCardUid(uid,len)+"\",\"pin\":\""+pin+"\"}";
@@ -239,10 +254,7 @@ void scanCard(){
   if(!readerReady){lcdShow("NFC ERROR","Cek reader");delay(1500);return;}
   if(paymentAmount<=0)return;
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  lcdShow("Pembayaran","Tap kartu NFC");
-  unsigned long scanStarted=millis();
-  while(!card.readUID(uid,len) && millis()-scanStarted<20000UL){delay(20);}
-  if(len==0){lcdShow("WAKTU HABIS","Ulangi transaksi");delay(1500);return;}
+  if(!waitForCardUID(uid,len,"Pembayaran")) return;
   lcdShow("Kartu terbaca","Memeriksa...");
   String credential=uidToCredential(uid,len); ++paymentSequence;
   cashierPrefs.putULong("pay_seq_counter",paymentSequence);
