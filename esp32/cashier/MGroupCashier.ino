@@ -239,7 +239,10 @@ void scanCard(){
   if(!readerReady){lcdShow("NFC ERROR","Cek reader");delay(1500);return;}
   if(paymentAmount<=0)return;
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  if(!card.readUID(uid,len))return;
+  lcdShow("Pembayaran","Tap kartu NFC");
+  unsigned long scanStarted=millis();
+  while(!card.readUID(uid,len) && millis()-scanStarted<20000UL){delay(20);}
+  if(len==0){lcdShow("WAKTU HABIS","Ulangi transaksi");delay(1500);return;}
   lcdShow("Kartu terbaca","Memeriksa...");
   String credential=uidToCredential(uid,len); ++paymentSequence;
   cashierPrefs.putULong("pay_seq_counter",paymentSequence);
