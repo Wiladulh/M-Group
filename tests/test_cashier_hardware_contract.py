@@ -62,3 +62,14 @@ def test_cashier_uses_oled_and_formats_registration_uid_for_api():
     assert "while(!card.readUID(uid,len))" not in CASHIER
     assert "long bal=p>=0?reply.substring(p+16).toInt():0;" not in CASHIER
     assert "lcdShow(\"Saldo sisa\",\"Tidak tersedia\")" in CASHIER
+
+
+def test_cashier_has_local_setup_webui_and_no_legacy_lcd_dependency():
+    assert "#include <WebServer.h>" in CASHIER
+    assert "void startConfigPortal()" in CASHIER
+    assert 'configServer.on("/save",HTTP_POST' in CASHIER
+    assert 'cashierPrefs.putString("server_url",M_GROUP_BASE_URL)' in CASHIER
+    assert 'cashierPrefs.putString("device_key",M_GROUP_DEVICE_KEY)' in CASHIER
+    assert 'if(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0)' not in CASHIER
+    assert "if(needsConfigPortal) startConfigPortal();" in CASHIER
+    assert "#include <LiquidCrystal_I2C.h>" not in CASHIER
