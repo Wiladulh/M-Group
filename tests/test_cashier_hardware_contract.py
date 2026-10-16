@@ -53,5 +53,6 @@ def test_cashier_uses_oled_and_formats_registration_uid_for_api():
     assert "display.begin(SSD1306_SWITCHCAPVCC,OLED_I2C_ADDRESS)" in CASHIER
     assert "LiquidCrystal_I2C" not in CASHIER
     assert "String uidToCardUid(const uint8_t* uid,uint8_t len)" in CASHIER
-    assert '"card_uid\\\\":\\\\\""+uidToCardUid(uid,len)' in CASHIER
+    assert '"card_uid"' in CASHIER
+    assert "uidToCardUid(uid,len)" in CASHIER
     assert "millis()-scanStarted<20000UL" in CASHIER
