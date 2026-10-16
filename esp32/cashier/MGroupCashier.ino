@@ -411,7 +411,7 @@ void setup(){
     if(M_GROUPKeypad.getKey()=='*') forceSetup=true;
     delay(5);
   }
-  if(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0) startConfigPortal();
+  bool needsConfigPortal=(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
@@ -440,6 +440,7 @@ void setup(){
     while(true) delay(1000);
   }
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE); display.display();
+  if(needsConfigPortal) startConfigPortal();
   connectWifi(); heartbeat();
   readerReady=card.begin(PN532_SDA,PN532_SCL);
   if(!readerReady){
