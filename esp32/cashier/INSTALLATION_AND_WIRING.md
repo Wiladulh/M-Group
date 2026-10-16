@@ -79,7 +79,7 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
 4. Pilih board ESP32 yang sesuai dengan perangkat, port USB, lalu compile. Periksa bahwa semua library ditemukan.
 5. Isi konfigurasi di bagian atas `MGroupCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
-   - `M_GROUP_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
+   - `M_GROUP_BASE_URL`, contoh `http://192.168.1.24:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
    - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan
    - `M_GROUP_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
 6. Daftarkan/provision perangkat bertipe kasir pada server dengan ID yang sama. Pastikan key aktif.
