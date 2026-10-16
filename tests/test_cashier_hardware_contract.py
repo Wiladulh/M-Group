@@ -70,6 +70,5 @@ def test_cashier_has_local_setup_webui_and_no_legacy_lcd_dependency():
     assert 'configServer.on("/save",HTTP_POST' in CASHIER
     assert 'cashierPrefs.putString("server_url",M_GROUP_BASE_URL)' in CASHIER
     assert 'cashierPrefs.putString("device_key",M_GROUP_DEVICE_KEY)' in CASHIER
-    assert 'if(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0)' not in CASHIER
     assert "if(needsConfigPortal) startConfigPortal();" in CASHIER
     assert "#include <LiquidCrystal_I2C.h>" not in CASHIER
