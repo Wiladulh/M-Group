@@ -60,3 +60,5 @@ def test_cashier_uses_oled_and_formats_registration_uid_for_api():
     assert "if(!waitForCardUID(uid,len,\"Topup NFC\")) return;" in CASHIER
     assert "if(!waitForCardUID(uid,len,\"REGISTRASI NFC\")) return;" in CASHIER
     assert "while(!card.readUID(uid,len))" not in CASHIER
+    assert "long bal=p>=0?reply.substring(p+16).toInt():0;" not in CASHIER
+    assert "lcdShow(\"Saldo sisa\",\"Tidak tersedia\")" in CASHIER
