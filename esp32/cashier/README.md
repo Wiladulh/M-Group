@@ -1,4 +1,4 @@
-# M-Group ESP32 Cashier — NFC + PIN + LCD + Keypad
+# M-Group ESP32 Cashier — NFC + PIN + OLED + Keypad
 
 ## Cashier payment flow (CSH-04)
 
@@ -18,8 +18,8 @@
 
 ## CSH-06 operator and member feedback
 
-- LCD shows reader readiness, card detection, payment progress, pending outcome, and payment result/error.
-- Keypad input accepts digits, uses `*` to delete the last digit, and `#` to confirm. PIN characters are masked on LCD.
+- OLED shows reader readiness, card detection, payment progress, pending outcome, and payment result/error.
+- Keypad input accepts digits, uses `*` to delete the last digit, and `#` to confirm. PIN characters are masked on OLED.
 - Serial logs identify the reader, payment start, and input confirmation without logging the PIN.
 - A buzzer is intentionally deferred. Validate display readability and keypad behavior on the physical hardware.
 
@@ -27,7 +27,7 @@
 
 - Wi-Fi reconnect attempts are bounded; the firmware remains responsive to later retries instead of waiting forever during startup or payment.
 - HTTP connect/read timeouts are set for GET and POST requests. Registration polling is skipped while offline; heartbeat reports the offline state to Serial rather than attempting an HTTP request without Wi-Fi.
-- NFC reader initialization failure is reported on Serial and LCD instead of silently ignoring payment attempts.
+- NFC reader initialization failure is reported on Serial and OLED instead of silently ignoring payment attempts.
 - Payment errors show distinct messages for invalid PIN/authorization, missing device/API, invalid request data, rate limiting, insufficient balance, and rejected transactions.
 - Transport failures and HTTP 5xx keep the transaction pending; the firmware must reuse the same idempotency key and must not accept a new payment until the result is reconciled.
 - Network recovery and the exact behavior of the physical reader still require on-device testing. Never treat a timeout as proof that a payment failed.
@@ -43,23 +43,33 @@ Application code uses `M_GROUPCardReader`, not concrete PN532/MFRC522 APIs.
 
 ## Hardware and wiring
 
-- ESP32, LCD 16x2 I2C (default address 0x27), keypad matrix 4x4.
-- LCD: SDA 21, SCL 22.
+- ESP32, OLED I2C 0.96-inch 128x64 (SSD1306, default address 0x3C), keypad matrix 4x4.
+- OLED: SDA 21, SCL 22. The OLED and PN532 (if used) share the I2C bus.
 - PN532: SDA 21, SCL 22, IRQ 39, RESET 5.
 - RC522: SCK 18, MISO 19, MOSI 23, SS/SDA 27, RST 4.
 - Keypad rows: 32,33,25,26. Columns: 13,14,16,17.
 
-GPIO39 is input-only and has no internal pull-up; ensure the PN532 board provides any required IRQ bias. Power reader modules at their supported voltage (RC522 is typically 3.3 V). Do not allow an LCD I2C backpack to pull ESP32 SDA/SCL directly to 5 V.
+GPIO39 is input-only and has no internal pull-up; ensure the PN532 board provides any required IRQ bias. Power reader modules at their supported voltage (RC522 is typically 3.3 V). Do not allow an OLED I2C backpack to pull ESP32 SDA/SCL directly to 5 V.
 
-Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
+Libraries: Adafruit SSD1306, Adafruit GFX Library, Keypad, Adafruit PN532, MFRC522. Install Adafruit SSD1306 and its GFX dependency from Arduino Library Manager.
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino`.
+### Local configuration WebUI
 
-- `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
+The server URL and device key no longer need to be compiled into the firmware. On first boot, the cashier starts a temporary password-protected setup Wi-Fi AP.
+
+1. Open Serial Monitor at 115200 baud and note the displayed `CONFIG AP SSID` and randomly generated `CONFIG AP PASSWORD`.
+2. Connect a phone/laptop to that AP, then open `http://192.168.4.1`.
+3. Enter the Wi-Fi SSID/password, M-Group server URL (for example `http://192.168.1.24:8011`), registered `DEVICE_ID`, and active `DEVICE KEY`.
+4. Press **Simpan & restart**. The cashier stores the values in ESP32 NVS and restarts to join the normal Wi-Fi network.
+5. To change configuration later, hold the keypad `*` key while powering on, then repeat the setup steps.
+
+The device key and Wi-Fi password are not echoed back into the page. They are stored in ESP32 NVS; treat physical access to the device as sensitive. The setup page is plain HTTP on the temporary local AP, so only connect a trusted phone/laptop and disconnect it after saving.
+
+- The server URL must be reachable from the cashier's Wi-Fi network and should not have a trailing slash. This firmware setup page currently accepts `http://` URLs for the LAN server.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
-- Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
+- Provision the device using the exact `DEVICE_ID` and paste the active key returned by the server.
 - Configure the operator top-up PIN through the authenticated M-Group API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
 
 The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
@@ -72,10 +82,10 @@ Automated CI covers the server-side recovery case where a payment is committed b
 Physical offline test checklist (after flashing the built firmware):
 
 1. Confirm the cashier is registered and can complete one normal NFC payment.
-2. Disconnect Wi-Fi or stop the M-Group server, then start a payment attempt. The LCD must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
+2. Disconnect Wi-Fi or stop the M-Group server, then start a payment attempt. The OLED must not show success; an uncertain result must show `HASIL BELUM ADA` / `Ulangi PIN`.
 3. Restore Wi-Fi/server. Enter the PIN to retry the pending payment. Do not clear NVS or start a different payment while pending.
 4. Check server ledger and payment history: one original transaction/debit only. Repeat only with a new test credential/account or a safely funded test account.
-5. Record LCD/Serial behavior and server transaction ID. CI cannot substitute for this physical network interruption test.
+5. Record OLED/Serial behavior and server transaction ID. CI cannot substitute for this physical network interruption test.
 
 **CSH-07 status:** automated integration checks are added; mark full offline integration PASS only after GitHub CI is green and the physical interruption/recovery test has been completed.
 
@@ -84,16 +94,16 @@ Physical offline test checklist (after flashing the built firmware):
 
 CSH-08 is a **physical-device validation** stage; CI can verify the pin-map and reader abstraction contracts, but cannot certify wiring or card behavior. Run this checklist on the actual ESP32 DevKit and the selected peripherals:
 
-1. **Power and wiring:** common GND; ESP32 and RC522 at 3.3 V; LCD I2C pull-ups must not expose SDA/SCL to 5 V. Verify every pin against the table above before powering.
+1. **Power and wiring:** common GND; ESP32 and RC522 at 3.3 V; OLED I2C pull-ups must not expose SDA/SCL to 5 V. Verify every pin against the table above before powering.
 2. **Boot and Wi-Fi:** flash the successful `ESP32 Cashier Build` artifact, configure Wi-Fi/server/device key, restart, and confirm an IP plus a successful heartbeat in Serial.
-3. **LCD:** confirm both rows are readable at boot, during keypad entry, while checking a card, during payment, and for success/error states.
+3. **OLED:** confirm both rows are readable at boot, during keypad entry, while checking a card, during payment, and for success/error states.
 4. **Keypad:** test every digit, `*` backspace, and `#` confirmation. Confirm PIN entry displays asterisks only. Do not use a real member PIN for screenshots/log capture.
 5. **RC522:** tap a test card several times, remove it between taps, and confirm stable UID detection. If PN532 is connected instead, verify Serial reports `PN532`; the abstraction selects PN532 before falling back to RC522.
-6. **Payment end-to-end:** use a test member, test NFC credential, known PIN, and safely funded test savings account. Confirm the server reports one transaction and one ledger debit, while the LCD reports the server result.
+6. **Payment end-to-end:** use a test member, test NFC credential, known PIN, and safely funded test savings account. Confirm the server reports one transaction and one ledger debit, while the OLED reports the server result.
 7. **Negative checks:** test unknown card, wrong PIN, insufficient test balance, reader disconnected at boot, and Wi-Fi unavailable. No unsuccessful or uncertain payment may be shown as successful.
 8. **Reboot/pending safety:** if a payment is pending, reboot without erasing NVS and confirm the firmware continues to require reconciliation of that same transaction before allowing a new payment.
 
-Record board model, reader model, LCD address, firmware commit, results, and any wiring changes. Never publish Wi-Fi credentials, device keys, PINs, or full sensitive logs.
+Record board model, reader model, OLED address, firmware commit, results, and any wiring changes. Never publish Wi-Fi credentials, device keys, PINs, or full sensitive logs.
 
 **CSH-08 PASS criteria:** the above applicable checks pass on the physical device and the CI hardware-contract tests plus firmware build are green. Until then, hardware validation remains pending; do not proceed to vending integration.
 

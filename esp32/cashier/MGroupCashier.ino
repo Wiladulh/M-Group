@@ -1,19 +1,26 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Preferences.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "MGroupKeypad.h"
 #include "MGroupCardReader.h"
 
-const char* WIFI_SSID="CHANGE_ME";
-const char* WIFI_PASSWORD="CHANGE_ME";
-// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
-const char* DEVICE_ID="cashier-01";
-const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
-LiquidCrystal_I2C lcd(0x27,16,2);
+// These are fallback values only. The local setup WebUI stores actual settings in ESP32 NVS.
+String WIFI_SSID="CHANGE_ME";
+String WIFI_PASSWORD="";
+String M_GROUP_BASE_URL="http://192.168.1.24:8011";
+String DEVICE_ID="cashier-01";
+String M_GROUP_DEVICE_KEY="";
+WebServer configServer(80);
+bool configPortalActive=false;
+String configPortalPassword="";
+static constexpr int OLED_WIDTH=128, OLED_HEIGHT=64;
+static constexpr uint8_t OLED_I2C_ADDRESS=0x3C;
+Adafruit_SSD1306 display(OLED_WIDTH,OLED_HEIGHT,&Wire,-1);
 
 #define PN532_SDA 21
 #define PN532_SCL 22
@@ -31,6 +38,89 @@ bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
 bool pendingPayment=false,pendingDeposit=false;
+
+void lcdShow(String a,String b="");
+
+// Configuration portal is available over a temporary, password-protected Wi-Fi AP.
+// Hold '*' while powering on to reopen it after initial provisioning.
+String htmlEscape(const String& value){
+  String out=value;
+  out.replace("&","&amp;"); out.replace("<","&lt;"); out.replace(">","&gt;");
+  out.replace("\"","&quot;"); out.replace("'","&#39;");
+  return out;
+}
+bool validServerUrl(const String& value){
+  if(!value.startsWith("http://")) return false;
+  if(value.length()<12 || value.length()>180 || value.indexOf(' ')>=0) return false;
+  return true;
+}
+String configPage(const String& notice=""){
+  String page="<!doctype html><html lang='id'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+  page+="<title>Konfigurasi M-Group Cashier</title><style>body{font:16px system-ui;max-width:560px;margin:24px auto;padding:0 16px;background:#f5f7fa;color:#172033}main{background:white;padding:22px;border-radius:14px}label{display:block;margin-top:14px;font-weight:600}input{box-sizing:border-box;width:100%;padding:11px;margin-top:5px;border:1px solid #aab4c3;border-radius:7px;font:inherit}button{margin-top:20px;padding:12px 16px;border:0;border-radius:8px;background:#175cd3;color:white;font-weight:700}small{color:#526079}.notice{padding:10px;background:#eef6ff;border-radius:8px}</style><main>";
+  page+="<h2>Konfigurasi Cashier M-Group</h2><p>Pengaturan disimpan di memori perangkat (NVS).</p>";
+  if(notice.length()) page+="<p class='notice'>"+htmlEscape(notice)+"</p>";
+  page+="<form method='POST' action='/save'><label>Wi-Fi SSID</label><input name='ssid' maxlength='32' required value='"+htmlEscape(WIFI_SSID)+"'>";
+  page+="<label>Password Wi-Fi</label><input name='wifi_password' type='password' maxlength='64' autocomplete='new-password' placeholder='Kosongkan untuk mempertahankan password tersimpan'>";
+  page+="<label>URL server M-Group</label><input name='server_url' maxlength='180' required value='"+htmlEscape(M_GROUP_BASE_URL)+"' placeholder='http://192.168.1.24:8011'>";
+  page+="<small>Gunakan alamat IP/host yang bisa dijangkau dari Wi-Fi perangkat, tanpa slash di akhir. Saat ini gunakan http:// untuk server LAN.</small>";
+  page+="<label>Device ID</label><input name='device_id' maxlength='64' required value='"+htmlEscape(DEVICE_ID)+"'>";
+  page+="<label>Device Key</label><input name='device_key' type='password' maxlength='200' autocomplete='new-password' placeholder='Kosongkan untuk mempertahankan key tersimpan'>";
+  page+="<small>Key tidak pernah ditampilkan kembali di halaman ini. Jangan membagikan key.</small><button type='submit'>Simpan &amp; restart</button></form></main></html>";
+  return page;
+}
+void startConfigPortal(){
+  configPortalActive=true;
+  WiFi.disconnect(true); delay(100);
+  WiFi.mode(WIFI_AP);
+  uint64_t chip=ESP.getEfuseMac();
+  char ssid[32]; snprintf(ssid,sizeof(ssid),"M-Group-Cashier-%04X",(uint16_t)(chip & 0xFFFF));
+  char alphabet[]="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  configPortalPassword="";
+  for(int i=0;i<12;i++) configPortalPassword+=alphabet[esp_random()%(sizeof(alphabet)-1)];
+  if(!WiFi.softAP(ssid,configPortalPassword.c_str())){
+    Serial.println("FATAL: configuration AP could not start");
+    lcdShow("SETUP AP ERROR","Restart perangkat");
+    while(true) delay(1000);
+  }
+  Serial.printf("CONFIG AP SSID: %s\nCONFIG AP PASSWORD: %s\nBuka http://192.168.4.1\n",ssid,configPortalPassword.c_str());
+  lcdShow("SETUP M-Group","Buka 192.168.4.1");
+  configServer.on("/",HTTP_GET,[](){configServer.send(200,"text/html; charset=utf-8",configPage());});
+  configServer.on("/save",HTTP_POST,[](){
+    String ssid=configServer.arg("ssid"); ssid.trim();
+    String wifiPass=configServer.arg("wifi_password");
+    String serverUrl=configServer.arg("server_url"); serverUrl.trim();
+    while(serverUrl.endsWith("/")) serverUrl.remove(serverUrl.length()-1);
+    String deviceId=configServer.arg("device_id"); deviceId.trim();
+    String deviceKey=configServer.arg("device_key"); deviceKey.trim();
+    if(ssid.length()==0 || ssid.length()>32 || deviceId.length()==0 || deviceId.length()>64 ||
+       deviceKey.length()>200 || !validServerUrl(serverUrl)){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Input tidak valid. URL harus dimulai http://, SSID dan Device ID wajib diisi."));
+      return;
+    }
+    if(wifiPass.length()>0 && wifiPass.length()<8){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Password Wi-Fi harus minimal 8 karakter, atau kosongkan untuk mempertahankan password tersimpan."));
+      return;
+    }
+    if(deviceKey.length()==0 && M_GROUP_DEVICE_KEY.length()==0){
+      configServer.send(400,"text/html; charset=utf-8",configPage("Device Key wajib diisi pada konfigurasi pertama."));
+      return;
+    }
+    WIFI_SSID=ssid; M_GROUP_BASE_URL=serverUrl; DEVICE_ID=deviceId;
+    if(wifiPass.length()>0) WIFI_PASSWORD=wifiPass;
+    if(deviceKey.length()>0) M_GROUP_DEVICE_KEY=deviceKey;
+    cashierPrefs.putString("wifi_ssid",WIFI_SSID);
+    cashierPrefs.putString("wifi_pass",WIFI_PASSWORD);
+    cashierPrefs.putString("server_url",M_GROUP_BASE_URL);
+    cashierPrefs.putString("device_id",DEVICE_ID);
+    cashierPrefs.putString("device_key",M_GROUP_DEVICE_KEY);
+    cashierPrefs.putBool("cfg_saved",true);
+    configServer.send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Cashier akan restart. Sambungkan kembali ponsel ke Wi-Fi normal Anda.</p>");
+    delay(700); ESP.restart();
+  });
+  configServer.onNotFound([](){configServer.sendHeader("Location","/",true);configServer.send(302,"text/plain","");});
+  configServer.begin();
+  while(true){configServer.handleClient();delay(2);}
+}
 String pendingCredential="",pendingSeq="";
 long pendingAmount=0;
 String pendingDepositCredential="",pendingDepositSeq="";
@@ -56,7 +146,6 @@ void clearPendingDeposit(){
   pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
 }
 
-void lcdShow(String a,String b="");
 String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits);
 long readCashierAmount();
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin);
@@ -64,6 +153,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
 void scanTopup(const String& operatorPin);
 void registrationScan(const String& session);
 void scanCard();
+bool waitForCardUID(uint8_t* uid,uint8_t& len,const char* prompt);
 
 String getJson(const String& path,int& code){
   HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(M_GROUP_BASE_URL)+path);
@@ -112,6 +202,35 @@ String uidToCredential(const uint8_t* uid,uint8_t len){
   out.toLowerCase(); return out;
 }
 
+// Registration API accepts a conventional colon-separated UID, while payment
+// endpoints use the server credential identifier (nfc- followed by hex UID).
+String uidToCardUid(const uint8_t* uid,uint8_t len){
+  String out="";
+  for(uint8_t i=0;i<len;i++){
+    if(i)out+=":";
+    if(uid[i]<16)out+="0";
+    String byteText=String(uid[i],HEX); byteText.toUpperCase(); out+=byteText;
+  }
+  return out;
+}
+
+bool waitForCardUID(uint8_t* uid,uint8_t& len,const char* prompt){
+  if(!readerReady){
+    lcdShow("NFC ERROR","Cek reader");
+    delay(1500);
+    return false;
+  }
+  lcdShow(prompt,"Tempelkan kartu");
+  unsigned long scanStarted=millis();
+  while(!card.readUID(uid,len) && millis()-scanStarted<20000UL) delay(20);
+  if(len==0){
+    lcdShow("WAKTU HABIS","Coba lagi");
+    delay(1500);
+    return false;
+  }
+  return true;
+}
+
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin){
   if(amount<=0){Serial.println("ERR nominal must be positive");lcdShow("GAGAL","Nominal invalid");delay(1200);return;}
   lcdShow("Memproses bayar","Mohon tunggu");
@@ -140,9 +259,15 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   clearPendingPayment();
   if(code==200){
     int p=reply.indexOf("\"balance_after\":");
-    long bal=p>=0?reply.substring(p+16).toInt():0;
     lcdShow("SUKSES","Terpotong Rp."+String(amount)); delay(1200);
-    lcdShow("Saldo sisa","Rp."+String(bal)); delay(2200);
+    if(p>=0){
+      long bal=reply.substring(p+16).toInt();
+      lcdShow("Saldo sisa","Rp."+String(bal));
+    }else{
+      // Never fabricate a zero balance when the server omits this field.
+      lcdShow("Saldo sisa","Tidak tersedia");
+    }
+    delay(2200);
   }else if(code==403 && reply.indexOf("invalid_pin")>=0){
     lcdShow("GAGAL","PIN salah"); delay(1800);
   }else if(code==401 || code==403){
@@ -184,9 +309,8 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
 void scanTopup(const String& operatorPin){
   long amount=readCashierAmount();
   if(amount<=0)return;
-  lcdShow("Topup","Tap kartu");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  while(!card.readUID(uid,len)){ delay(20); }
+  if(!waitForCardUID(uid,len,"Topup NFC")) return;
   String credential=uidToCredential(uid,len);
   lcdShow("Kartu diterima","PIN:");
   String memberPin=readKeyDigits("PIN:",true,4,6);
@@ -196,13 +320,11 @@ void scanTopup(const String& operatorPin){
 }
 
 void registrationScan(const String& session){
-  lcdShow("REGISTRASI NFC","Silahkan scan");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  while(!card.readUID(uid,len)){ delay(20); }
-  String credential=uidToCredential(uid,len);
+  if(!waitForCardUID(uid,len,"REGISTRASI NFC")) return;
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
-  String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
+  String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+uidToCardUid(uid,len)+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply=postJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration/complete",body,code);
   Serial.printf("NFC REG %d %s\n",code,reply.c_str());
   if(code==200) lcdShow("REGISTRASI","BERHASIL");
@@ -224,7 +346,7 @@ void scanCard(){
   if(!readerReady){lcdShow("NFC ERROR","Cek reader");delay(1500);return;}
   if(paymentAmount<=0)return;
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
-  if(!card.readUID(uid,len))return;
+  if(!waitForCardUID(uid,len,"Pembayaran")) return;
   lcdShow("Kartu terbaca","Memeriksa...");
   String credential=uidToCredential(uid,len); ++paymentSequence;
   cashierPrefs.putULong("pay_seq_counter",paymentSequence);
@@ -237,10 +359,15 @@ void scanCard(){
 }
 
 void lcdShow(String a,String b){
-  lcd.setCursor(0,0); lcd.print("                ");
-  lcd.setCursor(0,0); lcd.print(a.substring(0,16));
-  lcd.setCursor(0,1); lcd.print("                ");
-  lcd.setCursor(0,1); lcd.print(b.substring(0,16));
+  // Keep the existing UI helper name so the transaction flow stays unchanged.
+  // The physical display is a 128x64 I2C OLED (SSD1306, address 0x3C).
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setTextWrap(false);
+  display.setCursor(0,0); display.print(a.substring(0,21));
+  display.setCursor(0,18); display.print(b.substring(0,21));
+  display.display();
 }
 
 String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits){
@@ -273,6 +400,20 @@ long readCashierAmount(){
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("M_GROUP-cashier",false);
+  WIFI_SSID=cashierPrefs.getString("wifi_ssid",WIFI_SSID);
+  WIFI_PASSWORD=cashierPrefs.getString("wifi_pass",WIFI_PASSWORD);
+  M_GROUP_BASE_URL=cashierPrefs.getString("server_url",M_GROUP_BASE_URL);
+  DEVICE_ID=cashierPrefs.getString("device_id",DEVICE_ID);
+  M_GROUP_DEVICE_KEY=cashierPrefs.getString("device_key",M_GROUP_DEVICE_KEY);
+  bool configured=cashierPrefs.getBool("cfg_saved",false);
+  // A short boot window allows deliberate entry to setup mode by holding '*'.
+  bool forceSetup=false;
+  unsigned long setupWindow=millis();
+  while(millis()-setupWindow<1800UL){
+    if(M_GROUPKeypad.getKey()=='*') forceSetup=true;
+    delay(5);
+  }
+  bool needsConfigPortal=(!configured || forceSetup || M_GROUP_DEVICE_KEY.length()==0);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
@@ -295,7 +436,13 @@ void setup(){
       while(true) delay(1000);
     }
   }
-  lcd.init(); lcd.backlight();
+  Wire.begin(PN532_SDA,PN532_SCL);
+  if(!display.begin(SSD1306_SWITCHCAPVCC,OLED_I2C_ADDRESS)){
+    Serial.println("FATAL: SSD1306 OLED init failed; check I2C wiring/address/controller");
+    while(true) delay(1000);
+  }
+  display.clearDisplay(); display.setTextColor(SSD1306_WHITE); display.display();
+  if(needsConfigPortal) startConfigPortal();
   connectWifi(); heartbeat();
   readerReady=card.begin(PN532_SDA,PN532_SCL);
   if(!readerReady){
