@@ -77,14 +77,12 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
    - `MFRC522`
 3. Unduh/clone repo M-Group, lalu buka `esp32/cashier/MGroupCashier.ino`. Pastikan `MGroupKeypad.h` dan `MGroupCardReader.h` tetap berada di folder yang sama dengan sketch.
 4. Pilih board ESP32 yang sesuai dengan perangkat, port USB, lalu compile. Periksa bahwa semua library ditemukan.
-5. Isi konfigurasi di bagian atas `MGroupCashier.ino`:
-   - `WIFI_SSID` dan `WIFI_PASSWORD`
-   - `M_GROUP_BASE_URL`, contoh `http://192.168.1.24:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
-   - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan
-   - `M_GROUP_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
-6. Daftarkan/provision perangkat bertipe kasir pada server dengan ID yang sama. Pastikan key aktif.
-7. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
-8. Flash sketch, buka Serial Monitor pada **115200 baud**, lalu reset perangkat.
+5. Daftarkan/provision perangkat bertipe kasir di server dan siapkan `DEVICE_ID` serta device key aktif.
+6. Flash sketch, buka Serial Monitor pada **115200 baud**, lalu reset perangkat.
+7. Pada boot pertama, catat SSID dan password AP konfigurasi yang tercetak di Serial Monitor. Hubungkan ponsel/laptop ke AP tersebut dan buka `http://192.168.4.1`.
+8. Isi Wi-Fi SSID/password, URL server (contoh `http://192.168.1.24:8011`), Device ID yang tepat, dan device key aktif. Tekan **Simpan & restart**.
+9. Untuk membuka halaman konfigurasi lagi, tahan tombol `*` pada keypad saat perangkat dinyalakan. Jangan bagikan device key atau password Wi-Fi.
+10. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
 
 Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publik maupun log.
 
