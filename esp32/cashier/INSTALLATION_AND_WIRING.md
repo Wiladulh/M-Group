@@ -51,7 +51,7 @@ Fungsi tombol: angka untuk memasukkan nominal/PIN, `*` untuk menghapus digit ter
 | GND | GND |
 | VCC | Tegangan yang didukung breakout PN532 |
 
-PN532 berbagi bus I2C dengan LCD. Pastikan alamat perangkat I2C tidak bentrok dan level SDA/SCL aman untuk ESP32. GPIO 39 hanya input dan tidak memiliki internal pull-up; breakout PN532 harus menyediakan bias IRQ yang diperlukan.
+PN532 berbagi bus I2C dengan OLED. Pastikan alamat perangkat I2C tidak bentrok dan level SDA/SCL aman untuk ESP32. GPIO 39 hanya input dan tidak memiliki internal pull-up; breakout PN532 harus menyediakan bias IRQ yang diperlukan.
 
 ### Opsi B: RC522 SPI
 
@@ -94,7 +94,7 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 2. Serial Monitor menunjukkan alamat IP Wi-Fi dan heartbeat HTTP yang diterima server.
 3. Serial Monitor melaporkan reader `PN532` atau `RC522`. Jika tidak, matikan daya dan periksa wiring, mode breakout, dan tegangan.
 4. Uji semua tombol keypad; `*` menghapus dan `#` mengonfirmasi.
-5. Gunakan kartu dan akun uji. Masukkan nominal, tap kartu, lalu masukkan PIN uji. Pastikan hasil LCD sesuai respons server dan ledger hanya mencatat satu debit.
+5. Gunakan kartu dan akun uji. Masukkan nominal, tap kartu, lalu masukkan PIN uji. Pastikan hasil OLED sesuai respons server dan ledger hanya mencatat satu debit.
 6. Uji top-up hanya dengan PIN operator dan anggota uji serta prosedur kas yang disetujui.
 7. Jika layar menampilkan `HASIL BELUM ADA` atau `PAYMENT PENDING`, **jangan hapus NVS atau memulai transaksi berbeda**. Pulihkan jaringan dan ikuti permintaan firmware untuk mengulangi PIN agar transaksi yang sama dapat direkonsiliasi.
 
@@ -107,4 +107,4 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 - [ ] Pembayaran sukses, PIN salah, kartu tidak dikenal, dan saldo tidak cukup sudah diuji dengan akun uji.
 - [ ] Reboot saat transaksi pending tidak menyebabkan transaksi baru atau debit ganda.
 
-**Status:** build otomatis dapat memeriksa kompilasi, tetapi wiring, pembacaan kartu, LCD, keypad, dan transaksi nyata baru dapat dinyatakan lulus setelah diuji pada perangkat fisik.
+**Status:** build otomatis dapat memeriksa kompilasi, tetapi wiring, pembacaan kartu, OLED, keypad, dan transaksi nyata baru dapat dinyatakan lulus setelah diuji pada perangkat fisik.
