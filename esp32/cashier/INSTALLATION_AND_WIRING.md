@@ -5,21 +5,21 @@ Panduan ini mengikuti pin yang saat ini dipakai oleh `MGroupCashier.ino` dan hel
 ## 1. Komponen
 
 - ESP32 DevKit yang menyediakan GPIO pada tabel.
-- LCD 16x2 dengan backpack I2C (alamat default firmware `0x27`).
+- OLED I2C 0,96 inci 128x64 berbasis SSD1306 (alamat default firmware `0x3C`). Jika modul Anda berbasis SH1106 atau memakai alamat berbeda, driver/alamat perlu disesuaikan sebelum build.
 - Keypad matriks 4x4.
 - Salah satu reader: PN532 (I2C) atau RC522 (SPI). Firmware mencoba PN532 dahulu, lalu RC522.
 - Kabel jumper dan catu daya USB yang stabil.
 
-## 2. Wiring ESP32 ke LCD I2C
+## 2. Wiring ESP32 ke OLED I2C
 
-| LCD I2C | ESP32 |
+| OLED I2C | ESP32 |
 |---|---:|
 | VCC | Sesuai spesifikasi modul; utamakan 3.3 V jika kompatibel |
 | GND | GND |
 | SDA | GPIO 21 |
 | SCL | GPIO 22 |
 
-Firmware memakai alamat LCD `0x27`. Jika modul menggunakan alamat lain, ubah `LiquidCrystal_I2C lcd(0x27,16,2)` di `MGroupCashier.ino`. **Peringatan:** jangan biarkan pull-up backpack LCD menarik SDA/SCL ke 5 V; level sinyal ESP32 adalah 3.3 V. Gunakan level shifter atau pull-up 3.3 V yang sesuai bila diperlukan.
+Firmware memakai alamat OLED `0x3C` dengan driver Adafruit SSD1306. Jika modul memakai alamat lain, ubah `OLED_I2C_ADDRESS` di `MGroupCashier.ino`. OLED dan PN532 (bila dipakai) berbagi bus I2C pada GPIO 21/22. Pastikan modul I2C tidak menarik SDA/SCL ke 5 V; GPIO ESP32 menggunakan logika 3,3 V.
 
 ## 3. Wiring keypad 4x4
 
@@ -71,7 +71,7 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
 
 1. Pasang Arduino IDE dan dukungan board **ESP32 by Espressif Systems** melalui Boards Manager.
 2. Pasang library melalui Library Manager:
-   - `LiquidCrystal_I2C`
+   - `Adafruit SSD1306` dan `Adafruit GFX Library`
    - `Keypad`
    - `Adafruit PN532`
    - `MFRC522`
@@ -90,7 +90,7 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 
 ## 6. Uji awal
 
-1. LCD menyala dan menampilkan layar awal.
+1. OLED menyala dan menampilkan layar awal.
 2. Serial Monitor menunjukkan alamat IP Wi-Fi dan heartbeat HTTP yang diterima server.
 3. Serial Monitor melaporkan reader `PN532` atau `RC522`. Jika tidak, matikan daya dan periksa wiring, mode breakout, dan tegangan.
 4. Uji semua tombol keypad; `*` menghapus dan `#` mengonfirmasi.
@@ -102,7 +102,7 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 
 - [ ] Semua GND tersambung bersama.
 - [ ] Tidak ada sinyal 5 V langsung ke GPIO ESP32.
-- [ ] LCD, keypad, dan reader sudah diuji terpisah.
+- [ ] OLED, keypad, dan reader sudah diuji terpisah.
 - [ ] Device ID dan key cocok dengan registri server.
 - [ ] Pembayaran sukses, PIN salah, kartu tidak dikenal, dan saldo tidak cukup sudah diuji dengan akun uji.
 - [ ] Reboot saat transaksi pending tidak menyebabkan transaksi baru atau debit ganda.
