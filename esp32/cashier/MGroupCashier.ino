@@ -39,6 +39,8 @@ long paymentAmount=0;
 Preferences cashierPrefs;
 bool pendingPayment=false,pendingDeposit=false;
 
+void lcdShow(String a,String b="");
+
 // Configuration portal is available over a temporary, password-protected Wi-Fi AP.
 // Hold '*' while powering on to reopen it after initial provisioning.
 String htmlEscape(const String& value){
@@ -71,7 +73,7 @@ void startConfigPortal(){
   WiFi.disconnect(true); delay(100);
   WiFi.mode(WIFI_AP);
   uint64_t chip=ESP.getEfuseMac();
-  char ssid[32]; snprintf(ssid,sizeof(ssid),"M-Group-Cashier-%04X",(uint16_t)(chip>>32));
+  char ssid[32]; snprintf(ssid,sizeof(ssid),"M-Group-Cashier-%04X",(uint16_t)(chip & 0xFFFF));
   char alphabet[]="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   configPortalPassword="";
   for(int i=0;i<12;i++) configPortalPassword+=alphabet[esp_random()%(sizeof(alphabet)-1)];
@@ -87,6 +89,7 @@ void startConfigPortal(){
     String ssid=configServer.arg("ssid"); ssid.trim();
     String wifiPass=configServer.arg("wifi_password");
     String serverUrl=configServer.arg("server_url"); serverUrl.trim();
+    while(serverUrl.endsWith("/")) serverUrl.remove(serverUrl.length()-1);
     String deviceId=configServer.arg("device_id"); deviceId.trim();
     String deviceKey=configServer.arg("device_key"); deviceKey.trim();
     if(ssid.length()==0 || ssid.length()>32 || deviceId.length()==0 || deviceId.length()>64 ||
@@ -143,7 +146,6 @@ void clearPendingDeposit(){
   pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
 }
 
-void lcdShow(String a,String b="");
 String readKeyDigits(const char* title,bool masked,uint8_t minDigits,uint8_t maxDigits);
 long readCashierAmount();
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin);
