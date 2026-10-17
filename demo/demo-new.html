@@ -94,6 +94,17 @@
 <div class="heading"><div><h1>Device Registry</h1><p>Heartbeat, identitas node, konektivitas, dan status perangkat.</p></div><button onclick="toast('Status yang ditampilkan adalah data demo.')">↻ Refresh</button></div>
 <div class="grid" id="devmetrics"></div>
 <div class="panel"><div class="panelhead"><h2>Registered devices</h2><small>Data ilustratif</small></div><div class="tablewrap" id="devicetable"></div></div>
+<div class="panel">
+ <div class="panelhead"><h2>Device Key Manager</h2><span class="demo">SIMULASI DEMO</span></div>
+ <div class="notice"><strong>Generate key khusus tiap perangkat.</strong><br>Gunakan key yang berbeda untuk setiap Terminal Kasir dan Pengendali Vending. Dalam demo ini key dibuat di browser dan hanya berada di memori halaman; key belum didaftarkan atau divalidasi oleh server. Saat produksi, server harus menerbitkan dan menyimpan verifier key dengan aman.</div>
+ <div class="formgrid">
+  <div class="field"><label for="deviceKeyTarget">Perangkat tujuan</label><select id="deviceKeyTarget"><option value="CASHIER-01">Terminal Kasir — CASHIER-01</option><option value="Vending48cd1">Vending — Depan Natura (Vending48cd1)</option><option value="Vendinga91f2">Vending — Dalam Natura (Vendinga91f2)</option><option value="Vendingc07e2">Vending — Sekolahan (Vendingc07e2)</option></select></div>
+  <div class="field"><label>Status key demo</label><input id="deviceKeyStatus" readonly value="Belum dibuat"></div>
+ </div>
+ <div class="actions"><button type="button" class="primary" onclick="generateDeviceKey()">Generate device key</button><button type="button" onclick="showExistingDeviceKey()">Tampilkan key di sesi ini</button><button type="button" onclick="clearDeviceKeyView()">Sembunyikan key</button></div>
+ <div id="deviceKeyResult" class="result show" style="display:block;white-space:normal">Pilih perangkat lalu tekan Generate device key. Key hanya contoh untuk meninjau alur UI.</div>
+ <p class="muted" style="font-size:11px;margin-bottom:0">Catatan: tombol generate/rotate pada demo tidak mengubah server maupun firmware. Jangan gunakan key demo sebagai kredensial perangkat produksi.</p>
+</div>
 <div class="twocol"><div class="panel"><div class="panelhead"><h2>Peran perangkat</h2></div><div class="barrow"><div class="barlabel"><span>Terminal kasir</span><span class="status">Terdaftar</span></div><div class="muted">Pembacaan kartu NFC, input PIN, permintaan transaksi, dan heartbeat.</div></div><div class="barrow"><div class="barlabel"><span>Pengendali vending</span><span class="status">Terdaftar</span></div><div class="muted">Katalog produk, stok, status dispensing, dan pelaporan hasil.</div></div><div class="barrow"><div class="barlabel"><span>Reader NFC</span><b>RC522</b></div><div class="muted">Detail implementasi perangkat keras tidak ditampilkan pada informasi operasional.</div></div></div><div class="panel"><div class="panelhead"><h2>Kebijakan konektivitas</h2></div><div class="notice">Transaksi lokal dan antrean operasional dirancang untuk skenario offline-first.</div><div class="barrow"><div class="barlabel"><span>API lokal</span><span class="status">Simulasi</span></div><div class="barlabel"><span>Akses jarak jauh</span><span class="status warn">Belum diaktifkan</span></div><p class="muted">Status koneksi pada demo adalah data simulasi, bukan heartbeat sungguhan.</p></div></div></div>
 </section>
 <section class="page" id="audit">
@@ -206,6 +217,28 @@ $('mostUsedVending').innerHTML=rank.map((x,i)=>'<div class="rankrow"><div class=
 $('trafficInsight').innerHTML='<div class="insight-item"><strong>Puncak trafik:</strong> '+c.labels[peak]+' ('+max+' transaksi)</div><div class="insight-item"><strong>Trafik terendah:</strong> '+c.labels[low]+' ('+min+' transaksi)</div><div class="insight-item">Pertimbangkan uji promo pada waktu trafik rendah, lalu bandingkan hasil sebelum dan sesudah promo.</div>';
 }
 
+function selectedDeviceForKey(){return state.devices.find(d=>d.id===$('deviceKeyTarget')?.value)} 
+function renderDeviceKeyStatus(){const d=selectedDeviceForKey();if($('deviceKeyStatus'))$('deviceKeyStatus').value=d?(d.keyValue?'Key dibuat di sesi demo':'Belum dibuat'):'Perangkat tidak ditemukan'}
+function generateDeviceKey(){
+ const d=selectedDeviceForKey();if(!d){toast('Pilih perangkat yang valid.');return}
+ if(d.keyValue&&!confirm('Generate ulang akan mengganti key demo yang lama. Lanjutkan?'))return;
+ if(!window.crypto||!window.crypto.getRandomValues){toast('Browser ini tidak menyediakan generator acak aman. Buka demo melalui HTTPS.');return}
+ const bytes=new Uint8Array(32);window.crypto.getRandomValues(bytes);
+ const key='mg_'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+ d.keyValue=key;d.keyCreatedAt=new Date().toISOString();
+ state.audit.unshift({id:'AUD-DEMO-'+(state.audit.length+1),source:'DEVICE',entity:d.id,event:'device_key.generated_demo',result:'Simulasi',time:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})});
+ renderAll();renderDeviceKeyStatus();displayDeviceKey(d,key);
+ toast('Device key demo dibuat untuk '+d.id);
+}
+function displayDeviceKey(d,key){
+ const el=$('deviceKeyResult');if(!el)return;
+ el.innerHTML='<strong style="display:block;margin-bottom:8px">Key demo untuk '+esc(d.id)+'</strong><div class="muted" style="font-size:11px;margin-bottom:8px">Salin key ini untuk meninjau alur konfigurasi. Ini bukan key yang diterbitkan server.</div><input id="generatedDeviceKey" readonly value="'+esc(key)+'" style="width:100%;border:1px solid var(--line);border-radius:9px;padding:10px;background:#0b1322;color:var(--cyan);font:12px ui-monospace,monospace"><div class="actions"><button type="button" onclick="copyDeviceKey()">Salin key</button></div><div class="muted" style="font-size:11px;margin-top:8px">Dibuat pada sesi ini; refresh/logout akan menghilangkan key demo.</div>';
+ el.classList.add('show');el.style.display='block';
+}
+function showExistingDeviceKey(){const d=selectedDeviceForKey();if(!d||!d.keyValue){toast('Key belum dibuat untuk perangkat ini.');return}displayDeviceKey(d,d.keyValue);renderDeviceKeyStatus()}
+function copyDeviceKey(){const el=$('generatedDeviceKey');if(!el)return;el.select();el.setSelectionRange(0,el.value.length);if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(el.value).then(()=>toast('Key disalin.')).catch(()=>toast('Salin manual: pilih key lalu Copy.'))}else{try{document.execCommand('copy');toast('Key disalin.')}catch(_){toast('Pilih key lalu salin secara manual.')}}}
+function clearDeviceKeyView(){const el=$('deviceKeyResult');if(el){el.textContent='Key disembunyikan. Key yang dibuat masih ada di memori demo selama halaman ini terbuka.';el.classList.add('show')} }
+$('deviceKeyTarget')?.addEventListener('change',()=>{renderDeviceKeyStatus();clearDeviceKeyView()});
 function renderAll(){
 const offline=state.machines.filter(m=>m.status!=='Online'),low=state.products.filter(p=>p.stock<=5),pending=state.payments.filter(p=>p.status==='Menunggu');const alerts=[];if(offline.length)alerts.push('<div class="notice"><strong>Mesin offline ('+offline.length+')</strong><br>'+offline.map(m=>esc(m.name)+' — '+esc(m.id)+' · terakhir '+esc(m.last||'tidak diketahui')).join('<br>')+'</div>');if(low.length)alerts.push('<div class="notice"><strong>Stok rendah / habis ('+low.length+')</strong><br>'+low.map(p=>{const m=state.machines.find(x=>x.id===p.machine);return esc(m?.name||p.machine)+' · Product ID '+p.id+' · '+p.stock+'/'+p.capacity}).join('<br>')+'</div>');if(pending.length)alerts.push('<div class="notice"><strong>Pembayaran perlu ditelusuri ('+pending.length+')</strong><br>'+pending.map(p=>esc(p.id)+' · '+money(p.amount)+' · '+esc(p.method)).join('<br>')+'</div>');$('opsalerts').innerHTML=alerts.join('')||'<div class="status">Tidak ada perhatian operasional pada data demo.</div>';$('metrics').innerHTML=[['Saldo simpanan','Rp 2.320.000','◈','3 akun member'],['Transaksi hari ini','24','⇄','NFC + QRIS'],['Penjualan vending','Rp 186.000','▤','3 mesin demo terdaftar'],['Perangkat online','2 / 3','⌁','Heartbeat demo']].map(x=>'<div class="metric"><div class="metric-top">'+x[0]+'<span class="metric-icon">'+x[2]+'</span></div><strong>'+x[1]+'</strong><span class="muted" style="font-size:11px">'+x[3]+'</span></div>').join('');
 renderDashboardAnalytics();
@@ -216,7 +249,7 @@ renderLedger();renderPayments();$('nfcpromo').textContent=state.promo.NFC.enable
 $('machinetable').innerHTML=table(['Nama lokasi','Device name / Machine ID','MAC address','Last seen','Status'],state.machines.map(m=>[esc(m.name),esc(m.device),esc(m.mac),esc(m.last||'—'),m.status==='Online'?status(m.status):status(m.status,'red')]));
 renderMachineOptions();$('dispensetable').innerHTML=table(['Event ID','Mesin','Produk','Hasil','Tindak lanjut'],[['DSP-2031','Vending48cd1','Product ID 3',status('Berhasil'),'—'],['DSP-2030','Vendinga91f2','Product ID 5',status('Gagal','red'),status('Refund','warn')]]);
 $('devmetrics').innerHTML=[['Terdaftar','3','Jumlah perangkat'],['Online','2','Heartbeat diterima'],['Offline','1','Perlu diperiksa'],['Reader NFC','RC522','Target perangkat']].map(x=>'<div class="metric"><div class="metric-top">'+x[0]+'</div><strong>'+x[1]+'</strong><span class="muted" style="font-size:11px">'+x[2]+'</span></div>').join('');
-$('devicetable').innerHTML=table(['Device name / ID','Device type','MAC address','Status','Last seen','Alamat lokal'],state.devices.map(d=>[esc(d.id),esc(d.type),esc(d.mac||'—'),d.status==='Online'?status(d.status):status(d.status,'red'),esc(d.last),esc(d.ip)]));renderAudit();
+$('devicetable').innerHTML=table(['Device name / ID','Device type','MAC address','Status','Device key','Last seen','Alamat lokal'],state.devices.map(d=>[esc(d.id),esc(d.type),esc(d.mac||'—'),d.status==='Online'?status(d.status):status(d.status,'red'),d.keyValue?status('Dibuat di demo','blue'):status('Belum dibuat','warn'),esc(d.last),esc(d.ip)]));renderDeviceKeyStatus();renderAudit();
 }
 const names={dashboard:'Dashboard Management M-Group',members:'Anggota',finance:'Keuangan',payments:'Pembayaran',vending:'Vending & Inventory',devices:'Perangkat',audit:'Audit & Backup',settings:'Pengaturan'};
 function navigate(id){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===id));document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.page===id));$('crumb').textContent=names[id]||id;window.scrollTo({top:0,behavior:'smooth'})}
