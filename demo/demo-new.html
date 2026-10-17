@@ -184,24 +184,24 @@ function selectedMachine(){return state.machines.find(m=>m.id===$('productmachin
 function selectVendingMachine(){const m=selectedMachine();if(!m)return;$('productmachine_label').value=m.id;const badge=m.status==='Online'?status('Online'):status('Offline','red');$('selectedmachineinfo').innerHTML='<strong>'+esc(m.name)+'</strong><br><span class="muted">Device: '+esc(m.device)+'<br>MAC: '+esc(m.mac)+'<br>Lokasi: '+esc(m.name)+'</span><div style="margin-top:7px">'+badge+'</div>';$('productscope').textContent='Product ID 1–5 · '+m.name+' · '+m.id;renderProducts();loadProductEditor();renderVendingTransactions()}
 
 const vendingDemoTransactions=[
- {id:'VEN-TX-1042',machine:'Vendingc07e2',product:'Teh Botol',qty:1,unitPrice:5000,total:5000,time:'12:01:14',method:'NFC',status:'Berhasil',paymentRef:'PAY-2042',dispense:'Berhasil',member:'NTR-00001'},
- {id:'VEN-TX-1041',machine:'Vendingc07e2',product:'Jajan',qty:10,unitPrice:650,total:6500,time:'11:58:32',method:'QRIS',status:'Berhasil',paymentRef:'PAY-2041',dispense:'Berhasil',member:'—'},
- {id:'VEN-TX-1040',machine:'Vendingc07e2',product:'Aqua',qty:0,unitPrice:3000,total:0,time:'11:45:08',method:'NFC',status:'Gagal',paymentRef:'PAY-2040',dispense:'Tidak keluar',member:'NTR-00002'},
- {id:'VEN-TX-1039',machine:'Vending48cd1',product:'Roti Keju',qty:1,unitPrice:5000,total:5000,time:'13:22:09',method:'NFC',status:'Berhasil',paymentRef:'PAY-2039',dispense:'Berhasil',member:'NTR-00003'},
- {id:'VEN-TX-1038',machine:'Vending48cd1',product:'Air Mineral',qty:2,unitPrice:3000,total:6000,time:'12:41:51',method:'QRIS',status:'Berhasil',paymentRef:'PAY-2038',dispense:'Berhasil',member:'—'},
- {id:'VEN-TX-1037',machine:'Vendinga91f2',product:'Biskuit',qty:1,unitPrice:4500,total:4500,time:'09:31:04',method:'NFC',status:'Refund',paymentRef:'PAY-2037',dispense:'Gagal',member:'NTR-00002'}
+ {ageDays:0,id:'VEN-TX-1042',machine:'Vendingc07e2',product:'Teh Botol',qty:1,unitPrice:5000,total:5000,time:'12:01:14',method:'NFC',status:'Berhasil',paymentRef:'PAY-2042',dispense:'Berhasil',member:'NTR-00001'},
+ {ageDays:0,id:'VEN-TX-1041',machine:'Vendingc07e2',product:'Jajan',qty:10,unitPrice:650,total:6500,time:'11:58:32',method:'QRIS',status:'Berhasil',paymentRef:'PAY-2041',dispense:'Berhasil',member:'—'},
+ {ageDays:0,id:'VEN-TX-1040',machine:'Vendingc07e2',product:'Aqua',qty:0,unitPrice:3000,total:0,time:'11:45:08',method:'NFC',status:'Gagal',paymentRef:'PAY-2040',dispense:'Tidak keluar',member:'NTR-00002'},
+ {ageDays:1,id:'VEN-TX-1039',machine:'Vending48cd1',product:'Roti Keju',qty:1,unitPrice:5000,total:5000,time:'13:22:09',method:'NFC',status:'Berhasil',paymentRef:'PAY-2039',dispense:'Berhasil',member:'NTR-00003'},
+ {ageDays:3,id:'VEN-TX-1038',machine:'Vending48cd1',product:'Air Mineral',qty:2,unitPrice:3000,total:6000,time:'12:41:51',method:'QRIS',status:'Berhasil',paymentRef:'PAY-2038',dispense:'Berhasil',member:'—'},
+ {ageDays:8,id:'VEN-TX-1037',machine:'Vendinga91f2',product:'Biskuit',qty:1,unitPrice:4500,total:4500,time:'09:31:04',method:'NFC',status:'Refund',paymentRef:'PAY-2037',dispense:'Gagal',member:'NTR-00002'}
 ];
 const cashierDemoTransactions=[
- {id:'CSH-TX-2024',device:'CASHIER-01',type:'Penerimaan',amount:2000,time:'12:01:00',method:'NFC',status:'Berhasil',reference:'TOPUP-8841',account:'NTR-00001',operator:'Kasir Toko',note:'Top-up saldo anggota'},
- {id:'CSH-TX-2023',device:'CASHIER-01',type:'Penerimaan',amount:4500,time:'13:22:00',method:'Tunai',status:'Berhasil',reference:'CASH-8840',account:'Walk-in',operator:'Kasir Toko',note:'Penerimaan tunai'},
- {id:'CSH-TX-2022',device:'CASHIER-01',type:'Pengeluaran',amount:105000,time:'14:05:12',method:'Tunai',status:'Berhasil',reference:'CASH-8839',account:'Operasional',operator:'Kasir Toko',note:'Pengeluaran operasional'},
- {id:'CSH-TX-2021',device:'CASHIER-01',type:'Penerimaan',amount:15000,time:'10:44:35',method:'NFC',status:'Menunggu',reference:'TOPUP-8838',account:'NTR-00002',operator:'Kasir Toko',note:'Menunggu konfirmasi server'}
+ {ageDays:0,id:'CSH-TX-2024',device:'CASHIER-01',type:'Penerimaan',amount:2000,time:'12:01:00',method:'NFC',status:'Berhasil',reference:'TOPUP-8841',account:'NTR-00001',operator:'Kasir Toko',note:'Top-up saldo anggota'},
+ {ageDays:0,id:'CSH-TX-2023',device:'CASHIER-01',type:'Penerimaan',amount:4500,time:'13:22:00',method:'Tunai',status:'Berhasil',reference:'CASH-8840',account:'Walk-in',operator:'Kasir Toko',note:'Penerimaan tunai'},
+ {ageDays:1,id:'CSH-TX-2022',device:'CASHIER-01',type:'Pengeluaran',amount:105000,time:'14:05:12',method:'Tunai',status:'Berhasil',reference:'CASH-8839',account:'Operasional',operator:'Kasir Toko',note:'Pengeluaran operasional'},
+ {ageDays:0,id:'CSH-TX-2021',device:'CASHIER-01',type:'Penerimaan',amount:15000,time:'10:44:35',method:'NFC',status:'Menunggu',reference:'TOPUP-8838',account:'NTR-00002',operator:'Kasir Toko',note:'Menunggu konfirmasi server'}
 ];
 function renderVendingTransactions(){
  const m=selectedMachine();if(!m)return;
  const period=$('vendingTxnPeriod')?.value||'today',statusFilter=$('vendingTxnStatus')?.value||'ALL';
  let rows=vendingDemoTransactions.filter(t=>t.machine===m.id);
- if(period==='today')rows=rows.filter(t=>['VEN-TX-1042','VEN-TX-1041','VEN-TX-1040','VEN-TX-1039','VEN-TX-1038','VEN-TX-1037'].includes(t.id));
+ if(period==='today')rows=rows.filter(t=>t.ageDays===0);else if(period==='7d')rows=rows.filter(t=>t.ageDays<=7);
  if(statusFilter!=='ALL')rows=rows.filter(t=>t.status===statusFilter);
  $('vendingHistoryScope').textContent='Mesin: '+m.name+' · '+m.id+' · data simulasi';
  const successful=rows.filter(t=>t.status==='Berhasil'),gross=successful.reduce((n,t)=>n+t.total,0),units=successful.reduce((n,t)=>n+t.qty,0),failed=rows.filter(t=>['Gagal','Refund'].includes(t.status)).length;
@@ -216,7 +216,7 @@ function showVendingTxnDetail(id){
 }
 function renderCashierTransactions(){
  const dev=$('cashierMachine')?.value||'ALL',period=$('cashierTxnPeriod')?.value||'today',type=$('cashierTxnType')?.value||'ALL',sf=$('cashierTxnStatus')?.value||'ALL';
- let rows=cashierDemoTransactions.filter(t=>(dev==='ALL'||t.device===dev)&&(type==='ALL'||t.type===type)&&(sf==='ALL'||t.status===sf));
+ let rows=cashierDemoTransactions.filter(t=>(dev==='ALL'||t.device===dev)&&(type==='ALL'||t.type===type)&&(sf==='ALL'||t.status===sf)&&(period==='all'||(period==='today'?t.ageDays===0:t.ageDays<=7)));
  const inflow=rows.filter(t=>t.type==='Penerimaan'&&t.status==='Berhasil').reduce((n,t)=>n+t.amount,0),outflow=rows.filter(t=>t.type==='Pengeluaran'&&t.status==='Berhasil').reduce((n,t)=>n+t.amount,0);
  $('cashierTxnMetrics').innerHTML=[['Penerimaan',money(inflow),'Transaksi berhasil'],['Pengeluaran',money(outflow),'Transaksi berhasil'],['Selisih bersih',money(inflow-outflow),'Penerimaan dikurangi pengeluaran']].map(x=>'<div class="metric"><div class="metric-top">'+x[0]+'</div><strong>'+x[1]+'</strong><span class="muted" style="font-size:11px">'+x[2]+'</span></div>').join('');
  $('cashierTxnTable').innerHTML=table(['Waktu','ID transaksi','Jenis','Nominal','Metode','Akun / tujuan','Status','Detail'],rows.map(t=>[t.time,esc(t.id),t.type==='Penerimaan'?status(t.type,'blue'):status(t.type,'warn'),(t.type==='Pengeluaran'?'−':'')+money(t.amount),esc(t.method),esc(t.account),t.status==='Berhasil'?status(t.status):status(t.status,'warn'),'<button type="button" onclick="showCashierTxnDetail(\''+t.id+'\')">Lihat detail</button>']));
