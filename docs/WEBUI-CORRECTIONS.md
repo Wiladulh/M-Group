@@ -158,3 +158,20 @@ Implementasi server/WebUI yang aktif mengikuti kontrak katalog tetap:
 - Endpoint katalog memerlukan kunci perangkat terdaftar untuk firmware atau Admin Token untuk WebUI.
 
 Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diuji; pengujian perangkat nyata tetap wajib sebelum vending dioperasikan dengan saldo nyata.
+
+
+## 8. Detail transaksi per perangkat
+
+- **Vending & Inventory:** riwayat transaksi dan detail dispensing harus berada di halaman Vending & Inventory. Seluruh ringkasan, riwayat, katalog, dan event dispensing wajib mengikuti vending machine yang sedang dipilih pada dropdown; pergantian pilihan harus memperbarui seluruh data terkait secara konsisten.
+- Detail transaksi vending minimal mencakup waktu, ID transaksi, produk/Product ID, jumlah, harga satuan, total, metode pembayaran, status pembayaran, status dispensing, referensi pembayaran, dan status/refund jika terjadi kegagalan.
+- **Cashier:** sediakan menu/tab terpisah dari Vending & Inventory. Riwayat cashier minimal mencakup waktu, ID transaksi, perangkat, jenis penerimaan/pengeluaran, nominal, metode, akun/tujuan, referensi, operator bila relevan, status, dan catatan.
+- Ringkasan penerimaan, pengeluaran, dan selisih bersih harus dihitung dari transaksi final yang sah; transaksi menunggu, gagal, dan refund tidak boleh keliru dihitung sebagai penerimaan final. Data demo hanya ilustrasi, sedangkan angka produksi wajib bersumber dari server/ledger.
+- Sediakan filter periode, jenis/status transaksi, serta akses Lihat detail. Kegagalan dispensing, status pembayaran, dan refund harus dapat ditelusuri dengan ID/korelasi transaksi yang sama.
+
+## 9. Persistensi sesi login admin untuk WebUI produksi
+
+- Pada build asli WebUI M_GROUP, admin tidak seharusnya diminta login ulang hanya karena halaman di-reload selama sesi autentikasi masih valid.
+- Implementasikan sesi persisten dengan mekanisme server yang aman, idealnya cookie sesi HttpOnly, Secure pada HTTPS, dan SameSite yang sesuai; gunakan rotasi/validasi sesi di server, masa berlaku/idle timeout, logout/revocation, dan proteksi CSRF sesuai pola autentikasi aplikasi.
+- Jangan menyimpan password admin atau token sesi sensitif di localStorage/sessionStorage. Setelah reload, WebUI memeriksa sesi melalui endpoint server; jika sesi valid, lanjut ke dashboard, jika sudah kedaluwarsa/dicabut, arahkan ke login.
+- Terapkan otorisasi server pada setiap endpoint; status login di frontend saja tidak cukup untuk melindungi API.
+- Catatan ini adalah persyaratan untuk implementasi asli; demo GitHub Pages tetap merupakan simulasi browser dan bukan bukti autentikasi produksi.
