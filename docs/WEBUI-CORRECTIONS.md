@@ -31,8 +31,8 @@ Sesi enrollment harus memiliki timeout, status, korelasi permintaan, dan audit e
 ## 3. Member ID otomatis
 
 - Member ID tidak dapat diinput atau diedit manual oleh admin.
-- Format tetap: `NTR-00001`, `NTR-00002`, dan seterusnya.
-- `NTR` adalah prefix tetap; angka lima digit adalah nomor urut pendaftaran. Contoh member ke-1120: `NTR-01120`.
+- Format tetap: `ID-A001`, `ID-A002`, dan seterusnya.
+- `ID-A` adalah prefix tetap; angka berurutan menggunakan minimal tiga digit dan bertambah otomatis bila melewati 999. Contoh member ke-1120: `ID-A1120`.
 - Nomor dibuat di server/database secara atomik agar pendaftaran bersamaan tidak menghasilkan ID duplikat. Jangan mengandalkan penghitung browser atau jumlah baris UI.
 - NIK harus divalidasi dan diberi batasan unik sesuai kebijakan data member.
 
