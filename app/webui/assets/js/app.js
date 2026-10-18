@@ -32,7 +32,7 @@ function renderAnalytics(d){
 async function loadDashboard(token,period=selectedAnalyticsPeriod){
   const {r,d}=await json('/api/v1/dashboard?period='+encodeURIComponent(period),{headers:{'X-M-Group-Admin-Token':token}});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
   const stats=d.stats||{};
@@ -53,6 +53,8 @@ async function loadDashboard(token,period=selectedAnalyticsPeriod){
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
+  $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
+  $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
   $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
