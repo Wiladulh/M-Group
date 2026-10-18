@@ -118,3 +118,33 @@ def test_member_registration_generates_sequential_demo_format_id():
             assert response.json()["member_id"] == "ID-A002"
         finally:
             main.get_settings = old
+
+def test_device_provisioning_validates_type_and_returns_one_time_key():
+    with TemporaryDirectory() as tmp:
+        client, old = _client_with_member(tmp)
+        try:
+            headers = {"X-M-Group-Admin-Token": "admin-secret"}
+            invalid = client.post(
+                "/api/v1/devices/vending-02/provision",
+                json={"device_type": "unknown-device"},
+                headers=headers,
+            )
+            assert invalid.status_code == 400
+            assert invalid.json()["detail"] == "invalid_device_type"
+
+            created = client.post(
+                "/api/v1/devices/vending-02/provision",
+                json={"device_type": "esp32-vending"},
+                headers=headers,
+            )
+            assert created.status_code == 200
+            key = created.json()["device_key"]
+            assert len(key) >= 32
+            with client.app.state.db.connect() as c:
+                row = c.execute(
+                    "SELECT auth_key_hash,auth_key_hint FROM device_registry WHERE device_id='vending-02'"
+                ).fetchone()
+                assert row["auth_key_hash"] != key
+                assert row["auth_key_hint"] == key[-6:]
+        finally:
+            main.get_settings = old
