@@ -27,7 +27,6 @@ The card UID is sent in the JSON body rather than a URL path, to reduce exposure
 {
   "member_id": "ID-A001",
   "member_name": "Example Member",
-  "account_id": "account-001",
   "balance": 27500,
   "currency": "IDR"
 }
