@@ -20,10 +20,26 @@ function switchTab(tabName) {
 async function loadDashboard(token){
   const {r,d}=await json('/api/v1/dashboard',{headers:{'X-M-Group-Admin-Token':token}});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['members','accounts','payments','loans','machines','products','devices']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
-  $('summary').innerHTML=[['Anggota',d.members.length],['Rekening',d.accounts.length],['Pembayaran',d.payments.length],['Pinjaman',d.loans.length],['Vending',d.machines.length],['Perangkat',d.devices.length]].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join('');
+  const stats=d.stats||{};
+  const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
+  $('summary').innerHTML=[
+    ['Anggota',d.members.length],['Rekening',d.accounts.length],['Saldo member',money(totalBalance)],
+    ['Pembayaran terbaru',d.payments.length],['Pinjaman',d.loans.length],['Mesin vending',d.machines.length],
+    ['Perangkat',d.devices.length],['Cashier masuk hari ini',money(stats.cashier_money_in_today)],
+    ['Cashier keluar hari ini',money(stats.cashier_money_out_today)],['Vending masuk hari ini',money(stats.vending_money_in_today)]
+  ].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
+  const recent=[
+    ...d.payments.map(x=>({...x,source:x.transaction_source||'CASHIER',transaction_type:'PAYMENT'})),
+    ...d.vending_transactions.map(x=>({...x,source:'VENDING',transaction_type:'PURCHASE'}))
+  ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
+  $('recentTransactions').innerHTML=table(recent.map(x=>({
+    created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
+    device_id:x.device_id||x.machine_id,account_id:x.account_id,
+    transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
+  })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
   $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
