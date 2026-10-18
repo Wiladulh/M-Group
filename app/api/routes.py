@@ -351,9 +351,8 @@ def build_router(db, app_settings=None):
     @r.post("/members")
     def member_create(q: MemberCreateRequest, x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
-        member_id = "member-" + uuid4().hex
         try:
-            return members.create(member_id,q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
+            return members.create("",q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
         except ValueError as e:
             raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
