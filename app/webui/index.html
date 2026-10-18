@@ -31,12 +31,15 @@
     <div class="navlabel">OVERVIEW</div>
     <button class="tab-btn active" data-tab="dashboard"><span>▦</span> Ringkasan</button>
     <div class="navlabel">OPERASIONAL</div>
-    <button class="tab-btn" data-tab="financial"><span>◈</span> Keuangan</button>
     <button class="tab-btn" data-tab="member"><span>♙</span> Anggota</button>
+    <button class="tab-btn" data-tab="financial"><span>◈</span> Keuangan</button>
     <button class="tab-btn" data-tab="payment"><span>⇄</span> Pembayaran</button>
-    <button class="tab-btn" data-tab="vending"><span>▤</span> Vending & Katalog</button>
+    <button class="tab-btn" data-tab="vending"><span>▤</span> Vending & Inventory</button>
+    <button class="tab-btn" data-tab="cashier"><span>⇄</span> Cashier</button>
     <button class="tab-btn" data-tab="devices"><span>⌘</span> Perangkat</button>
     <button class="tab-btn" data-tab="audit"><span>☷</span> Audit & Backup</button>
+    <div class="navlabel">ADMIN</div>
+    <button class="tab-btn" data-tab="settings"><span>⚙</span> Pengaturan</button>
     <div class="sidefoot"><strong>M-Group Server</strong><br><span>Data operasional berasal dari server. Demo data tidak digunakan sebagai saldo resmi.</span></div>
   </aside>
   <div class="main-shell">
@@ -45,13 +48,13 @@
       <div class="top-actions"><span id="activeUsername" class="active-username"></span><button id="logoutButton" type="button" class="logout-button">Keluar</button><div id="status" class="status">Memuat...</div></div>
     </header>
     <main class="content">
-      <div id="page-dashboard"></div><div id="page-financial"></div><div id="page-member"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-audit"></div><div id="page-devices"></div>
+      <div id="page-dashboard"></div><div id="page-member"></div><div id="page-financial"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-cashier"></div><div id="page-devices"></div><div id="page-audit"></div><div id="page-settings"></div>
     </main>
   </div>
 </div>
 <script>
 (async()=>{
- const pages=["dashboard","financial","member","payment","vending","audit","devices"];
+ const pages=["dashboard","member","financial","payment","vending","cashier","devices","audit","settings"];
  await Promise.all(pages.map(async name=>{
    const r=await fetch('/pages/'+name+'.html');
    if(!r.ok)throw new Error('Gagal memuat halaman '+name);
