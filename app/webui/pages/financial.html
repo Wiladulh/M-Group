@@ -8,16 +8,18 @@
     <div class="hint">Gunakan Account ID anggota. Mutasi saldo memerlukan sesi admin yang aktif.</div>
     <form id="financialForm">
       <input id="financialAdminToken" type="hidden" value="session" data-session-token>
-      <input id="account" placeholder="Account ID" required>
-      <input id="amount" type="number" min="1" placeholder="Jumlah" required>
+      <select id="account" required><option value="">Muat akun setelah login</option></select>
+      <input id="amount" type="number" min="1" step="1" placeholder="Jumlah (IDR)" required>
       <select id="direction">
         <option value="credit">Deposit / Kredit</option>
         <option value="debit">Penarikan / Debit</option>
       </select>
-      <input id="reference" placeholder="Referensi">
+      <input id="reference" placeholder="Referensi transaksi unik" required>
       <button>Proses</button>
     </form>
     <div id="financialResult" class="result"></div>
+    <h3>Riwayat Ledger Akun</h3>
+    <div id="financialLedger" class="scroll"></div>
   </section>
   <section class="section">
     <h2>Pinjaman</h2>
