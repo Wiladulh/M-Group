@@ -382,3 +382,21 @@ button:hover{filter:brightness(1.08)}
 .status{white-space:nowrap}
 @media(max-width:900px){.layout{grid-template-columns:190px minmax(0,1fr)}main.content{padding:18px}.main-shell header.topbar{padding:0 18px}.sidebar{padding:15px 9px}}
 @media(max-width:650px){.layout{grid-template-columns:1fr}.sidebar{position:relative;top:auto;height:auto;overflow:visible;border-right:0;border-bottom:1px solid var(--line);padding:12px}.brand-wrap{padding-bottom:8px}.sidebar .tab-btn{width:auto;display:inline-flex;flex:0 0 auto}.sidebar{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px}.brand-wrap{width:100%}.navlabel{display:none}.sidefoot{display:none}.main-shell header.topbar{height:auto;min-height:64px;padding:12px 14px}.top-title{font-size:13px}main.content{padding:12px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+[hidden]{display:none!important}
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at top right,#1e2b48,#090d16 58%)}
+.login-card{display:flex;flex-direction:column;gap:13px;width:min(100%,390px);padding:28px;background:#121b2d;border:1px solid #26344b;border-radius:18px;box-shadow:0 25px 80px #0007}
+.login-logo{width:46px;height:46px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#67e8f9,#60a5fa);color:#081322;font-size:21px;font-weight:950}
+.login-brand{font-size:15px;font-weight:850;color:#67e8f9;margin-top:-6px}
+.login-card h1{font-size:22px;line-height:1.2;margin:8px 0 0;color:#edf3fc}
+.login-muted{font-size:12px;color:var(--muted);margin:0 0 5px}
+.login-card label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#cbd5e1}
+.login-card input{width:100%;padding:12px;border:1px solid #30415a;border-radius:9px;background:#0b1220;color:#edf3fc}
+.login-card input:focus{outline:2px solid #60a5fa55;border-color:#60a5fa}
+.login-submit{width:100%;padding:12px;margin-top:4px}
+.login-error{min-height:17px;color:#fda4af;font-size:12px}
+.top-actions{display:flex;align-items:center;gap:10px}
+.active-username{font-size:12px;color:#cbd5e1}
+.main-shell .logout-button{width:auto;white-space:nowrap;background:#172338;color:#dbeafe;border:1px solid #30415a;padding:7px 11px;font-size:11px}
+@media(max-width:650px){.top-actions{gap:6px}.active-username{display:none}.main-shell .logout-button{padding:6px 9px}}
