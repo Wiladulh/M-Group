@@ -250,12 +250,12 @@ async function loadVendingMachines(){
     sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
-    if(sel.value)await loadVendingCatalog(sel.value);
+    if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
     $('productResult').textContent=rows.length?'Daftar mesin berhasil dimuat.':'Belum ada vending machine terdaftar.';
   }catch(e){$('productResult').textContent=e.message}
 }
 $('loadVendingMachines').onclick=loadVendingMachines;
-$('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+$('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
 $('productId').onchange=()=>{
   const item=vendingCatalog.find(x=>String(x.product_id)===$('productId').value);
   $('productName').value=item?.name||'';
@@ -274,6 +274,26 @@ $('productForm').onsubmit=async e=>{
   $('productResult').textContent=JSON.stringify(d,null,2);
   if(r.ok){await loadVendingCatalog(mid);await load()}
 };
+let vendingTransactions=[];
+async function loadVendingTransactions(machineId){
+  const token=$('vendingAdminToken').value.trim();
+  if(!token||!machineId){$('vendingTxnResult').textContent='Pilih mesin untuk melihat riwayat transaksi.';return}
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/transactions?limit=100',{
+    headers:{'X-M-Group-Admin-Token':token}
+  });
+  if(!r.ok){$('vendingTxnResult').textContent=d.detail||'Gagal memuat riwayat transaksi vending';return}
+  vendingTransactions=d.transactions||[];
+  renderVendingTransactions();
+}
+function renderVendingTransactions(){
+  const statusFilter=$('vendingTxnStatus').value,productFilter=$('vendingTxnProduct').value;
+  const rows=vendingTransactions.filter(x=>(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter)&&(productFilter==='ALL'||String(x.product_id)===productFilter));
+  $('vendingTxnResult').innerHTML=table(rows.map(x=>({...x,amount:money(x.amount),dispense_status:x.dispense_status||'—'})),['created_at','transaction_id','product_id','account_id','amount','status','dispense_status','completed_at']);
+}
+$('loadVendingTransactions').onclick=()=>loadVendingTransactions($('machineId').value);
+$('vendingTxnStatus').onchange=renderVendingTransactions;
+$('vendingTxnProduct').onchange=renderVendingTransactions;
+
 async function loadCashierTransactions(){
   const token=$('cashierAdminToken').value.trim();
   const period=$('cashierPeriod').value;
