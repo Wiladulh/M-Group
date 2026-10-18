@@ -73,6 +73,14 @@ M_GROUP_ADMIN_PASSWORD_HASH='pbkdf2_sha256$310000$...'
 
 Restart the service after manual configuration changes. Never commit the hash, admin token, or environment file to GitHub.
 
+If the admin password is forgotten after changing it in WebUI, reset it interactively with:
+
+```sh
+sudo /opt/M-Group/bin/m-group reset-admin-password
+```
+
+The command updates the persisted SQLite admin account and revokes all active WebUI sessions. Use the installed prefix if it differs from `/opt/M-Group`.
+
 ## Upgrade and uninstall
 
 Run `sudo sh installer/upgrade.sh` from a fresh checkout to update the installed Python package. Back up `/var/lib/M-Group` before upgrades. The uninstall script removes the application environment only and intentionally preserves instance data/configuration.
