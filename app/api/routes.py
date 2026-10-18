@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, HTTPException, Header, UploadFile, File, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import hashlib
@@ -15,6 +15,9 @@ from app.vending.service import VendingService
 from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
 from pathlib import Path
 from uuid import uuid4
+import time
+from urllib.parse import urlsplit
+from app.core.auth import hash_password, hash_session_token, new_session_token, verify_password
 
 MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -187,8 +190,21 @@ class CashierDepositRequest(BaseModel):
     member_pin: str
     idempotency_key: str
 
+class MemberBalanceLookupRequest(BaseModel):
+    device_id: str
+    card_uid: str
+
 class OperatorPinRequest(BaseModel):
     pin: str
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AdminAccountUpdateRequest(BaseModel):
+    current_password: str
+    username: str
+    new_password: str | None = None
 
 def build_router(db, app_settings=None):
     r = APIRouter(prefix="/api/v1")
@@ -244,6 +260,150 @@ def build_router(db, app_settings=None):
             result["product_id"] = str(row["slot"])
         return result
 
+    @r.post("/auth/login")
+    def admin_login(q: AdminLoginRequest, request: Request, response: Response):
+        username = q.username.strip()
+        configured_username = getattr(app_settings, "admin_username", "")
+        configured_hash = getattr(app_settings, "admin_password_hash", "")
+        if not getattr(app_settings, "admin_token", ""):
+            raise HTTPException(503, "admin_login_not_configured")
+        if request.headers.get("origin"):
+            origin = urlsplit(request.headers["origin"])
+            if origin.netloc != request.headers.get("host"):
+                raise HTTPException(403, "cross_origin_request_rejected")
+        client_ip = request.client.host if request.client else "unknown"
+        client_key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+        now = int(time.time())
+        with db.connect() as c:
+            account = c.execute(
+                "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            if account is None and configured_username and configured_hash:
+                c.execute(
+                    "INSERT OR IGNORE INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                    (configured_username, configured_hash, now),
+                )
+                account = c.execute(
+                    "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+                ).fetchone()
+            failures = c.execute(
+                "SELECT COUNT(*) FROM webui_login_attempts WHERE client_key=? AND succeeded=0 AND attempted_at>=?",
+                (client_key, now - 900),
+            ).fetchone()[0]
+            c.commit()
+        if account is None:
+            raise HTTPException(503, "admin_login_not_configured")
+        if failures >= 10:
+            raise HTTPException(429, "login_rate_limited")
+        password_valid = verify_password(q.password, account["password_hash"])
+        username_valid = secrets.compare_digest(username, account["username"])
+        valid = username_valid and password_valid
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
+                (client_key, now, 1 if valid else 0),
+            )
+            c.execute("DELETE FROM webui_login_attempts WHERE attempted_at<?", (now - 86400,))
+            if valid:
+                token = new_session_token()
+                c.execute(
+                    "INSERT INTO webui_sessions(session_hash,username,created_at,last_seen,expires_at) VALUES(?,?,?,?,?)",
+                    (hash_session_token(token), account["username"], now, now, now + 43200),
+                )
+            c.commit()
+        if not valid:
+            raise HTTPException(401, "invalid_username_or_password")
+        response.set_cookie(
+            key="m_group_session", value=token, max_age=43200, httponly=True,
+            secure=request.url.scheme == "https", samesite="lax", path="/",
+        )
+        return {"authenticated": True, "username": account["username"]}
+
+    @r.get("/auth/session")
+    def admin_session(request: Request):
+        token = request.cookies.get("m_group_session", "")
+        if not token:
+            raise HTTPException(401, "admin_session_required")
+        now = int(time.time())
+        with db.connect() as c:
+            row = c.execute(
+                """SELECT username FROM webui_sessions
+                   WHERE session_hash=? AND revoked_at IS NULL AND expires_at>? AND last_seen>?""",
+                (hash_session_token(token), now, now - 1800),
+            ).fetchone()
+            if row:
+                c.execute("UPDATE webui_sessions SET last_seen=? WHERE session_hash=?",
+                          (now, hash_session_token(token)))
+                c.commit()
+        if not row:
+            raise HTTPException(401, "admin_session_expired")
+        return {"authenticated": True, "username": row["username"]}
+
+    @r.post("/auth/account")
+    def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
+        origin = request.headers.get("origin")
+        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            raise HTTPException(403, "same_origin_required")
+        token = request.cookies.get("m_group_session", "")
+        if not token:
+            raise HTTPException(401, "admin_session_required")
+        username = q.username.strip()
+        if len(username) < 3 or len(username) > 64 or any(
+            not (ch.isalnum() or ch in "._-") for ch in username
+        ):
+            raise HTTPException(400, "invalid_admin_username")
+        if q.new_password is not None and len(q.new_password) < 8:
+            raise HTTPException(400, "password_too_short")
+        now = int(time.time())
+        session_hash = hash_session_token(token)
+        with db.connect() as c:
+            session = c.execute(
+                """SELECT username FROM webui_sessions
+                   WHERE session_hash=? AND revoked_at IS NULL AND expires_at>? AND last_seen>?""",
+                (session_hash, now, now - 1800),
+            ).fetchone()
+            if session is None:
+                raise HTTPException(401, "admin_session_expired")
+            account = c.execute(
+                "SELECT password_hash FROM webui_admin_accounts WHERE username=?",
+                (session["username"],),
+            ).fetchone()
+            if account is None or not verify_password(q.current_password, account["password_hash"]):
+                raise HTTPException(403, "invalid_current_password")
+            password_hash = hash_password(q.new_password) if q.new_password else account["password_hash"]
+            c.execute("DELETE FROM webui_admin_accounts")
+            c.execute(
+                "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                (username, password_hash, now),
+            )
+            c.execute(
+                "UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL AND session_hash<>?",
+                (now, session_hash),
+            )
+            c.execute(
+                "UPDATE webui_sessions SET username=?,last_seen=? WHERE session_hash=?",
+                (username, now, session_hash),
+            )
+            c.commit()
+        return {"updated": True, "username": username, "password_changed": bool(q.new_password)}
+
+    @r.post("/auth/logout")
+    def admin_logout(request: Request, response: Response):
+        origin = request.headers.get("origin")
+        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            raise HTTPException(403, "same_origin_required")
+        token = request.cookies.get("m_group_session", "")
+        if token:
+            with db.connect() as c:
+                c.execute(
+                    "UPDATE webui_sessions SET revoked_at=? WHERE session_hash=? AND revoked_at IS NULL",
+                    (int(time.time()), hash_session_token(token)),
+                )
+                c.commit()
+        response.delete_cookie("m_group_session", path="/", httponly=True,
+                               secure=request.url.scheme == "https", samesite="lax")
+        return {"authenticated": False}
+
     @r.get("/health")
     def health(): return {"status": "ok", "service": "M-Group"}
 
@@ -289,14 +449,27 @@ def build_router(db, app_settings=None):
         return {"device_id":device_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
-    def dashboard(x_m_group_admin_token: str | None = Header(default=None)):
+    def dashboard(period: str = "1w", x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
+        analytics_periods = {
+            "1d": ("strftime('%H:00', created_at)", "start of day"),
+            "1w": ("date(created_at)", "-6 days"),
+            "1m": ("date(created_at)", "-29 days"),
+            "3m": ("strftime('%Y-W%W', created_at)", "-89 days"),
+            "5m": ("strftime('%Y-W%W', created_at)", "-149 days"),
+            "1y": ("strftime('%Y-%m', created_at)", "-364 days"),
+        }
+        if period not in analytics_periods:
+            raise HTTPException(400, "invalid_analytics_period")
+        bucket_expr, date_modifier = analytics_periods[period]
         with db.connect() as c:
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
                    FROM financial_accounts a JOIN identity_members m ON m.member_id=a.member_id ORDER BY a.created_at DESC""").fetchall()
-            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,status,method,provider,device_id,created_at
+            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,final_amount,status,method,provider,device_id,transaction_source,created_at
                    FROM payment_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
+            vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
+                   FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
             machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
@@ -321,11 +494,38 @@ def build_router(db, app_settings=None):
                 "SELECT COALESCE(SUM(amount),0) FROM vending_transactions "
                 "WHERE transaction_source='VENDING' AND status='completed' AND created_at>=date('now')"
             ).fetchone()[0]
+            analytics_rows=c.execute(f"""
+                SELECT bucket,COUNT(*) AS transactions FROM (
+                    SELECT {bucket_expr} AS bucket,created_at FROM payment_transactions
+                      WHERE transaction_source='CASHIER' AND status='completed'
+                    UNION ALL
+                    SELECT {bucket_expr} AS bucket,created_at FROM cashier_deposits
+                      WHERE status='completed'
+                    UNION ALL
+                    SELECT {bucket_expr} AS bucket,created_at FROM vending_transactions
+                      WHERE status='completed'
+                )
+                WHERE created_at>=datetime('now',?)
+                GROUP BY bucket ORDER BY bucket
+            """,(date_modifier,)).fetchall()
+            most_used_rows=c.execute("""
+                SELECT m.machine_id,m.name,COUNT(v.transaction_id) AS transactions
+                FROM vending_machines m LEFT JOIN vending_transactions v
+                  ON v.machine_id=m.machine_id AND v.status='completed' AND v.created_at>=datetime('now',?)
+                GROUP BY m.machine_id,m.name ORDER BY transactions DESC,m.name LIMIT 5
+            """,(date_modifier,)).fetchall()
+            payment_channel_rows=c.execute("""
+                SELECT COALESCE(method,'Unknown') AS method,COUNT(*) AS transactions,
+                       COALESCE(SUM(COALESCE(final_amount,amount)),0) AS amount
+                FROM payment_transactions WHERE status='completed' AND created_at>=datetime('now',?)
+                GROUP BY method ORDER BY transactions DESC
+            """,(date_modifier,)).fetchall()
         return {"members":[dict(x) for x in members],
                 "accounts":[{**dict(x),"balance":financial.balance(x["account_id"])} for x in accounts],
-                "payments":[dict(x) for x in payments_rows],"loans":[dict(x) for x in loans],
+                "payments":[dict(x) for x in payments_rows],"vending_transactions":[dict(x) for x in vending_rows],"loans":[dict(x) for x in loans],
                 "machines":[dict(x) for x in machines],"products":[dict(x) for x in products],
                 "devices":[dict(x) for x in devices],
+                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],"most_used_vending":[dict(x) for x in most_used_rows],"payment_channels":[dict(x) for x in payment_channel_rows],
                 "stats":{
                     "cashier_transactions":cashier_count,
                     "cashier_money_in_today":cashier_in,
@@ -347,9 +547,8 @@ def build_router(db, app_settings=None):
     @r.post("/members")
     def member_create(q: MemberCreateRequest, x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
-        member_id = "member-" + uuid4().hex
         try:
-            return members.create(member_id,q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
+            return members.create("",q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
         except ValueError as e:
             raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
@@ -545,6 +744,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(401,"admin_auth_required")
         if not device_id.strip() or not q.device_type.strip():
             raise HTTPException(400,"device_id_and_type_required")
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400, "invalid_device_type")
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
@@ -602,6 +803,64 @@ def build_router(db, app_settings=None):
         require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"balance":financial.balance(account_id)}
         except ValueError as e:raise HTTPException(404,str(e))
+
+    @r.post("/devices/member-balance")
+    def device_member_balance(q: MemberBalanceLookupRequest,
+                              x_m_group_device_key: str | None = Header(default=None)):
+        """Read-only balance lookup for authenticated Cashier/Vending devices."""
+        device_id = q.device_id.strip()
+        card_uid = q.card_uid.strip()
+        if not device_id:
+            raise HTTPException(400, "device_id_required")
+        if not card_uid:
+            raise HTTPException(400, "card_uid_required")
+        require_device(device_id, x_m_group_device_key)
+        with db.connect() as c:
+            device = c.execute(
+                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
+                raise HTTPException(403, "device_type_not_allowed")
+        # Suppress duplicate NFC reads from the same device/card for two seconds.
+        uid_hash = hashlib.sha256(card_uid.casefold().encode("utf-8")).hexdigest()
+        now = time.time()
+        with db.connect() as c:
+            prior = c.execute(
+                "SELECT last_lookup_at FROM device_balance_lookup_limits WHERE device_id=? AND card_uid_hash=?",
+                (device_id, uid_hash),
+            ).fetchone()
+            if prior and now - float(prior["last_lookup_at"]) < 2.0:
+                raise HTTPException(429, "balance_lookup_rate_limited", headers={"Retry-After": "2"})
+            c.execute(
+                """INSERT INTO device_balance_lookup_limits(device_id,card_uid_hash,last_lookup_at)
+                   VALUES(?,?,?) ON CONFLICT(device_id,card_uid_hash)
+                   DO UPDATE SET last_lookup_at=excluded.last_lookup_at""",
+                (device_id, uid_hash, now),
+            )
+            c.commit()
+        member = members.resolve_card(card_uid)
+        if member is None:
+            raise HTTPException(404, "nfc_card_not_found_or_inactive")
+        with db.connect() as c:
+            account = c.execute(
+                """SELECT account_id FROM financial_accounts
+                   WHERE member_id=? AND status='active'
+                   ORDER BY CASE WHEN account_type='savings' THEN 0 ELSE 1 END, created_at
+                   LIMIT 1""",
+                (member["member_id"],),
+            ).fetchone()
+        if account is None:
+            raise HTTPException(404, "member_account_not_found")
+        try:
+            balance = financial.balance(account["account_id"])
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        return {
+            "member_id": member["member_id"],
+            "member_name": member["name"],
+            "balance": balance,
+            "currency": "IDR",
+        }
 
     @r.get("/accounts/{account_id}/ledger")
     def account_ledger(account_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
@@ -754,6 +1013,28 @@ def build_router(db, app_settings=None):
             result["product_id"] = str(result["slot"])
             return result
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
+
+    @r.get("/vending/{machine_id}/transactions")
+    def vending_machine_transactions(machine_id: str, limit: int = 100,
+                                     x_m_group_admin_token: str | None = Header(default=None)):
+        token = getattr(app_settings, "admin_token", "")
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token, token):
+            raise HTTPException(401, "admin_auth_required")
+        if limit < 1 or limit > 500:
+            raise HTTPException(400, "limit_must_be_1_to_500")
+        machine = resolve_vending_machine(machine_id)
+        with db.connect() as c:
+            rows = c.execute(
+                """SELECT transaction_id,machine_id,product_id,credential_id,account_id,amount,
+                          status,dispense_status,created_at,completed_at
+                   FROM vending_transactions WHERE machine_id=?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (machine["machine_id"], limit),
+            ).fetchall()
+        return {
+            "machine_id": machine["machine_id"],
+            "transactions": [public_vending_transaction(dict(row)) for row in rows],
+        }
 
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
@@ -1135,10 +1416,17 @@ def build_router(db, app_settings=None):
         if source in {"ALL","CASHIER"}:
             queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id,member_id,account_id,
                               'DEPOSIT' transaction_type,amount,status FROM cashier_deposits""")
+            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id,a.member_id,p.account_id,
+                              'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status
+                              FROM payment_transactions p
+                              LEFT JOIN financial_accounts a ON a.account_id=p.account_id
+                              WHERE p.transaction_source='CASHIER'""")
         if source in {"ALL","VENDING"}:
-            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,v.credential_id,
+            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status
-                              FROM vending_transactions v LEFT JOIN vending_machines m ON m.machine_id=v.machine_id""")
+                              FROM vending_transactions v
+                              LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
+                              LEFT JOIN financial_accounts a ON a.account_id=v.account_id""")
         sql=" UNION ALL ".join("SELECT * FROM ("+q+") WHERE created_at>=? AND created_at<?" for q in queries)+" ORDER BY created_at DESC"
         args=[v for _ in queries for v in (start,end)]
         with db.connect() as c:

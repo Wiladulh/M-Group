@@ -31,8 +31,8 @@ Sesi enrollment harus memiliki timeout, status, korelasi permintaan, dan audit e
 ## 3. Member ID otomatis
 
 - Member ID tidak dapat diinput atau diedit manual oleh admin.
-- Format tetap: `NTR-00001`, `NTR-00002`, dan seterusnya.
-- `NTR` adalah prefix tetap; angka lima digit adalah nomor urut pendaftaran. Contoh member ke-1120: `NTR-01120`.
+- Format tetap: `ID-A001`, `ID-A002`, dan seterusnya.
+- `ID-A` adalah prefix tetap; angka berurutan menggunakan minimal tiga digit dan bertambah otomatis bila melewati 999. Contoh member ke-1120: `ID-A1120`.
 - Nomor dibuat di server/database secara atomik agar pendaftaran bersamaan tidak menghasilkan ID duplikat. Jangan mengandalkan penghitung browser atau jumlah baris UI.
 - NIK harus divalidasi dan diberi batasan unik sesuai kebijakan data member.
 
@@ -175,3 +175,13 @@ Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diu
 - Jangan menyimpan password admin atau token sesi sensitif di localStorage/sessionStorage. Setelah reload, WebUI memeriksa sesi melalui endpoint server; jika sesi valid, lanjut ke dashboard, jika sudah kedaluwarsa/dicabut, arahkan ke login.
 - Terapkan otorisasi server pada setiap endpoint; status login di frontend saja tidak cukup untuk melindungi API.
 - Catatan ini adalah persyaratan untuk implementasi asli; demo GitHub Pages tetap merupakan simulasi browser dan bukan bukti autentikasi produksi.
+
+### Implementasi branch demo-parity-member-balance
+
+- API sesi tersedia di `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, dan `POST /api/v1/auth/logout`.
+- Sesi menggunakan token acak yang hanya disimpan dalam bentuk hash di SQLite; cookie browser bernama `m_group_session` bersifat HttpOnly dan SameSite=Lax, serta Secure bila request memakai HTTPS.
+- Sesi berlaku maksimal 12 jam dan ditolak setelah 30 menit tanpa aktivitas. Logout mencabut sesi di server.
+- Permintaan mutasi yang memakai cookie sesi harus berasal dari origin yang sama; endpoint admin tetap menjalankan pemeriksaan otorisasi di server.
+- Kredensial awal dibaca dari konfigurasi terlindungi, lalu disalin ke tabel `webui_admin_accounts` saat login pertama. Perubahan username/password disimpan di SQLite; password selalu berupa hash PBKDF2-SHA256. Gunakan `m-group hash-password` untuk membuat hash awal; jangan memasukkan password atau hash ke repository.
+- Migrasi `021_webui_sessions.sql` menambahkan tabel sesi dan catatan percobaan login. Installer/upgrade menyiapkan konfigurasi login jika belum tersedia.
+- Status implementasi ini tetap harus divalidasi oleh CI dan uji upgrade di lingkungan uji sebelum branch siap digabung.

@@ -339,3 +339,77 @@ button:hover {
   .card { padding: 12px; }
   .value { font-size: 20px; }
 }
+
+/* Management dashboard shell: aligned with the approved demo visual language. */
+.layout{min-height:100vh;display:grid;grid-template-columns:235px minmax(0,1fr);background:var(--bg)}
+.sidebar{background:#0e1626;border-right:1px solid var(--line);padding:20px 13px;position:sticky;top:0;height:100vh;overflow:auto;display:flex;flex-direction:column;align-items:stretch;gap:3px}
+.brand-wrap{display:flex;align-items:center;gap:10px;padding:0 8px 22px}
+.logo{width:39px;height:39px;flex:0 0 39px;display:grid;place-items:center;background:linear-gradient(135deg,#67e8f9,#60a5fa);color:#081322;border-radius:12px;font-weight:950;font-size:18px}
+.sidebar .brand{font-size:15px;font-weight:800;letter-spacing:0;background:linear-gradient(135deg,#67e8f9,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.side-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.navlabel{font-size:10px;color:#71839d;text-transform:uppercase;letter-spacing:1.4px;padding:15px 10px 7px}
+.sidebar .tab-btn{width:100%;display:flex;gap:11px;align-items:center;text-align:left;background:transparent;border:1px solid transparent;color:#a9b9cf;margin:2px 0;padding:10px 11px;border-radius:9px;font-size:12px;font-weight:600;box-shadow:none;white-space:nowrap}
+.sidebar .tab-btn span{width:20px;text-align:center;color:#8fa1ba;font-size:15px}
+.sidebar .tab-btn:hover{background:#172338;color:#edf3fc;filter:none}
+.sidebar .tab-btn.active{background:#1d2d46;color:#eaf6ff;border-color:#304767;box-shadow:none}
+.sidebar .tab-btn.active span{color:#67e8f9}
+.sidefoot{margin:24px 5px 0;padding:13px;border:1px solid var(--line);border-radius:12px;font-size:11px;color:var(--muted);line-height:1.6}
+.sidefoot strong{color:#dbeafe;font-size:12px}
+.main-shell{min-width:0;display:flex;flex-direction:column}
+.main-shell header.topbar{height:70px;min-height:70px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px;gap:12px;background:#0b1020ed;position:sticky;top:0;z-index:5;backdrop-filter:blur(12px)}
+.crumb{font-size:10px;color:var(--muted);letter-spacing:1.1px;margin-bottom:3px}
+.top-title{font-size:15px;font-weight:750;color:#edf3fc}
+main.content{width:100%;max-width:1500px;margin:0 auto;padding:28px;min-width:0}
+.tab-pane{display:none;animation:fadeIn .2s ease-in-out}
+.tab-pane.active{display:block}
+.section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:19px;margin-bottom:15px;box-shadow:0 10px 30px -18px rgba(0,0,0,.7);min-width:0}
+h2{font-size:15px;font-weight:750;margin:0 0 8px;color:#edf3fc;letter-spacing:-.2px}
+h3{font-size:13px;font-weight:700;color:#dbeafe}
+.hint{font-size:12px;color:var(--muted);line-height:1.6}
+.grid{gap:13px}
+.card{background:var(--panel);border-color:var(--line);border-radius:13px;padding:17px}
+.card::before{opacity:.8}
+.label{font-size:10px;color:var(--muted);letter-spacing:1px}
+.value{font-size:24px;letter-spacing:-.5px}
+.scroll{border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+th{background:#0f1728;color:#8fa1ba}
+tr:hover td{background:#ffffff08}
+input,select,button{border-radius:9px}
+input,select{background:#0b1220;border-color:#26344b}
+button{background:linear-gradient(135deg,#67e8f9,#60a5fa);color:#081322;box-shadow:none}
+button:hover{filter:brightness(1.08)}
+.result{background:#0b1220;border-color:var(--line);color:#93c5fd}
+.status{white-space:nowrap}
+@media(max-width:900px){.layout{grid-template-columns:190px minmax(0,1fr)}main.content{padding:18px}.main-shell header.topbar{padding:0 18px}.sidebar{padding:15px 9px}}
+@media(max-width:650px){.layout{grid-template-columns:1fr}.sidebar{position:relative;top:auto;height:auto;overflow:visible;border-right:0;border-bottom:1px solid var(--line);padding:12px}.brand-wrap{padding-bottom:8px}.sidebar .tab-btn{width:auto;display:inline-flex;flex:0 0 auto}.sidebar{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px}.brand-wrap{width:100%}.navlabel{display:none}.sidefoot{display:none}.main-shell header.topbar{height:auto;min-height:64px;padding:12px 14px}.top-title{font-size:13px}main.content{padding:12px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+[hidden]{display:none!important}
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at top right,#1e2b48,#090d16 58%)}
+.login-card{display:flex;flex-direction:column;gap:13px;width:min(100%,390px);padding:28px;background:#121b2d;border:1px solid #26344b;border-radius:18px;box-shadow:0 25px 80px #0007}
+.login-logo{width:46px;height:46px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#67e8f9,#60a5fa);color:#081322;font-size:21px;font-weight:950}
+.login-brand{font-size:15px;font-weight:850;color:#67e8f9;margin-top:-6px}
+.login-card h1{font-size:22px;line-height:1.2;margin:8px 0 0;color:#edf3fc}
+.login-muted{font-size:12px;color:var(--muted);margin:0 0 5px}
+.login-card label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#cbd5e1}
+.login-card input{width:100%;padding:12px;border:1px solid #30415a;border-radius:9px;background:#0b1220;color:#edf3fc}
+.login-card input:focus{outline:2px solid #60a5fa55;border-color:#60a5fa}
+.login-submit{width:100%;padding:12px;margin-top:4px}
+.login-error{min-height:17px;color:#fda4af;font-size:12px}
+.top-actions{display:flex;align-items:center;gap:10px}
+.active-username{font-size:12px;color:#cbd5e1}
+.main-shell .logout-button{width:auto;white-space:nowrap;background:#172338;color:#dbeafe;border:1px solid #30415a;padding:7px 11px;font-size:11px}
+@media(max-width:650px){.top-actions{gap:6px}.active-username{display:none}.main-shell .logout-button{padding:6px 9px}}
+
+
+.analytics-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:22px 0 10px}
+.analytics-head h2{margin-bottom:4px}
+.period-pills{display:flex;gap:5px;flex-wrap:wrap}
+.main-shell .period-btn{background:#0c1423;color:#9db1ca;border:1px solid #26364e;padding:6px 10px;font-size:11px;border-radius:7px}
+.main-shell .period-btn.active{background:#1c3952;color:#a5f3fc;border-color:#2f6681}
+.analytics-chart{min-height:160px;display:flex;align-items:flex-end;gap:8px;overflow-x:auto;padding:18px 4px 4px;border-bottom:1px solid var(--line)}
+.analytics-bars{display:flex;align-items:flex-end;gap:8px;min-width:100%;height:180px}
+.analytics-bar-col{flex:1;min-width:26px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
+.analytics-bar-value{font-size:10px;color:#cbd5e1}
+.analytics-bar{width:min(100%,26px);min-height:3px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,#67e8f9,#3b82f6);box-shadow:0 0 12px #38bdf822}
+.analytics-bar-label{font-size:9px;color:var(--muted);white-space:nowrap;transform:rotate(-20deg);transform-origin:center top;margin-top:4px}

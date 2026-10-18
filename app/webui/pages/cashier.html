@@ -1,0 +1,38 @@
+<div id="tab-cashier" class="tab-pane">
+  <section class="section">
+    <div class="panelhead"><div><h2>Cashier</h2><p class="hint">Riwayat penerimaan dan pembayaran dari perangkat Cashier, bersumber dari server.</p></div></div>
+    <form id="cashierForm">
+      <input id="cashierAdminToken" type="hidden" value="session" data-session-token>
+      <label>Perangkat Cashier
+        <select id="cashierDevice"><option value="ALL">Semua Cashier</option></select>
+      </label>
+      <label>Periode
+        <select id="cashierPeriod">
+          <option value="day">Hari ini</option>
+          <option value="week">Minggu ini</option>
+          <option value="month">Bulan ini</option>
+        </select>
+      </label>
+      <label>Jenis transaksi
+        <select id="cashierType">
+          <option value="ALL">Semua jenis</option>
+          <option value="DEPOSIT">Penerimaan / Top-up</option>
+          <option value="PAYMENT">Pembayaran</option>
+        </select>
+      </label>
+      <label>Status
+        <select id="cashierStatus">
+          <option value="ALL">Semua status</option>
+          <option value="completed">Berhasil</option>
+          <option value="pending">Menunggu</option>
+          <option value="failed">Gagal</option>
+          <option value="refunded">Refund</option>
+        </select>
+      </label>
+      <button type="submit">Tampilkan Transaksi</button>
+    </form>
+    <div id="cashierMetrics" class="grid" style="margin-top:14px"></div>
+    <div id="cashierResult" class="scroll" style="margin-top:12px"></div>
+    <div id="cashierDetail" class="result"></div>
+  </section>
+</div>

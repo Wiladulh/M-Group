@@ -61,6 +61,9 @@ os.chmod(backup_path, 0o600)
 PY
 echo "Verified pre-upgrade database backup: $BACKUP"
 
+# Configure the new WebUI login only after a verified pre-upgrade backup exists.
+sh "$SCRIPT_DIR/configure-admin-login.sh" "$CONFIG_DIR/m-group.env" "$PYTHON"
+
 # Stop an active instance before replacing package files. On failure it remains
 # stopped so an unverified or partially upgraded API is not exposed.
 if [ "$WAS_ACTIVE" -eq 1 ]; then

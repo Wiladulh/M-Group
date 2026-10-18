@@ -7,7 +7,7 @@ Usage: sh installer/install.sh [--system|--user]
   --system  Install in /opt/M-Group and register systemd/OpenRC when available (root).
   --user    Install in ~/.local/lib/M-Group without a system service.
 Environment: M_GROUP_PREFIX, M_GROUP_DATA_DIR, M_GROUP_CONFIG_DIR, M_GROUP_HOST,
-M_GROUP_PORT, M_GROUP_ADMIN_TOKEN, M_GROUP_PYTHON, M_GROUP_SKIP_SERVICE=1.
+M_GROUP_PORT, M_GROUP_ADMIN_TOKEN, M_GROUP_ADMIN_USERNAME,\nM_GROUP_ADMIN_PASSWORD_HASH, M_GROUP_PYTHON, M_GROUP_SKIP_SERVICE=1.
 EOF
 }
 MODE=""
@@ -94,6 +94,8 @@ CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}
 HOST=${M_GROUP_HOST:-0.0.0.0}
 PORT=${M_GROUP_PORT:-8011}
 ADMIN_TOKEN=${M_GROUP_ADMIN_TOKEN:-}
+ADMIN_USERNAME=${M_GROUP_ADMIN_USERNAME:-}
+ADMIN_PASSWORD_HASH=${M_GROUP_ADMIN_PASSWORD_HASH:-}
 OPERATOR_PIN=${M_GROUP_CASHIER_OPERATOR_PIN:-}
 # Reuse the existing system configuration on reinstall unless the operator
 # explicitly overrides a value through the environment or interactive prompt.
@@ -118,6 +120,12 @@ if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then
   fi
   if [ -z "$ADMIN_TOKEN" ]; then
     ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
+  fi
+  if [ -z "$ADMIN_USERNAME" ]; then
+    ADMIN_USERNAME=$(sed -n 's/^M_GROUP_ADMIN_USERNAME=//p' "$ENV_FILE" | head -n 1)
+  fi
+  if [ -z "$ADMIN_PASSWORD_HASH" ]; then
+    ADMIN_PASSWORD_HASH=$(sed -n 's/^M_GROUP_ADMIN_PASSWORD_HASH=//p' "$ENV_FILE" | head -n 1 | sed "s/^'//;s/'$//")
   fi
 fi
 # Interactive setup for headless/server installs. Defaults are persistent paths.
@@ -250,8 +258,11 @@ M_GROUP_PORT=$PORT
 M_GROUP_DATA_DIR=$DATA
 M_GROUP_DB_PATH=$DATA/M-Group.db
 M_GROUP_ADMIN_TOKEN=$ADMIN_TOKEN
+M_GROUP_ADMIN_USERNAME=$ADMIN_USERNAME
+M_GROUP_ADMIN_PASSWORD_HASH='$ADMIN_PASSWORD_HASH'
 M_GROUP_CASHIER_OPERATOR_PIN=$OPERATOR_PIN
 EOF
+  sh "$SCRIPT_DIR/configure-admin-login.sh" "$ENV_FILE" "$PYTHON"
   SERVICE_USER=m-group
   if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then

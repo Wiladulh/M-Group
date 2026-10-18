@@ -1,11 +1,39 @@
 <div id="tab-dashboard" class="tab-pane active">
   <section class="section">
-    <h2>Ringkasan</h2>
+    <h2>Dashboard Management M-Group</h2>
     <form id="dashboardForm">
-      <input id="dashboardAdminToken" type="password" placeholder="Admin Token untuk memuat data privat" autocomplete="current-password" required>
+      <input id="dashboardAdminToken" type="hidden" value="session" data-session-token>
       <button type="submit">Muat Ringkasan</button>
     </form>
-    <div id="dashboardResult" class="result">Masukkan Admin Token untuk menampilkan data anggota dan keuangan.</div>
+    <div id="dashboardResult" class="result">Data anggota dan keuangan akan dimuat setelah sesi admin aktif.</div>
     <div id="summary" class="grid"></div>
+    <div class="analytics-head">
+      <div><h2>Volume transaksi</h2><p class="hint">Jumlah transaksi berhasil dari Cashier dan Vending.</p></div>
+      <div class="period-pills" aria-label="Periode analitik">
+        <button type="button" class="period-btn" data-analytics-period="1d">1d</button>
+        <button type="button" class="period-btn active" data-analytics-period="1w">1w</button>
+        <button type="button" class="period-btn" data-analytics-period="1m">1m</button>
+        <button type="button" class="period-btn" data-analytics-period="3m">3m</button>
+        <button type="button" class="period-btn" data-analytics-period="5m">5m</button>
+        <button type="button" class="period-btn" data-analytics-period="1y">1y</button>
+      </div>
+    </div>
+    <div id="analyticsSummary" class="hint"></div>
+    <div id="analyticsChart" class="analytics-chart"></div>
+  </section>
+  <section class="section">
+    <h2>Most Used Vending</h2>
+    <p class="hint">Mesin dengan transaksi berhasil terbanyak pada periode terpilih.</p>
+    <div id="mostUsedVending" class="scroll"></div>
+  </section>
+  <section class="section">
+    <h2>Ringkasan Kanal Pembayaran</h2>
+    <p class="hint">Jumlah dan nilai pembayaran berhasil pada periode terpilih.</p>
+    <div id="paymentChannels" class="scroll"></div>
+  </section>
+  <section class="section">
+    <h2>Transaksi Terbaru</h2>
+    <p class="hint">Riwayat terakhir dari Cashier dan Vending yang tercatat di server.</p>
+    <div id="recentTransactions" class="scroll"></div>
   </section>
 </div>

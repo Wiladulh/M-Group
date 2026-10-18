@@ -1,7 +1,12 @@
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('id-ID').format(Number(n)||0);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function table(rows,cols){if(!rows?.length)return '<p class="hint" style="padding:16px;">Belum ada data.</p>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(r[c])+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
-async function json(url,opt){const r=await fetch(url,opt);let d={};try{d=await r.json()}catch{}return{r,d}}
+async function json(url,opt={}){
+  const r=await fetch(url,{credentials:'same-origin',...opt});
+  let d={};try{d=await r.json()}catch{}
+  if(r.status===401 && !String(url).includes('/auth/'))showLogin('Sesi berakhir. Silakan masuk kembali.');
+  return{r,d};
+}
 
 // Fungsi Kontrol Tab Aktif
 function switchTab(tabName) {
@@ -12,16 +17,61 @@ function switchTab(tabName) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function loadDashboard(token){
-  const {r,d}=await json('/api/v1/dashboard',{headers:{'X-M-Group-Admin-Token':token}});
+let selectedAnalyticsPeriod='1w';
+let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[];
+function renderAnalytics(d){
+  const rows=d.analytics||[];
+  const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
+  $('analyticsSummary').textContent='Periode '+(d.analytics_period||selectedAnalyticsPeriod)+' · '+total+' transaksi berhasil';
+  if(!rows.length){$('analyticsChart').innerHTML='<p class="hint">Belum ada transaksi berhasil pada periode ini.</p>';return}
+  const max=Math.max(1,...rows.map(x=>Number(x.transactions||0)));
+  $('analyticsChart').innerHTML='<div class="analytics-bars">'+rows.map(x=>{
+    const count=Number(x.transactions||0),height=Math.max(3,Math.round(count/max*140));
+    return '<div class="analytics-bar-col"><span class="analytics-bar-value">'+count+'</span><div class="analytics-bar" style="height:'+height+'px"></div><span class="analytics-bar-label">'+esc(x.bucket)+'</span></div>';
+  }).join('')+'</div>';
+}
+async function loadDashboard(token,period=selectedAnalyticsPeriod){
+  const {r,d}=await json('/api/v1/dashboard?period='+encodeURIComponent(period),{headers:{'X-M-Group-Admin-Token':token}});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['members','accounts','payments','loans','machines','products','devices']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
-  $('summary').innerHTML=[['Anggota',d.members.length],['Rekening',d.accounts.length],['Pembayaran',d.payments.length],['Pinjaman',d.loans.length],['Vending',d.machines.length],['Perangkat',d.devices.length]].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join('');
+  const stats=d.stats||{};
+  const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
+  $('summary').innerHTML=[
+    ['Anggota',d.members.length],['Rekening',d.accounts.length],['Saldo member',money(totalBalance)],
+    ['Pembayaran terbaru',d.payments.length],['Pinjaman',d.loans.length],['Mesin vending',d.machines.length],
+    ['Perangkat',d.devices.length],['Cashier masuk hari ini',money(stats.cashier_money_in_today)],
+    ['Cashier keluar hari ini',money(stats.cashier_money_out_today)],['Vending masuk hari ini',money(stats.vending_money_in_today)]
+  ].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
+  const recent=[
+    ...d.payments.map(x=>({...x,source:x.transaction_source||'PAYMENT',transaction_type:'PAYMENT'})),
+    ...d.vending_transactions.map(x=>({...x,source:'VENDING',transaction_type:'PURCHASE'}))
+  ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
+  $('recentTransactions').innerHTML=table(recent.map(x=>({
+    created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
+    device_id:x.device_id||x.machine_id,account_id:x.account_id,
+    transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
+  })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
+  renderAnalytics(d);
+  const memberSelect=$('payMember'),currentMember=memberSelect.value;
+  const activeMembers=dashboardMembers.filter(x=>x.status==='active');
+  memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+  if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
+  else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
+  await loadPaymentMemberData(memberSelect.value);
+  $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
+  $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
+  dashboardAccounts=d.accounts;
+  dashboardMembers=d.members;
+  const accountSelect=$('account'),currentAccount=accountSelect.value;
+  accountSelect.innerHTML='<option value="">Pilih rekening</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — '+esc(x.account_id)+' · '+money(x.balance)+'</option>').join('');
+  if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
+  else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
+  await loadFinancialLedger();
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
-  $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+  dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
   $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
@@ -32,7 +82,7 @@ async function load(){
   const h=await fetch('/api/v1/health').then(r=>{if(!r.ok)throw new Error('health_http_'+r.status);return r.json()});
   $('status').textContent='● '+(h.status||'online');
   const token=$('dashboardAdminToken')?.value.trim();
-  if(token)await loadDashboard(token);
+  if(token)await loadDashboard(token,selectedAnalyticsPeriod);
  }catch(e){
   console.error('M-Group WebUI load failed:',e);
   $('status').textContent='● Gagal memuat WebUI/API';
@@ -55,10 +105,20 @@ async function loadMembers(){
     const url=id?'/api/v1/members/'+encodeURIComponent(id):'/api/v1/members';
     const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan member');
-    $('memberAuthResult').textContent='Member berhasil disimpan.';
+    $('memberAuthResult').textContent='Member '+(d.member_id||id)+' berhasil disimpan.';
     await loadMemberList();
   }catch(e){$('memberAuthResult').textContent=e.message}
 }
+let memberListRows=[];
+function renderMemberRows(){
+  const search=($('memberSearch')?.value||'').trim().toLowerCase();
+  const status=$('memberStatusFilter')?.value||'ALL';
+  const rows=memberListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.member_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
+    memberListRows=rows;renderMemberRows();
+}
+$('memberSearch').oninput=renderMemberRows;
+$('memberStatusFilter').onchange=renderMemberRows;
+
 async function loadMemberList(){
   const token=$('memberAdminToken').value.trim(); if(!token)return;
   const {r,d}=await json('/api/v1/members',{headers:{'X-M-Group-Admin-Token':token}});
@@ -67,9 +127,9 @@ async function loadMemberList(){
     $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Ganti NFC</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
     const sel=$('nfcMemberId');
     if(sel){
-      const current=sel.value;
-      sel.innerHTML='<option value="">Pilih member</option>'+rows.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
-      if(rows.some(x=>x.member_id===current))sel.value=current;
+      const current=sel.value,enrollable=rows.filter(x=>x.status==='active');
+      sel.innerHTML='<option value="">Pilih member</option>'+enrollable.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+      if(enrollable.some(x=>x.member_id===current))sel.value=current;
     }
     await loadNfcCashiers();
   }
@@ -151,7 +211,7 @@ async function pollNfcRegistration(memberId,sessionId){
   await check();
   nfcPollTimer=setInterval(check,2000);
 }
-$('nfcMemberId').onchange=()=>{const v=$('nfcMemberId').value;if(v)$('memberId').value=v};
+$('nfcMemberId').onchange=()=>{};
 $('nfcStart').onclick=async()=>{
   try{
     const token=$('memberAdminToken').value.trim(),memberId=$('nfcMemberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
@@ -206,8 +266,104 @@ async function saveDevice(deviceId){
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 $('deviceAuthForm').onsubmit=async e=>{e.preventDefault();await loadDevices()};
-$('financialForm').onsubmit=async e=>{e.preventDefault();const token=$('financialAdminToken').value.trim();if(!token){$('financialResult').textContent='Admin Token wajib diisi';return}const q={amount:+$('amount').value,reference:$('reference').value||null,idempotency_key:'webui-financial:'+crypto.randomUUID()};const{r,d}=await json('/api/v1/accounts/'+encodeURIComponent($('account').value)+'/'+$('direction').value,{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('financialResult').textContent=JSON.stringify(d,null,2);if(r.ok)load()};
-$('paymentForm').onsubmit=async e=>{e.preventDefault();const token=$('paymentAdminToken').value.trim();if(!token){$('paymentResult').textContent='Admin Token wajib diisi';return}const method=$('method').value,pin=$('paypin').value;if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}const q={credential_id:$('credential').value,account_id:$('payaccount').value,amount:+$('payamount').value,method,provider:$('provider').value||'local',idempotency_key:$('idem').value||null,pin:pin||null};const{r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('paymentResult').textContent=JSON.stringify(d,null,2);if(r.ok){$('paypin').value='';load()}};
+$('deviceProvisionForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('deviceAdminToken').value.trim();
+  const deviceId=$('provisionDeviceId').value.trim();
+  const deviceType=$('provisionDeviceType').value;
+  const result=$('deviceProvisionResult');
+  if(!token){result.textContent='Sesi admin tidak aktif.';return}
+  if(!deviceId){result.textContent='Device ID wajib diisi.';return}
+  if(!confirm('Generate key untuk '+deviceId+'? Jika perangkat ini sudah aktif, key lama akan langsung tidak berlaku.'))return;
+  const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId)+'/provision',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},
+    body:JSON.stringify({device_type:deviceType})
+  });
+  if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
+  $('provisionedDeviceKey').value=d.device_key;
+  $('provisionedDeviceKey').type='password';
+  result.textContent='Key baru dibuat untuk '+d.device_id+'. Salin sekarang; server tidak menyediakan tampilan ulang key.';
+  await loadDevices();
+};
+$('toggleDeviceKey').onclick=()=>{
+  const input=$('provisionedDeviceKey');
+  input.type=input.type==='password'?'text':'password';
+};
+$('copyDeviceKey').onclick=async()=>{
+  const input=$('provisionedDeviceKey');
+  if(!input.value){$('deviceProvisionResult').textContent='Belum ada key untuk disalin.';return}
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(input.value);
+    else {input.type='text';input.select();document.execCommand('copy');input.type='password'}
+    $('deviceProvisionResult').textContent='Device key disalin. Simpan di tempat rahasia.';
+  }catch(e){input.type='text';input.select();$('deviceProvisionResult').textContent='Pilih dan salin key secara manual.'}
+};
+
+async function loadFinancialLedger(){
+  const token=$('financialAdminToken')?.value.trim(),accountId=$('account')?.value;
+  if(!token||!accountId){$('financialLedger').innerHTML='<p class="hint" style="padding:12px">Pilih rekening untuk melihat ledger.</p>';return}
+  const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/ledger?limit=100',{headers:{'X-M-Group-Admin-Token':token}});
+  $('financialLedger').innerHTML=r.ok?table((d.entries||[]).map(x=>({...x,amount:money(x.amount)})),['created_at','direction','amount','reference','id']):'<p class="hint" style="padding:12px">'+esc(d.detail||'Gagal memuat ledger')+'</p>';
+}
+$('account').onchange=loadFinancialLedger;
+$('financialForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('financialAdminToken').value.trim(),accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
+  if(!token){$('financialResult').textContent='Sesi admin tidak aktif.';return}
+  if(!accountId){$('financialResult').textContent='Pilih rekening terlebih dahulu.';return}
+  if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
+  if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
+  const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
+  if(!confirm('Konfirmasi '+action+' sebesar '+money(amount)+' pada rekening '+accountId+'?'))return;
+  const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+  const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
+  const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
+    method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)
+  });
+  $('financialResult').textContent=JSON.stringify(d,null,2);
+  if(r.ok){await load();await loadFinancialLedger()}
+};
+async function loadPaymentMemberData(memberId){
+  const token=$('paymentAdminToken')?.value.trim();
+  const credentialSelect=$('credential'),accountSelect=$('payaccount');
+  if(!memberId||!token){credentialSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';return}
+  const accounts=dashboardAccounts.filter(x=>x.member_id===memberId&&x.status==='active');
+  const currentAccount=accountSelect.value;
+  accountSelect.innerHTML=accounts.length?accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.account_id)+' · '+money(x.balance)+'</option>').join(''):'<option value="">Tidak ada rekening aktif</option>';
+  if(accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
+  const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{headers:{'X-M-Group-Admin-Token':token}});
+  if(!r.ok){credentialSelect.innerHTML='<option value="">Gagal memuat kartu</option>';return}
+  const cards=(d.nfc_cards||[]).filter(x=>x.status==='active'&&x.credential_id);
+  credentialSelect.innerHTML=cards.length?cards.map(x=>'<option value="'+esc(x.credential_id)+'">'+esc(x.credential_id)+' · '+esc(x.card_uid||'NFC')+'</option>').join(''):'<option value="">Tidak ada kartu NFC aktif</option>';
+}
+$('payMember').onchange=()=>loadPaymentMemberData($('payMember').value);
+function renderPaymentTransactions(){
+  if(!$('payments'))return;
+  const search=($('paymentSearch')?.value||'').trim().toLowerCase();
+  const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+}
+$('paymentSearch').oninput=renderPaymentTransactions;
+$('paymentMethodFilter').onchange=renderPaymentTransactions;
+$('paymentStatusFilter').onchange=renderPaymentTransactions;
+$('paymentForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('paymentAdminToken').value.trim(),method=$('method').value,pin=$('paypin').value;
+  if(!token){$('paymentResult').textContent='Sesi admin tidak aktif.';return}
+  if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}
+  const accountId=$('payaccount').value,credentialId=$('credential').value,amount=Number($('payamount').value);
+  if(!accountId||!credentialId){$('paymentResult').textContent='Pilih member, kartu NFC aktif, dan rekening.';return}
+  if(!Number.isSafeInteger(amount)||amount<=0){$('paymentResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
+  if(!confirm('Konfirmasi pembayaran '+money(amount)+' dari rekening '+accountId+' melalui '+method+'?'))return;
+  let idem=$('idem').value.trim();
+  if(!idem){idem='webui-payment:'+(window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)));$('idem').value=idem}
+  const q={credential_id:credentialId,account_id:accountId,amount,method,provider:$('provider').value||'local',idempotency_key:idem,pin:pin||null};
+  const {r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});
+  $('paymentResult').textContent=JSON.stringify(d,null,2);
+  if(r.ok){$('paypin').value='';$('idem').value='';await load()}
+};
 let vendingCatalog=[];
 async function loadVendingCatalog(machineId){
   const token=$('vendingAdminToken').value.trim();
@@ -229,12 +385,12 @@ async function loadVendingMachines(){
     sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
-    if(sel.value)await loadVendingCatalog(sel.value);
+    if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
     $('productResult').textContent=rows.length?'Daftar mesin berhasil dimuat.':'Belum ada vending machine terdaftar.';
   }catch(e){$('productResult').textContent=e.message}
 }
 $('loadVendingMachines').onclick=loadVendingMachines;
-$('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+$('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
 $('productId').onchange=()=>{
   const item=vendingCatalog.find(x=>String(x.product_id)===$('productId').value);
   $('productName').value=item?.name||'';
@@ -253,6 +409,80 @@ $('productForm').onsubmit=async e=>{
   $('productResult').textContent=JSON.stringify(d,null,2);
   if(r.ok){await loadVendingCatalog(mid);await load()}
 };
+let vendingTransactions=[];
+async function loadVendingTransactions(machineId){
+  const token=$('vendingAdminToken').value.trim();
+  if(!token||!machineId){$('vendingTxnResult').textContent='Pilih mesin untuk melihat riwayat transaksi.';return}
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/transactions?limit=100',{
+    headers:{'X-M-Group-Admin-Token':token}
+  });
+  if(!r.ok){$('vendingTxnResult').textContent=d.detail||'Gagal memuat riwayat transaksi vending';return}
+  vendingTransactions=d.transactions||[];
+  renderVendingTransactions();
+}
+function renderVendingTransactions(){
+  const statusFilter=$('vendingTxnStatus').value,productFilter=$('vendingTxnProduct').value;
+  const rows=vendingTransactions.filter(x=>(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter)&&(productFilter==='ALL'||String(x.product_id)===productFilter));
+  $('vendingTxnResult').innerHTML=table(rows.map(x=>({...x,amount:money(x.amount),dispense_status:x.dispense_status||'—'})),['created_at','transaction_id','product_id','account_id','amount','status','dispense_status','completed_at']);
+}
+$('loadVendingTransactions').onclick=()=>loadVendingTransactions($('machineId').value);
+$('vendingTxnStatus').onchange=renderVendingTransactions;
+$('vendingTxnProduct').onchange=renderVendingTransactions;
+
+async function loadCashierTransactions(){
+  const token=$('cashierAdminToken').value.trim();
+  const period=$('cashierPeriod').value;
+  const {r,d}=await json('/api/v1/audit/report?source=CASHIER&period='+encodeURIComponent(period),{
+    headers:{'X-M-Group-Admin-Token':token}
+  });
+  if(!r.ok){$('cashierResult').textContent=d.detail||'Gagal memuat transaksi Cashier';return}
+  const rows=d.transactions||[];
+  const deviceSelect=$('cashierDevice');
+  if(deviceSelect){
+    const current=deviceSelect.value;
+    const devices=[...new Set(rows.map(x=>x.device_id).filter(Boolean))].sort();
+    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+    if(devices.includes(current))deviceSelect.value=current;
+  }
+  const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
+  const filtered=rows.filter(x=>(device==='ALL'||x.device_id===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
+  const completed=filtered.filter(x=>String(x.status).toLowerCase()==='completed');
+  const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
+  const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
+  $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','member_id','account_id','transaction_type','amount','status']);
+  $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
+}
+$('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
+$('cashierDevice').onchange=loadCashierTransactions;
+$('cashierType').onchange=loadCashierTransactions;
+$('cashierStatus').onchange=loadCashierTransactions;
+$('cashierPeriod').onchange=loadCashierTransactions;
+
+$('accountSettings').onsubmit=async e=>{
+  e.preventDefault();
+  const currentPassword=$('currentAdminPassword').value;
+  const username=$('newAdminUsername').value.trim();
+  const newPassword=$('newAdminPassword').value;
+  const confirmPassword=$('confirmAdminPassword').value;
+  const result=$('accountSettingsResult');
+  if(newPassword && newPassword!==confirmPassword){result.textContent='Konfirmasi password baru tidak cocok.';return}
+  if(!newPassword && confirmPassword){result.textContent='Isi password baru atau kosongkan kedua kolom password baru.';return}
+  const {r,d}=await json('/api/v1/auth/account',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({current_password:currentPassword,username,new_password:newPassword||null})
+  });
+  if(!r.ok){result.textContent=d.detail==='invalid_current_password'?'Password saat ini salah.':d.detail==='password_too_short'?'Password baru minimal 8 karakter.':d.detail==='invalid_admin_username'?'Username harus 3–64 karakter (huruf, angka, titik, garis bawah, atau tanda hubung).':d.detail||'Gagal menyimpan akun.';return}
+  $('activeUsername').textContent=d.username;
+  $('newAdminUsername').value=d.username;
+  $('currentAdminPassword').value='';
+  $('newAdminPassword').value='';
+  $('confirmAdminPassword').value='';
+  result.textContent=d.password_changed?'Akun dan password berhasil diperbarui. Sesi admin lain sudah dicabut.':'Username berhasil diperbarui. Sesi admin lain sudah dicabut.';
+};
+$('settingsLogout').onclick=()=>$('logoutButton').click();
+
 async function adminToken(){const t=$('adminToken').value.trim();if(!t)throw new Error('Admin Token wajib diisi');return t}
 async function loadAudit(){
   try{
@@ -303,4 +533,51 @@ $('backupRestore').onclick=async()=>{
   }catch(e){$('backupResult').textContent=e.message}
 };
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
-load();
+document.querySelectorAll('[data-analytics-period]').forEach(btn=>btn.addEventListener('click',async()=>{
+  selectedAnalyticsPeriod=btn.dataset.analyticsPeriod;
+  document.querySelectorAll('[data-analytics-period]').forEach(x=>x.classList.toggle('active',x===btn));
+  const token=$('dashboardAdminToken')?.value.trim();
+  if(token)await loadDashboard(token,selectedAnalyticsPeriod);
+}));
+
+
+function showLogin(message=''){
+  const screen=$('loginScreen'),shell=$('appShell');
+  if(screen)screen.hidden=false;
+  if(shell)shell.hidden=true;
+  const error=$('loginError');if(error)error.textContent=message;
+  const password=$('loginPassword');if(password)password.value='';
+}
+function unlockApp(username){
+  $('loginScreen').hidden=true;
+  $('appShell').hidden=false;
+  $('activeUsername').textContent=username||'Admin';
+  if($('newAdminUsername'))$('newAdminUsername').value=username||'admin';
+  document.querySelectorAll('[data-session-token]').forEach(input=>{input.value='session'});
+  $('loginError').textContent='';
+  load();
+}
+$('loginForm').onsubmit=async e=>{
+  e.preventDefault();
+  const error=$('loginError');
+  error.textContent='Memeriksa akun...';
+  const {r,d}=await json('/api/v1/auth/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value})
+  });
+  if(!r.ok){error.textContent=d.detail==='admin_login_not_configured'?'Login belum dikonfigurasi di server.':d.detail==='login_rate_limited'?'Terlalu banyak percobaan. Coba lagi nanti.':'Username atau password salah.';return}
+  $('loginPassword').value='';
+  unlockApp(d.username);
+};
+$('logoutButton').onclick=async()=>{
+  const {r,d}=await json('/api/v1/auth/logout',{method:'POST'});
+  if(r.ok){showLogin('Anda sudah keluar.');$('loginUsername').focus()}
+  else showLogin(d.detail||'Gagal mengakhiri sesi.');
+};
+async function restoreSession(){
+  const {r,d}=await json('/api/v1/auth/session');
+  if(r.ok)unlockApp(d.username);
+  else showLogin('');
+}
+restoreSession();
