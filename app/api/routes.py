@@ -295,7 +295,9 @@ def build_router(db, app_settings=None):
             raise HTTPException(503, "admin_login_not_configured")
         if failures >= 10:
             raise HTTPException(429, "login_rate_limited")
-        valid = secrets.compare_digest(username, account["username"]) and verify_password(q.password, account["password_hash"])
+        password_valid = verify_password(q.password, account["password_hash"])
+        username_valid = secrets.compare_digest(username, account["username"])
+        valid = username_valid and password_valid
         with db.connect() as c:
             c.execute(
                 "INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
