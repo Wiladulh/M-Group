@@ -52,7 +52,6 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
             assert response.json() == {
                 "member_id": "ID-A001",
                 "member_name": "Test Member",
-                "account_id": "acct-1",
                 "balance": 27500,
                 "currency": "IDR",
             }
