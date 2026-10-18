@@ -3,7 +3,7 @@
     <h2>Member / Anggota</h2>
     <p class="hint">Registrasi data nasabah berdasarkan identitas KTP. NFC didaftarkan melalui Cashier pada tahap berikutnya.</p>
     <form id="memberForm" class="grid">
-      <label>Admin Token<input id="memberAdminToken" type="password" autocomplete="off" required></label>
+      <input id="memberAdminToken" type="hidden" value="session" data-session-token>
       <label>Member ID<input id="memberId" placeholder="otomatis"></label>
       <label>NIK<input id="memberNik" maxlength="16" required></label>
       <label>Nama Lengkap<input id="memberName" required></label>
