@@ -182,6 +182,6 @@ Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diu
 - Sesi menggunakan token acak yang hanya disimpan dalam bentuk hash di SQLite; cookie browser bernama `m_group_session` bersifat HttpOnly dan SameSite=Lax, serta Secure bila request memakai HTTPS.
 - Sesi berlaku maksimal 12 jam dan ditolak setelah 30 menit tanpa aktivitas. Logout mencabut sesi di server.
 - Permintaan mutasi yang memakai cookie sesi harus berasal dari origin yang sama; endpoint admin tetap menjalankan pemeriksaan otorisasi di server.
-- Username disimpan dalam konfigurasi terlindungi dan password memakai hash PBKDF2-SHA256. Gunakan `m-group hash-password` untuk membuat hash; jangan memasukkan password atau hash ke repository.
+- Kredensial awal dibaca dari konfigurasi terlindungi, lalu disalin ke tabel `webui_admin_accounts` saat login pertama. Perubahan username/password disimpan di SQLite; password selalu berupa hash PBKDF2-SHA256. Gunakan `m-group hash-password` untuk membuat hash awal; jangan memasukkan password atau hash ke repository.
 - Migrasi `021_webui_sessions.sql` menambahkan tabel sesi dan catatan percobaan login. Installer/upgrade menyiapkan konfigurasi login jika belum tersedia.
 - Status implementasi ini tetap harus divalidasi oleh CI dan uji upgrade di lingkungan uji sebelum branch siap digabung.
