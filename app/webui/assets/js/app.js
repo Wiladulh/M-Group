@@ -160,7 +160,7 @@ $('members').addEventListener('click',async e=>{
 });
 
 let nfcPollTimer=null;
-async async function loadNfcCashiers(){
+async function loadNfcCashiers(){
   const token=$('memberAdminToken')?.value.trim();
   const sel=$('nfcCashierDevice');
   if(!sel||!token)return;
