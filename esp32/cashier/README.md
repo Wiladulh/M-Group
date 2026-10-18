@@ -16,6 +16,14 @@
 - If the outcome remains uncertain, the cashier blocks new payments and asks for the PIN again to retry the same transaction. This allows the server to return the original transaction if it was already processed.
 - A definitive HTTP response clears the pending request. Do not erase the device NVS while a payment is pending; reconcile with the server first.
 
+## Member balance lookup (read-only)
+
+- At the main keypad menu, press `3` for **Cek Saldo Member** (`1` remains payment, `2` remains top-up).
+- Tap the member's NFC card. The cashier sends the raw card UID and its registered device ID to `POST /api/v1/devices/member-balance` using the existing device key.
+- The LCD displays the member name and the ledger-backed balance. An unknown/revoked card or device/API error is shown as a failure.
+- This action does not request the member PIN and must not create a payment, deposit, debit, or ledger entry.
+- This endpoint is shared with Vending firmware; no second balance API is needed. An NFC UID alone is not payment authorization.
+
 ## CSH-06 operator and member feedback
 
 - LCD shows reader readiness, card detection, payment progress, pending outcome, and payment result/error.
