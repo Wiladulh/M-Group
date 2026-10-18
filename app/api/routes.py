@@ -622,7 +622,7 @@ def build_router(db, app_settings=None):
             device = c.execute(
                 "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
             ).fetchone()
-            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "cashier", "vending"}:
+            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
                 raise HTTPException(403, "device_type_not_allowed")
         member = members.resolve_card(card_uid)
         if member is None:
