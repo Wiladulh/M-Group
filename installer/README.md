@@ -12,7 +12,7 @@ cd M-Group
 sudo sh installer/install.sh --system
 ```
 
-The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory and configuration file, and registers/starts a service when systemd or OpenRC is available. In an interactive system install it prompts for listen address, port, application directory, database/data directory, configuration directory, the admin API token, and an optional initial Cashier operator PIN. Secret inputs are hidden while typing. Leave the admin token blank to generate a cryptographically random token; save a generated token from the installer output. Leave the operator PIN blank to configure it later from the admin WebUI. There is no shared default operator PIN. If an initial PIN is supplied, the installer stores only its hash in SQLite and removes the one-time plaintext setting from the environment file after successful first initialization. On non-interactive runs, defaults are applied and an admin token is generated automatically; the operator PIN remains unset until explicitly configured. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database. Re-running the system installer reuses saved install prefix, data directory, listen address, port, and admin token from the existing environment file unless explicitly overridden with environment variables or changed at the interactive prompts; this avoids accidentally starting a fresh empty instance after a reinstall. The data directory is private to the service account, and the SQLite database file is mode `0600`.
+The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory and configuration file, and registers/starts a service when systemd or OpenRC is available. In an interactive system install it prompts for listen address, port, application directory, database/data directory, configuration directory, the admin API token, WebUI username/password, and an optional initial Cashier operator PIN. Secret inputs are hidden while typing. Leave the admin token blank to generate a cryptographically random token; save a generated token from the installer output. WebUI credentials are stored as a username and PBKDF2 password hash, not as a plaintext password. Leave the operator PIN blank to configure it later from the admin WebUI. There is no shared default operator PIN. If an initial PIN is supplied, the installer stores only its hash in SQLite and removes the one-time plaintext setting from the environment file after successful first initialization. On non-interactive runs, defaults are applied and an admin token is generated automatically; the operator PIN remains unset until explicitly configured. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database. Re-running the system installer reuses saved install prefix, data directory, listen address, port, and admin token from the existing environment file unless explicitly overridden with environment variables or changed at the interactive prompts; this avoids accidentally starting a fresh empty instance after a reinstall. The data directory is private to the service account, and the SQLite database file is mode `0600`.
 
 For a per-user installation without a system service:
 
@@ -51,6 +51,27 @@ curl -fsS http://127.0.0.1:8011/ >/dev/null && echo "M-Group WebUI is responding
 - CLI: `/opt/M-Group/bin/m-group init` (initializes/migrates the local database)
 
 For custom paths, set `M_GROUP_PREFIX` and `M_GROUP_DATA_DIR` when running the installer. Set `M_GROUP_ADMIN_TOKEN` to preserve/use a known token. Set `M_GROUP_SKIP_SERVICE=1` to install without registering a service.
+
+## WebUI login and upgrades
+
+The WebUI uses a server-validated session cookie (HttpOnly, SameSite=Lax, Secure when served over HTTPS). It does not store the password or session secret in browser storage. Use a TLS reverse proxy for network access; the cookie is not marked Secure when the application is accessed directly over plain HTTP, so do not expose that mode to untrusted networks.
+
+On first system installation, the installer asks for a WebUI username and password. On upgrading an existing installation that predates username/password login, `installer/upgrade.sh` asks for credentials once and saves the PBKDF2 hash in `/etc/m-group/m-group.env`; the verified pre-upgrade database backup and prior service state are still handled by the upgrade script. Existing configured credentials are preserved on later upgrades.
+
+To generate a password hash manually:
+
+```sh
+/opt/M-Group/bin/m-group hash-password
+```
+
+Set the resulting hash in the protected environment file with single quotes, because the hash contains dollar signs:
+
+```sh
+M_GROUP_ADMIN_USERNAME=admin
+M_GROUP_ADMIN_PASSWORD_HASH='pbkdf2_sha256$310000$...'
+```
+
+Restart the service after manual configuration changes. Never commit the hash, admin token, or environment file to GitHub.
 
 ## Upgrade and uninstall
 
