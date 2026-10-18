@@ -3,7 +3,7 @@
     <h2>Perangkat</h2>
     <div class="hint">Kelola identitas perangkat Cashier dan Vending. Hardware ID dan kredensial perangkat tidak dapat diubah dari WebUI.</div>
     <form id="deviceAuthForm">
-      <input id="deviceAdminToken" type="password" placeholder="Admin Token" autocomplete="current-password" required>
+      <input id="deviceAdminToken" type="hidden" value="session" data-session-token>
       <button type="submit">Muat Perangkat</button>
     </form>
     <div id="deviceAuthResult" class="result"></div>
