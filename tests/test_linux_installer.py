@@ -118,3 +118,19 @@ def test_upgrade_script_reads_known_config_values_without_sourcing():
     assert "DATA_OVERRIDE" in script
     assert "DB_OVERRIDE" in script
 
+
+def test_admin_login_installer_helper_shell_syntax():
+    result = subprocess.run(
+        ["sh", "-n", str(ROOT / "installer" / "configure-admin-login.sh")],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_upgrade_configures_webui_login_before_replacing_package():
+    script = (ROOT / "installer" / "upgrade.sh").read_text()
+    login_setup = script.index('configure-admin-login.sh')
+    backup = script.index('source.backup(target)')
+    pip_upgrade = script.index('"$PYTHON" -m pip install --upgrade')
+    assert login_setup < backup < pip_upgrade
