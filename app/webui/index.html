@@ -10,7 +10,19 @@
 <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
-<div class="layout">
+<div id="loginScreen" class="login-screen">
+  <form id="loginForm" class="login-card">
+    <div class="login-logo">M</div>
+    <div class="login-brand">M-Group</div>
+    <h1>Masuk ke Management</h1>
+    <p class="login-muted">Gunakan akun admin untuk melanjutkan.</p>
+    <label>Username<input id="loginUsername" name="username" autocomplete="username" required></label>
+    <label>Password<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="login-submit">Masuk</button>
+    <div id="loginError" class="login-error" role="status"></div>
+  </form>
+</div>
+<div class="layout" id="appShell" hidden>
   <aside class="sidebar">
     <div class="brand-wrap">
       <div class="logo">M</div>
@@ -30,7 +42,7 @@
   <div class="main-shell">
     <header class="topbar">
       <div><div class="crumb">M-GROUP / MANAGEMENT</div><div class="top-title">Dashboard Management M-Group</div></div>
-      <div id="status" class="status">Memuat...</div>
+      <div class="top-actions"><span id="activeUsername" class="active-username"></span><button id="logoutButton" type="button" class="logout-button">Keluar</button><div id="status" class="status">Memuat...</div></div>
     </header>
     <main class="content">
       <div id="page-dashboard"></div><div id="page-financial"></div><div id="page-member"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-audit"></div><div id="page-devices"></div>
