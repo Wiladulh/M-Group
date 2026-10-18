@@ -57,6 +57,8 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             assert dashboard.status_code == 200
             assert dashboard.json()["analytics_period"] == "1w"
             assert isinstance(dashboard.json()["analytics"], list)
+            assert isinstance(dashboard.json()["most_used_vending"], list)
+            assert isinstance(dashboard.json()["payment_channels"], list)
             invalid_period = client.get("/api/v1/dashboard?period=unknown")
             assert invalid_period.status_code == 400
 
