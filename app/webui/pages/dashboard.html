@@ -2,7 +2,7 @@
   <section class="section">
     <h2>Ringkasan</h2>
     <form id="dashboardForm">
-      <input id="dashboardAdminToken" type="password" placeholder="Admin Token untuk memuat data privat" autocomplete="current-password" required>
+      <input id="dashboardAdminToken" type="hidden" value="session" data-session-token>
       <button type="submit">Muat Ringkasan</button>
     </form>
     <div id="dashboardResult" class="result">Masukkan Admin Token untuk menampilkan data anggota dan keuangan.</div>
