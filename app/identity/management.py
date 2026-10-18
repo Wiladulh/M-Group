@@ -48,8 +48,8 @@ class MemberManagementService:
         name = (name or "").strip()
         nik = (nik or "").strip() or None
         address = (address or "").strip() or None
-        if not member_id or not name:
-            raise ValueError("member_id_and_name_required")
+        if not name:
+            raise ValueError("name_required")
         with self.db.connect() as c:
             try:
                 if not member_id:
