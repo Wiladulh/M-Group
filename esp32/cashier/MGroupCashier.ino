@@ -233,6 +233,9 @@ void checkMemberBalance(){
   }else if(code==404){
     lcdShow("Kartu tidak","terdaftar/aktif");
     delay(1800);
+  }else if(code==429){
+    lcdShow("Tunggu sebentar","Coba lagi");
+    delay(1500);
   }else{
     lcdShow("Cek saldo gagal","HTTP "+String(code));
     delay(1800);
