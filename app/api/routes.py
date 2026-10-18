@@ -187,6 +187,10 @@ class CashierDepositRequest(BaseModel):
     member_pin: str
     idempotency_key: str
 
+class MemberBalanceLookupRequest(BaseModel):
+    device_id: str
+    card_uid: str
+
 class OperatorPinRequest(BaseModel):
     pin: str
 
@@ -602,6 +606,48 @@ def build_router(db, app_settings=None):
         require_admin(x_m_group_admin_token)
         try:return {"account_id":account_id,"balance":financial.balance(account_id)}
         except ValueError as e:raise HTTPException(404,str(e))
+
+    @r.post("/devices/member-balance")
+    def device_member_balance(q: MemberBalanceLookupRequest,
+                              x_m_group_device_key: str | None = Header(default=None)):
+        """Read-only balance lookup for authenticated Cashier/Vending devices."""
+        device_id = q.device_id.strip()
+        card_uid = q.card_uid.strip()
+        if not device_id:
+            raise HTTPException(400, "device_id_required")
+        if not card_uid:
+            raise HTTPException(400, "card_uid_required")
+        require_device(device_id, x_m_group_device_key)
+        with db.connect() as c:
+            device = c.execute(
+                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "cashier", "vending"}:
+                raise HTTPException(403, "device_type_not_allowed")
+        member = members.resolve_card(card_uid)
+        if member is None:
+            raise HTTPException(404, "nfc_card_not_found_or_inactive")
+        with db.connect() as c:
+            account = c.execute(
+                """SELECT account_id FROM financial_accounts
+                   WHERE member_id=? AND status='active'
+                   ORDER BY CASE WHEN account_type='savings' THEN 0 ELSE 1 END, created_at
+                   LIMIT 1""",
+                (member["member_id"],),
+            ).fetchone()
+        if account is None:
+            raise HTTPException(404, "member_account_not_found")
+        try:
+            balance = financial.balance(account["account_id"])
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        return {
+            "member_id": member["member_id"],
+            "member_name": member["name"],
+            "account_id": account["account_id"],
+            "balance": balance,
+            "currency": "IDR",
+        }
 
     @r.get("/accounts/{account_id}/ledger")
     def account_ledger(account_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
