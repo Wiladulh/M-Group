@@ -26,9 +26,6 @@ PYTHON="$PREFIX/venv/bin/python"
 [ -d "$SOURCE_DIR/app" ] || { echo "Application source not found at $SOURCE_DIR/app." >&2; exit 1; }
 [ -f "$DB_PATH" ] || { echo "Database not found at $DB_PATH; refusing to upgrade without a verified pre-upgrade snapshot." >&2; exit 1; }
 
-# Configure the new WebUI login before changing package files or service state.
-sh "$SCRIPT_DIR/configure-admin-login.sh" "$CONFIG_DIR/m-group.env" "$PYTHON"
-
 # Preserve the original service state. Never start a service that was stopped.
 MANAGER=none
 WAS_ACTIVE=0
@@ -63,6 +60,9 @@ finally:
 os.chmod(backup_path, 0o600)
 PY
 echo "Verified pre-upgrade database backup: $BACKUP"
+
+# Configure the new WebUI login only after a verified pre-upgrade backup exists.
+sh "$SCRIPT_DIR/configure-admin-login.sh" "$CONFIG_DIR/m-group.env" "$PYTHON"
 
 # Stop an active instance before replacing package files. On failure it remains
 # stopped so an unverified or partially upgraded API is not exposed.
