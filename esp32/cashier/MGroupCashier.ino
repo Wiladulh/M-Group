@@ -195,6 +195,50 @@ void scanTopup(const String& operatorPin){
   delay(700);
 }
 
+long jsonNumber(const String& body,const String& key){
+  String needle="\"" + key + "\":";
+  int p=body.indexOf(needle);
+  if(p<0)return -1;
+  p+=needle.length();
+  while(p<(int)body.length() && body[p]==' ')p++;
+  int e=p;
+  if(e<(int)body.length() && body[e]=='-')e++;
+  while(e<(int)body.length() && body[e]>='0' && body[e]<='9')e++;
+  return e==p?-1:body.substring(p,e).toInt();
+}
+
+void checkMemberBalance(){
+  if(!readerReady){lcdShow("NFC ERROR","Cek reader");delay(1500);return;}
+  lcdShow("Cek saldo","Tap kartu NFC");
+  uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
+  unsigned long started=millis();
+  while(!card.readUID(uid,len)){
+    if(millis()-started>30000UL){lcdShow("Cek saldo","Waktu habis");delay(1500);return;}
+    delay(20);
+  }
+  String credential=uidToCredential(uid,len);
+  String cardUid=credential.substring(4);
+  String body="{\\"device_id\\":\\""+String(DEVICE_ID)+"\\",\\"card_uid\\":\\""+cardUid+"\\"}";
+  int code=0;
+  String reply=postJson("/api/v1/devices/member-balance",body,code);
+  Serial.printf("MEMBER BALANCE %d %s\\n",code,reply.c_str());
+  if(code==200){
+    long balance=jsonNumber(reply,"balance");
+    String member=jsonField(reply,"member_name");
+    lcdShow(member.length()?member:"Saldo Member","Rp."+String(balance<0?0:balance));
+    delay(3500);
+  }else if(code==401 || code==403){
+    lcdShow("Cek saldo gagal","Device/akses");
+    delay(1800);
+  }else if(code==404){
+    lcdShow("Kartu tidak","terdaftar/aktif");
+    delay(1800);
+  }else{
+    lcdShow("Cek saldo gagal","HTTP "+String(code));
+    delay(1800);
+  }
+}
+
 void registrationScan(const String& session){
   lcdShow("REGISTRASI NFC","Silahkan scan");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
@@ -304,7 +348,7 @@ void setup(){
   }else{
     Serial.printf("NFC READY reader=%s\\n",card.name());
     if(pendingPayment) lcdShow("PAYMENT PENDING","Masukkan PIN");
-    else lcdShow("KASIR M-Group","1 Bayar 2 Topup");
+    else lcdShow("KASIR M-Group","1 Bayar 2 Topup 3 Saldo");
   }
 }
 
@@ -331,7 +375,7 @@ void loop(){
   char mode=0;
   while(!mode){
     char k=M_GROUPKeypad.getKey();
-    if(k=='1'||k=='2')mode=k;
+    if(k=='1'||k=='2'||k=='3')mode=k;
     delay(5);
   }
   if(mode=='1'){
@@ -339,11 +383,13 @@ void loop(){
     paymentAmount=readCashierAmount();
     if(paymentAmount>0)scanCard();
     paymentAmount=0;
-  }else{
+  }else if(mode=='2'){
     lcdShow("Topup","PIN Operator:");
     String operatorPin=readKeyDigits("PIN Operator:",true,4,6);
     lcdShow("Topup","Nominal:");
     scanTopup(operatorPin);
+  }else{
+    checkMemberBalance();
   }
-  lcdShow("KASIR M-Group","1 Bayar 2 Topup");
+  lcdShow("KASIR M-Group","1 Bayar 2 Topup 3 Saldo");
 }
