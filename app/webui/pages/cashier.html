@@ -3,6 +3,9 @@
     <div class="panelhead"><div><h2>Cashier</h2><p class="hint">Riwayat penerimaan dan pembayaran dari perangkat Cashier, bersumber dari server.</p></div></div>
     <form id="cashierForm">
       <input id="cashierAdminToken" type="hidden" value="session" data-session-token>
+      <label>Perangkat Cashier
+        <select id="cashierDevice"><option value="ALL">Semua Cashier</option></select>
+      </label>
       <label>Periode
         <select id="cashierPeriod">
           <option value="day">Hari ini</option>
