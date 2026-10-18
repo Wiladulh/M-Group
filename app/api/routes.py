@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, HTTPException, Header, UploadFile, File, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import hashlib
@@ -15,6 +15,9 @@ from app.vending.service import VendingService
 from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
 from pathlib import Path
 from uuid import uuid4
+import time
+from urllib.parse import urlsplit
+from app.core.auth import hash_session_token, new_session_token, verify_password
 
 MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -194,6 +197,10 @@ class MemberBalanceLookupRequest(BaseModel):
 class OperatorPinRequest(BaseModel):
     pin: str
 
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
 def build_router(db, app_settings=None):
     r = APIRouter(prefix="/api/v1")
     if app_settings is None:
@@ -247,6 +254,86 @@ def build_router(db, app_settings=None):
         if row and row["slot"] in range(1, 6):
             result["product_id"] = str(row["slot"])
         return result
+
+    @r.post("/auth/login")
+    def admin_login(q: AdminLoginRequest, request: Request, response: Response):
+        username = q.username.strip()
+        configured_username = getattr(app_settings, "admin_username", "")
+        configured_hash = getattr(app_settings, "admin_password_hash", "")
+        if not configured_username or not configured_hash:
+            raise HTTPException(503, "admin_login_not_configured")
+        if request.headers.get("origin"):
+            origin = urlsplit(request.headers["origin"])
+            if origin.netloc != request.headers.get("host"):
+                raise HTTPException(403, "cross_origin_request_rejected")
+        client_ip = request.client.host if request.client else "unknown"
+        client_key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+        now = int(time.time())
+        with db.connect() as c:
+            failures = c.execute(
+                "SELECT COUNT(*) FROM webui_login_attempts WHERE client_key=? AND succeeded=0 AND attempted_at>=?",
+                (client_key, now - 900),
+            ).fetchone()[0]
+        if failures >= 10:
+            raise HTTPException(429, "login_rate_limited")
+        valid = secrets.compare_digest(username, configured_username) and verify_password(q.password, configured_hash)
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
+                (client_key, now, 1 if valid else 0),
+            )
+            c.execute("DELETE FROM webui_login_attempts WHERE attempted_at<?", (now - 86400,))
+            if valid:
+                token = new_session_token()
+                c.execute(
+                    "INSERT INTO webui_sessions(session_hash,username,created_at,last_seen,expires_at) VALUES(?,?,?,?,?)",
+                    (hash_session_token(token), configured_username, now, now, now + 43200),
+                )
+            c.commit()
+        if not valid:
+            raise HTTPException(401, "invalid_username_or_password")
+        response.set_cookie(
+            key="m_group_session", value=token, max_age=43200, httponly=True,
+            secure=request.url.scheme == "https", samesite="lax", path="/",
+        )
+        return {"authenticated": True, "username": configured_username}
+
+    @r.get("/auth/session")
+    def admin_session(request: Request):
+        token = request.cookies.get("m_group_session", "")
+        if not token:
+            raise HTTPException(401, "admin_session_required")
+        now = int(time.time())
+        with db.connect() as c:
+            row = c.execute(
+                """SELECT username FROM webui_sessions
+                   WHERE session_hash=? AND revoked_at IS NULL AND expires_at>? AND last_seen>?""",
+                (hash_session_token(token), now, now - 1800),
+            ).fetchone()
+            if row:
+                c.execute("UPDATE webui_sessions SET last_seen=? WHERE session_hash=?",
+                          (now, hash_session_token(token)))
+                c.commit()
+        if not row:
+            raise HTTPException(401, "admin_session_expired")
+        return {"authenticated": True, "username": row["username"]}
+
+    @r.post("/auth/logout")
+    def admin_logout(request: Request, response: Response):
+        origin = request.headers.get("origin")
+        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            raise HTTPException(403, "same_origin_required")
+        token = request.cookies.get("m_group_session", "")
+        if token:
+            with db.connect() as c:
+                c.execute(
+                    "UPDATE webui_sessions SET revoked_at=? WHERE session_hash=? AND revoked_at IS NULL",
+                    (int(time.time()), hash_session_token(token)),
+                )
+                c.commit()
+        response.delete_cookie("m_group_session", path="/", httponly=True,
+                               secure=request.url.scheme == "https", samesite="lax")
+        return {"authenticated": False}
 
     @r.get("/health")
     def health(): return {"status": "ok", "service": "M-Group"}
