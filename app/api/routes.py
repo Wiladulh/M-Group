@@ -17,7 +17,7 @@ from pathlib import Path
 from uuid import uuid4
 import time
 from urllib.parse import urlsplit
-from app.core.auth import hash_session_token, new_session_token, verify_password
+from app.core.auth import hash_password, hash_session_token, new_session_token, verify_password
 
 MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -201,6 +201,11 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
 
+class AdminAccountUpdateRequest(BaseModel):
+    current_password: str
+    username: str
+    new_password: str | None = None
+
 def build_router(db, app_settings=None):
     r = APIRouter(prefix="/api/v1")
     if app_settings is None:
@@ -260,7 +265,7 @@ def build_router(db, app_settings=None):
         username = q.username.strip()
         configured_username = getattr(app_settings, "admin_username", "")
         configured_hash = getattr(app_settings, "admin_password_hash", "")
-        if not configured_username or not configured_hash or not getattr(app_settings, "admin_token", ""):
+        if not getattr(app_settings, "admin_token", ""):
             raise HTTPException(503, "admin_login_not_configured")
         if request.headers.get("origin"):
             origin = urlsplit(request.headers["origin"])
@@ -270,13 +275,27 @@ def build_router(db, app_settings=None):
         client_key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
         now = int(time.time())
         with db.connect() as c:
+            account = c.execute(
+                "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            if account is None and configured_username and configured_hash:
+                c.execute(
+                    "INSERT OR IGNORE INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                    (configured_username, configured_hash, now),
+                )
+                account = c.execute(
+                    "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+                ).fetchone()
             failures = c.execute(
                 "SELECT COUNT(*) FROM webui_login_attempts WHERE client_key=? AND succeeded=0 AND attempted_at>=?",
                 (client_key, now - 900),
             ).fetchone()[0]
+            c.commit()
+        if account is None:
+            raise HTTPException(503, "admin_login_not_configured")
         if failures >= 10:
             raise HTTPException(429, "login_rate_limited")
-        valid = secrets.compare_digest(username, configured_username) and verify_password(q.password, configured_hash)
+        valid = secrets.compare_digest(username, account["username"]) and verify_password(q.password, account["password_hash"])
         with db.connect() as c:
             c.execute(
                 "INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
@@ -287,7 +306,7 @@ def build_router(db, app_settings=None):
                 token = new_session_token()
                 c.execute(
                     "INSERT INTO webui_sessions(session_hash,username,created_at,last_seen,expires_at) VALUES(?,?,?,?,?)",
-                    (hash_session_token(token), configured_username, now, now, now + 43200),
+                    (hash_session_token(token), account["username"], now, now, now + 43200),
                 )
             c.commit()
         if not valid:
@@ -296,7 +315,7 @@ def build_router(db, app_settings=None):
             key="m_group_session", value=token, max_age=43200, httponly=True,
             secure=request.url.scheme == "https", samesite="lax", path="/",
         )
-        return {"authenticated": True, "username": configured_username}
+        return {"authenticated": True, "username": account["username"]}
 
     @r.get("/auth/session")
     def admin_session(request: Request):
@@ -317,6 +336,54 @@ def build_router(db, app_settings=None):
         if not row:
             raise HTTPException(401, "admin_session_expired")
         return {"authenticated": True, "username": row["username"]}
+
+    @r.post("/auth/account")
+    def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
+        origin = request.headers.get("origin")
+        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            raise HTTPException(403, "same_origin_required")
+        token = request.cookies.get("m_group_session", "")
+        if not token:
+            raise HTTPException(401, "admin_session_required")
+        username = q.username.strip()
+        if len(username) < 3 or len(username) > 64 or any(
+            not (ch.isalnum() or ch in "._-") for ch in username
+        ):
+            raise HTTPException(400, "invalid_admin_username")
+        if q.new_password is not None and len(q.new_password) < 8:
+            raise HTTPException(400, "password_too_short")
+        now = int(time.time())
+        session_hash = hash_session_token(token)
+        with db.connect() as c:
+            session = c.execute(
+                """SELECT username FROM webui_sessions
+                   WHERE session_hash=? AND revoked_at IS NULL AND expires_at>? AND last_seen>?""",
+                (session_hash, now, now - 1800),
+            ).fetchone()
+            if session is None:
+                raise HTTPException(401, "admin_session_expired")
+            account = c.execute(
+                "SELECT password_hash FROM webui_admin_accounts WHERE username=?",
+                (session["username"],),
+            ).fetchone()
+            if account is None or not verify_password(q.current_password, account["password_hash"]):
+                raise HTTPException(403, "invalid_current_password")
+            password_hash = hash_password(q.new_password) if q.new_password else account["password_hash"]
+            c.execute("DELETE FROM webui_admin_accounts")
+            c.execute(
+                "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                (username, password_hash, now),
+            )
+            c.execute(
+                "UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL AND session_hash<>?",
+                (now, session_hash),
+            )
+            c.execute(
+                "UPDATE webui_sessions SET username=?,last_seen=? WHERE session_hash=?",
+                (username, now, session_hash),
+            )
+            c.commit()
+        return {"updated": True, "username": username, "password_changed": bool(q.new_password)}
 
     @r.post("/auth/logout")
     def admin_logout(request: Request, response: Response):
