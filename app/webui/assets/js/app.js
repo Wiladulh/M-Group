@@ -76,7 +76,7 @@ async function loadMembers(){
     const url=id?'/api/v1/members/'+encodeURIComponent(id):'/api/v1/members';
     const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan member');
-    $('memberAuthResult').textContent='Member berhasil disimpan.';
+    $('memberAuthResult').textContent='Member '+(d.member_id||id)+' berhasil disimpan.';
     await loadMemberList();
   }catch(e){$('memberAuthResult').textContent=e.message}
 }
@@ -172,7 +172,7 @@ async function pollNfcRegistration(memberId,sessionId){
   await check();
   nfcPollTimer=setInterval(check,2000);
 }
-$('nfcMemberId').onchange=()=>{const v=$('nfcMemberId').value;if(v)$('memberId').value=v};
+$('nfcMemberId').onchange=()=>{};
 $('nfcStart').onclick=async()=>{
   try{
     const token=$('memberAdminToken').value.trim(),memberId=$('nfcMemberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
