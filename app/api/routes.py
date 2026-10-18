@@ -742,6 +742,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(401,"admin_auth_required")
         if not device_id.strip() or not q.device_type.strip():
             raise HTTPException(400,"device_id_and_type_required")
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400, "invalid_device_type")
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
