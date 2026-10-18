@@ -33,13 +33,19 @@ def main():
         db.migrate()
         now = int(__import__("time").time())
         with db.connect() as c:
-            c.execute(
-                """INSERT INTO webui_admin_accounts(username,password_hash,updated_at)
-                   VALUES(?,?,?)
-                   ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash,
-                   updated_at=excluded.updated_at""",
-                (settings.admin_username, hash_password(password), now),
-            )
+            account = c.execute(
+                "SELECT username FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            if account:
+                c.execute(
+                    "UPDATE webui_admin_accounts SET password_hash=?,updated_at=? WHERE username=?",
+                    (hash_password(password), now, account["username"]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                    (settings.admin_username, hash_password(password), now),
+                )
             c.execute("UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL", (now,))
             c.commit()
         print("Password admin direset. Semua sesi WebUI dicabut; login ulang diperlukan.")
