@@ -100,3 +100,17 @@ def test_device_member_balance_rejects_unknown_or_revoked_cards():
             assert revoked.status_code == 404
         finally:
             main.get_settings = old
+
+def test_member_registration_generates_sequential_demo_format_id():
+    with TemporaryDirectory() as tmp:
+        client, old = _client_with_member(tmp)
+        try:
+            response = client.post(
+                "/api/v1/members",
+                json={"name": "Second Member", "nik": "1234567890123456"},
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
+            )
+            assert response.status_code == 200
+            assert response.json()["member_id"] == "ID-A002"
+        finally:
+            main.get_settings = old
