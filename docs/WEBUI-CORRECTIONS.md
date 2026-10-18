@@ -175,3 +175,13 @@ Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diu
 - Jangan menyimpan password admin atau token sesi sensitif di localStorage/sessionStorage. Setelah reload, WebUI memeriksa sesi melalui endpoint server; jika sesi valid, lanjut ke dashboard, jika sudah kedaluwarsa/dicabut, arahkan ke login.
 - Terapkan otorisasi server pada setiap endpoint; status login di frontend saja tidak cukup untuk melindungi API.
 - Catatan ini adalah persyaratan untuk implementasi asli; demo GitHub Pages tetap merupakan simulasi browser dan bukan bukti autentikasi produksi.
+
+### Implementasi branch demo-parity-member-balance
+
+- API sesi tersedia di `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, dan `POST /api/v1/auth/logout`.
+- Sesi menggunakan token acak yang hanya disimpan dalam bentuk hash di SQLite; cookie browser bernama `m_group_session` bersifat HttpOnly dan SameSite=Lax, serta Secure bila request memakai HTTPS.
+- Sesi berlaku maksimal 12 jam dan ditolak setelah 30 menit tanpa aktivitas. Logout mencabut sesi di server.
+- Permintaan mutasi yang memakai cookie sesi harus berasal dari origin yang sama; endpoint admin tetap menjalankan pemeriksaan otorisasi di server.
+- Username disimpan dalam konfigurasi terlindungi dan password memakai hash PBKDF2-SHA256. Gunakan `m-group hash-password` untuk membuat hash; jangan memasukkan password atau hash ke repository.
+- Migrasi `021_webui_sessions.sql` menambahkan tabel sesi dan catatan percobaan login. Installer/upgrade menyiapkan konfigurasi login jika belum tersedia.
+- Status implementasi ini tetap harus divalidasi oleh CI dan uji upgrade di lingkungan uji sebelum branch siap digabung.
