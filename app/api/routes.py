@@ -828,7 +828,7 @@ def build_router(db, app_settings=None):
                 (device_id, uid_hash),
             ).fetchone()
             if prior and now - float(prior["last_lookup_at"]) < 2.0:
-                raise HTTPException(429, "balance_lookup_rate_limited")
+                raise HTTPException(429, "balance_lookup_rate_limited", headers={"Retry-After": "2"})
             c.execute(
                 """INSERT INTO device_balance_lookup_limits(device_id,card_uid_hash,last_lookup_at)
                    VALUES(?,?,?) ON CONFLICT(device_id,card_uid_hash)
