@@ -29,6 +29,15 @@ def test_cashier_pin_payment_debits_and_returns_balance():
                 "amount":10000,"method":"NFC","pin":"1234","idempotency_key":"ok"}, headers={"X-M-Group-Device-Key":"cash-secret"})
             assert ok.status_code == 200
             assert ok.json()["balance"] == 40000
+            audit = client.get(
+                "/api/v1/audit/report?source=CASHIER&period=day",
+                headers={"X-M-Group-Admin-Token": "admin-secret"},
+            )
+            assert audit.status_code == 200
+            assert any(
+                row["transaction_type"] == "PAYMENT" and row["member_id"] == "m1"
+                for row in audit.json()["transactions"]
+            )
             low = client.post("/api/v1/cashier/payments", json={
                 "device_id":"cashier-01","credential_id":"cred1",
                 "amount":40001,"method":"NFC","pin":"1234","idempotency_key":"too-much"}, headers={"X-M-Group-Device-Key":"cash-secret"})
