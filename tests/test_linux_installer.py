@@ -133,4 +133,4 @@ def test_upgrade_configures_webui_login_before_replacing_package():
     login_setup = script.index('configure-admin-login.sh')
     backup = script.index('source.backup(target)')
     pip_upgrade = script.index('"$PYTHON" -m pip install --upgrade')
-    assert login_setup < backup < pip_upgrade
+    assert backup < login_setup < pip_upgrade
