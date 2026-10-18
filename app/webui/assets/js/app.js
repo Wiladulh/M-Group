@@ -274,6 +274,7 @@ $('deviceProvisionForm').onsubmit=async e=>{
   const result=$('deviceProvisionResult');
   if(!token){result.textContent='Sesi admin tidak aktif.';return}
   if(!deviceId){result.textContent='Device ID wajib diisi.';return}
+  if(!confirm('Generate key untuk '+deviceId+'? Jika perangkat ini sudah aktif, key lama akan langsung tidak berlaku.'))return;
   const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId)+'/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},
