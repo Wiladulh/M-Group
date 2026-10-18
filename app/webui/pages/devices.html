@@ -9,4 +9,28 @@
     <div id="deviceAuthResult" class="result"></div>
     <div id="devices" class="scroll" style="margin-top:12px"></div>
   </section>
+  <section class="section">
+    <h2>Device Key Manager</h2>
+    <p class="hint">Buat key baru untuk satu perangkat. Key ditampilkan satu kali; salin ke konfigurasi perangkat dan jangan membagikannya.</p>
+    <form id="deviceProvisionForm">
+      <label>Device ID<input id="provisionDeviceId" minlength="3" maxlength="80" required placeholder="contoh: cashier-01"></label>
+      <label>Jenis perangkat
+        <select id="provisionDeviceType" required>
+          <option value="esp32-cashier">ESP32 Cashier</option>
+          <option value="esp32-vending">ESP32 Vending</option>
+          <option value="esp32-s3-vending">ESP32-S3 Vending</option>
+        </select>
+      </label>
+      <button type="submit">Generate Device Key</button>
+    </form>
+    <div id="deviceProvisionResult" class="result"></div>
+    <label>Device key (hanya ditampilkan setelah dibuat)
+      <input id="provisionedDeviceKey" type="password" readonly autocomplete="off" placeholder="Belum ada key baru">
+    </label>
+    <div class="grid">
+      <button type="button" id="toggleDeviceKey">Tampilkan/Sembunyikan Key</button>
+      <button type="button" id="copyDeviceKey">Salin Key</button>
+    </div>
+    <p class="hint">Database hanya menyimpan hash key. Jika key hilang, generate key baru dan perbarui konfigurasi firmware perangkat.</p>
+  </section>
 </div>
