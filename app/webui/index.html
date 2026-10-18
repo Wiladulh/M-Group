@@ -10,17 +10,33 @@
 <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
-<header><div class="top"><div><div class="brand">M-Group</div><div class="sub">Dashboard Management M-Group</div></div><div id="status" class="status">Memuat...</div></div></header>
-<div class="nav-container"><nav>
-<button class="tab-btn active" data-tab="dashboard">Ringkasan</button>
-<button class="tab-btn" data-tab="financial">Keuangan</button>
-<button class="tab-btn" data-tab="member">Anggota</button>
-<button class="tab-btn" data-tab="payment">Pembayaran</button>
-<button class="tab-btn" data-tab="vending">Vending</button>
-<button class="tab-btn" data-tab="devices">Perangkat</button>
-<button class="tab-btn" data-tab="audit">Audit & Backup</button>
-</nav></div>
-<main><div id="page-dashboard"></div><div id="page-financial"></div><div id="page-member"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-audit"></div><div id="page-devices"></div></main>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand-wrap">
+      <div class="logo">M</div>
+      <div><div class="brand">M-Group</div><div class="side-sub">Management Platform</div></div>
+    </div>
+    <div class="navlabel">OVERVIEW</div>
+    <button class="tab-btn active" data-tab="dashboard"><span>▦</span> Ringkasan</button>
+    <div class="navlabel">OPERASIONAL</div>
+    <button class="tab-btn" data-tab="financial"><span>◈</span> Keuangan</button>
+    <button class="tab-btn" data-tab="member"><span>♙</span> Anggota</button>
+    <button class="tab-btn" data-tab="payment"><span>⇄</span> Pembayaran</button>
+    <button class="tab-btn" data-tab="vending"><span>▤</span> Vending & Katalog</button>
+    <button class="tab-btn" data-tab="devices"><span>⌘</span> Perangkat</button>
+    <button class="tab-btn" data-tab="audit"><span>☷</span> Audit & Backup</button>
+    <div class="sidefoot"><strong>M-Group Server</strong><br><span>Data operasional berasal dari server. Demo data tidak digunakan sebagai saldo resmi.</span></div>
+  </aside>
+  <div class="main-shell">
+    <header class="topbar">
+      <div><div class="crumb">M-GROUP / MANAGEMENT</div><div class="top-title">Dashboard Management M-Group</div></div>
+      <div id="status" class="status">Memuat...</div>
+    </header>
+    <main class="content">
+      <div id="page-dashboard"></div><div id="page-financial"></div><div id="page-member"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-audit"></div><div id="page-devices"></div>
+    </main>
+  </div>
+</div>
 <script>
 (async()=>{
  const pages=["dashboard","financial","member","payment","vending","audit","devices"];
