@@ -53,6 +53,12 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
 
             authorized = client.get("/api/v1/members")
             assert authorized.status_code == 200
+            dashboard = client.get("/api/v1/dashboard?period=1w")
+            assert dashboard.status_code == 200
+            assert dashboard.json()["analytics_period"] == "1w"
+            assert isinstance(dashboard.json()["analytics"], list)
+            invalid_period = client.get("/api/v1/dashboard?period=unknown")
+            assert invalid_period.status_code == 400
 
             account_update = client.post(
                 "/api/v1/auth/account",
