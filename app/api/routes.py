@@ -1334,10 +1334,17 @@ def build_router(db, app_settings=None):
         if source in {"ALL","CASHIER"}:
             queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id,member_id,account_id,
                               'DEPOSIT' transaction_type,amount,status FROM cashier_deposits""")
+            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id,a.member_id,p.account_id,
+                              'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status
+                              FROM payment_transactions p
+                              LEFT JOIN financial_accounts a ON a.account_id=p.account_id
+                              WHERE p.transaction_source='CASHIER'""")
         if source in {"ALL","VENDING"}:
-            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,v.credential_id,
+            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status
-                              FROM vending_transactions v LEFT JOIN vending_machines m ON m.machine_id=v.machine_id""")
+                              FROM vending_transactions v
+                              LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
+                              LEFT JOIN financial_accounts a ON a.account_id=v.account_id""")
         sql=" UNION ALL ".join("SELECT * FROM ("+q+") WHERE created_at>=? AND created_at<?" for q in queries)+" ORDER BY created_at DESC"
         args=[v for _ in queries for v in (start,end)]
         with db.connect() as c:
