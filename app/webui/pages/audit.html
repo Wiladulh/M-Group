@@ -3,7 +3,7 @@
     <h2>Audit Transaksi</h2>
     <div class="hint">Audit terpisah untuk transaksi Cashier dan Vending. Filter tersedia per hari, minggu, atau bulan.</div>
     <form id="auditForm">
-      <input id="adminToken" type="password" placeholder="Admin Token" required>
+      <input id="adminToken" type="hidden" value="session" data-session-token>
       <select id="auditSource">
         <option value="ALL">Semua</option>
         <option value="CASHIER">Cashier</option>
