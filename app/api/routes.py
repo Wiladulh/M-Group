@@ -839,7 +839,6 @@ def build_router(db, app_settings=None):
         return {
             "member_id": member["member_id"],
             "member_name": member["name"],
-            "account_id": account["account_id"],
             "balance": balance,
             "currency": "IDR",
         }
