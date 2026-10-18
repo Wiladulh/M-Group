@@ -447,8 +447,19 @@ def build_router(db, app_settings=None):
         return {"device_id":device_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
-    def dashboard(x_m_group_admin_token: str | None = Header(default=None)):
+    def dashboard(period: str = "1w", x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
+        analytics_periods = {
+            "1d": ("strftime('%H:00', created_at)", "start of day"),
+            "1w": ("date(created_at)", "-6 days"),
+            "1m": ("date(created_at)", "-29 days"),
+            "3m": ("strftime('%Y-W%W', created_at)", "-89 days"),
+            "5m": ("strftime('%Y-W%W', created_at)", "-149 days"),
+            "1y": ("strftime('%Y-%m', created_at)", "-364 days"),
+        }
+        if period not in analytics_periods:
+            raise HTTPException(400, "invalid_analytics_period")
+        bucket_expr, date_modifier = analytics_periods[period]
         with db.connect() as c:
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
@@ -481,11 +492,26 @@ def build_router(db, app_settings=None):
                 "SELECT COALESCE(SUM(amount),0) FROM vending_transactions "
                 "WHERE transaction_source='VENDING' AND status='completed' AND created_at>=date('now')"
             ).fetchone()[0]
+            analytics_rows=c.execute(f"""
+                SELECT bucket,COUNT(*) AS transactions FROM (
+                    SELECT {bucket_expr} AS bucket,created_at FROM payment_transactions
+                      WHERE transaction_source='CASHIER' AND status='completed'
+                    UNION ALL
+                    SELECT {bucket_expr} AS bucket,created_at FROM cashier_deposits
+                      WHERE status='completed'
+                    UNION ALL
+                    SELECT {bucket_expr} AS bucket,created_at FROM vending_transactions
+                      WHERE status='completed'
+                )
+                WHERE created_at>=datetime('now',?)
+                GROUP BY bucket ORDER BY bucket
+            """,(date_modifier,)).fetchall()
         return {"members":[dict(x) for x in members],
                 "accounts":[{**dict(x),"balance":financial.balance(x["account_id"])} for x in accounts],
                 "payments":[dict(x) for x in payments_rows],"vending_transactions":[dict(x) for x in vending_rows],"loans":[dict(x) for x in loans],
                 "machines":[dict(x) for x in machines],"products":[dict(x) for x in products],
                 "devices":[dict(x) for x in devices],
+                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],
                 "stats":{
                     "cashier_transactions":cashier_count,
                     "cashier_money_in_today":cashier_in,
