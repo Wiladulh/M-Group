@@ -32,7 +32,7 @@ async function loadDashboard(token){
     ['Cashier keluar hari ini',money(stats.cashier_money_out_today)],['Vending masuk hari ini',money(stats.vending_money_in_today)]
   ].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
   const recent=[
-    ...d.payments.map(x=>({...x,source:x.transaction_source||'CASHIER',transaction_type:'PAYMENT'})),
+    ...d.payments.map(x=>({...x,source:x.transaction_source||'PAYMENT',transaction_type:'PAYMENT'})),
     ...d.vending_transactions.map(x=>({...x,source:'VENDING',transaction_type:'PURCHASE'}))
   ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
   $('recentTransactions').innerHTML=table(recent.map(x=>({
