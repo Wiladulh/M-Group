@@ -127,9 +127,9 @@ async function loadMemberList(){
     $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Ganti NFC</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
     const sel=$('nfcMemberId');
     if(sel){
-      const current=sel.value;
-      sel.innerHTML='<option value="">Pilih member</option>'+rows.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
-      if(rows.some(x=>x.member_id===current))sel.value=current;
+      const current=sel.value,enrollable=rows.filter(x=>x.status==='active');
+      sel.innerHTML='<option value="">Pilih member</option>'+enrollable.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+      if(enrollable.some(x=>x.member_id===current))sel.value=current;
     }
     await loadNfcCashiers();
   }
