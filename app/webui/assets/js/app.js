@@ -17,10 +17,22 @@ function switchTab(tabName) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function loadDashboard(token){
-  const {r,d}=await json('/api/v1/dashboard',{headers:{'X-M-Group-Admin-Token':token}});
+let selectedAnalyticsPeriod='1w';
+function renderAnalytics(d){
+  const rows=d.analytics||[];
+  const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
+  $('analyticsSummary').textContent='Periode '+(d.analytics_period||selectedAnalyticsPeriod)+' · '+total+' transaksi berhasil';
+  if(!rows.length){$('analyticsChart').innerHTML='<p class="hint">Belum ada transaksi berhasil pada periode ini.</p>';return}
+  const max=Math.max(1,...rows.map(x=>Number(x.transactions||0)));
+  $('analyticsChart').innerHTML='<div class="analytics-bars">'+rows.map(x=>{
+    const count=Number(x.transactions||0),height=Math.max(3,Math.round(count/max*140));
+    return '<div class="analytics-bar-col"><span class="analytics-bar-value">'+count+'</span><div class="analytics-bar" style="height:'+height+'px"></div><span class="analytics-bar-label">'+esc(x.bucket)+'</span></div>';
+  }).join('')+'</div>';
+}
+async function loadDashboard(token,period=selectedAnalyticsPeriod){
+  const {r,d}=await json('/api/v1/dashboard?period='+encodeURIComponent(period),{headers:{'X-M-Group-Admin-Token':token}});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
   const stats=d.stats||{};
@@ -40,6 +52,7 @@ async function loadDashboard(token){
     device_id:x.device_id||x.machine_id,account_id:x.account_id,
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
+  renderAnalytics(d);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
   $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
@@ -53,7 +66,7 @@ async function load(){
   const h=await fetch('/api/v1/health').then(r=>{if(!r.ok)throw new Error('health_http_'+r.status);return r.json()});
   $('status').textContent='● '+(h.status||'online');
   const token=$('dashboardAdminToken')?.value.trim();
-  if(token)await loadDashboard(token);
+  if(token)await loadDashboard(token,selectedAnalyticsPeriod);
  }catch(e){
   console.error('M-Group WebUI load failed:',e);
   $('status').textContent='● Gagal memuat WebUI/API';
@@ -398,6 +411,13 @@ $('backupRestore').onclick=async()=>{
   }catch(e){$('backupResult').textContent=e.message}
 };
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
+document.querySelectorAll('[data-analytics-period]').forEach(btn=>btn.addEventListener('click',async()=>{
+  selectedAnalyticsPeriod=btn.dataset.analyticsPeriod;
+  document.querySelectorAll('[data-analytics-period]').forEach(x=>x.classList.toggle('active',x===btn));
+  const token=$('dashboardAdminToken')?.value.trim();
+  if(token)await loadDashboard(token,selectedAnalyticsPeriod);
+}));
+
 
 function showLogin(message=''){
   const screen=$('loginScreen'),shell=$('appShell');
