@@ -55,6 +55,12 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
                 "balance": 27500,
                 "currency": "IDR",
             }
+            duplicate = client.post(
+                "/api/v1/devices/member-balance",
+                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                headers={"X-M-Group-Device-Key": "cash-secret"},
+            )
+            assert duplicate.status_code == 429
             with client.app.state.db.connect() as c:
                 assert c.execute("SELECT COUNT(*) FROM financial_ledger").fetchone()[0] == 1
                 assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 0
