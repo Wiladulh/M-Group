@@ -54,6 +54,19 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             authorized = client.get("/api/v1/members")
             assert authorized.status_code == 200
 
+            account_update = client.post(
+                "/api/v1/auth/account",
+                headers={"Origin": "http://testserver"},
+                json={
+                    "current_password": "strong-test-password",
+                    "username": "admin-renamed",
+                    "new_password": "another-strong-password",
+                },
+            )
+            assert account_update.status_code == 200
+            assert account_update.json()["username"] == "admin-renamed"
+            assert client.get("/api/v1/auth/session").json()["username"] == "admin-renamed"
+
             logout = client.post(
                 "/api/v1/auth/logout",
                 headers={"Origin": "http://testserver"},
@@ -63,5 +76,16 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
 
             denied_after_logout = client.get("/api/v1/members")
             assert denied_after_logout.status_code == 401
+
+            old_credentials = client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin-test", "password": "strong-test-password"},
+            )
+            assert old_credentials.status_code == 401
+            new_credentials = client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin-renamed", "password": "another-strong-password"},
+            )
+            assert new_credentials.status_code == 200
         finally:
             main.get_settings = old
