@@ -242,6 +242,39 @@ async function saveDevice(deviceId){
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 $('deviceAuthForm').onsubmit=async e=>{e.preventDefault();await loadDevices()};
+$('deviceProvisionForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('deviceAdminToken').value.trim();
+  const deviceId=$('provisionDeviceId').value.trim();
+  const deviceType=$('provisionDeviceType').value;
+  const result=$('deviceProvisionResult');
+  if(!token){result.textContent='Sesi admin tidak aktif.';return}
+  if(!deviceId){result.textContent='Device ID wajib diisi.';return}
+  const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId)+'/provision',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},
+    body:JSON.stringify({device_type:deviceType})
+  });
+  if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
+  $('provisionedDeviceKey').value=d.device_key;
+  $('provisionedDeviceKey').type='password';
+  result.textContent='Key baru dibuat untuk '+d.device_id+'. Salin sekarang; server tidak menyediakan tampilan ulang key.';
+  await loadDevices();
+};
+$('toggleDeviceKey').onclick=()=>{
+  const input=$('provisionedDeviceKey');
+  input.type=input.type==='password'?'text':'password';
+};
+$('copyDeviceKey').onclick=async()=>{
+  const input=$('provisionedDeviceKey');
+  if(!input.value){$('deviceProvisionResult').textContent='Belum ada key untuk disalin.';return}
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(input.value);
+    else {input.type='text';input.select();document.execCommand('copy');input.type='password'}
+    $('deviceProvisionResult').textContent='Device key disalin. Simpan di tempat rahasia.';
+  }catch(e){input.type='text';input.select();$('deviceProvisionResult').textContent='Pilih dan salin key secara manual.'}
+};
+
 $('financialForm').onsubmit=async e=>{e.preventDefault();const token=$('financialAdminToken').value.trim();if(!token){$('financialResult').textContent='Admin Token wajib diisi';return}const q={amount:+$('amount').value,reference:$('reference').value||null,idempotency_key:'webui-financial:'+crypto.randomUUID()};const{r,d}=await json('/api/v1/accounts/'+encodeURIComponent($('account').value)+'/'+$('direction').value,{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('financialResult').textContent=JSON.stringify(d,null,2);if(r.ok)load()};
 $('paymentForm').onsubmit=async e=>{e.preventDefault();const token=$('paymentAdminToken').value.trim();if(!token){$('paymentResult').textContent='Admin Token wajib diisi';return}const method=$('method').value,pin=$('paypin').value;if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}const q={credential_id:$('credential').value,account_id:$('payaccount').value,amount:+$('payamount').value,method,provider:$('provider').value||'local',idempotency_key:$('idem').value||null,pin:pin||null};const{r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('paymentResult').textContent=JSON.stringify(d,null,2);if(r.ok){$('paypin').value='';load()}};
 let vendingCatalog=[];
