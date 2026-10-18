@@ -32,7 +32,7 @@ The card UID is sent in the JSON body rather than a URL path, to reduce exposure
 }
 ```
 
-The balance is computed by the server's financial ledger. The response contains only the fields needed to display the member and balance.
+The balance is computed by the server's financial ledger. The response contains only the fields needed to display the member and balance. Repeated reads of the same card by the same device are throttled for two seconds.
 
 ## Failure responses
 
@@ -40,6 +40,7 @@ The balance is computed by the server's financial ledger. The response contains 
 - `403 invalid_device_key`, `device_not_active`, `device_not_provisioned`, or `device_type_not_allowed`: device authentication/state/type is not acceptable.
 - `404 nfc_card_not_found_or_inactive`: card is unknown/revoked or its member is inactive.
 - `404 member_account_not_found`: no active financial account is associated with the member.
+- `429 balance_lookup_rate_limited`: the same device/card pair was queried again within the two-second duplicate-read cooldown.
 
 ## Firmware behavior
 
