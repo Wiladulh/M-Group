@@ -260,7 +260,7 @@ def build_router(db, app_settings=None):
         username = q.username.strip()
         configured_username = getattr(app_settings, "admin_username", "")
         configured_hash = getattr(app_settings, "admin_password_hash", "")
-        if not configured_username or not configured_hash:
+        if not configured_username or not configured_hash or not getattr(app_settings, "admin_token", ""):
             raise HTTPException(503, "admin_login_not_configured")
         if request.headers.get("origin"):
             origin = urlsplit(request.headers["origin"])
