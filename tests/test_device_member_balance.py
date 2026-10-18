@@ -20,6 +20,10 @@ def _client_with_member(tmp_path):
         )
         c.execute("INSERT INTO identity_members(member_id,name,status) VALUES('ID-A001','Test Member','active')")
         c.execute(
+            "INSERT INTO identity_credentials(credential_id,member_id,credential_type,status) VALUES(?,?,?,?)",
+            ("cred-1", "ID-A001", "nfc", "active"),
+        )
+        c.execute(
             "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) VALUES(?,?,?,?,?)",
             ("card-1", "ID-A001", "cred-1", "04A1B2C3", "active"),
         )
