@@ -819,6 +819,23 @@ def build_router(db, app_settings=None):
             ).fetchone()
             if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
                 raise HTTPException(403, "device_type_not_allowed")
+        # Suppress duplicate NFC reads from the same device/card for two seconds.
+        uid_hash = hashlib.sha256(card_uid.casefold().encode("utf-8")).hexdigest()
+        now = time.time()
+        with db.connect() as c:
+            prior = c.execute(
+                "SELECT last_lookup_at FROM device_balance_lookup_limits WHERE device_id=? AND card_uid_hash=?",
+                (device_id, uid_hash),
+            ).fetchone()
+            if prior and now - float(prior["last_lookup_at"]) < 2.0:
+                raise HTTPException(429, "balance_lookup_rate_limited")
+            c.execute(
+                """INSERT INTO device_balance_lookup_limits(device_id,card_uid_hash,last_lookup_at)
+                   VALUES(?,?,?) ON CONFLICT(device_id,card_uid_hash)
+                   DO UPDATE SET last_lookup_at=excluded.last_lookup_at""",
+                (device_id, uid_hash, now),
+            )
+            c.commit()
         member = members.resolve_card(card_uid)
         if member is None:
             raise HTTPException(404, "nfc_card_not_found_or_inactive")
