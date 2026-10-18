@@ -18,6 +18,7 @@ function switchTab(tabName) {
 }
 
 let selectedAnalyticsPeriod='1w';
+let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[];
 function renderAnalytics(d){
   const rows=d.analytics||[];
   const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
@@ -53,16 +54,24 @@ async function loadDashboard(token,period=selectedAnalyticsPeriod){
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
+  const memberSelect=$('payMember'),currentMember=memberSelect.value;
+  const activeMembers=dashboardMembers.filter(x=>x.status==='active');
+  memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+  if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
+  else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
+  await loadPaymentMemberData(memberSelect.value);
   $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
   $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
+  dashboardAccounts=d.accounts;
+  dashboardMembers=d.members;
   const accountSelect=$('account'),currentAccount=accountSelect.value;
   accountSelect.innerHTML='<option value="">Pilih rekening</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — '+esc(x.account_id)+' · '+money(x.balance)+'</option>').join('');
   if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
   else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
   await loadFinancialLedger();
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
-  $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+  dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
   $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
@@ -304,7 +313,46 @@ $('financialForm').onsubmit=async e=>{
   $('financialResult').textContent=JSON.stringify(d,null,2);
   if(r.ok){await load();await loadFinancialLedger()}
 };
-$('paymentForm').onsubmit=async e=>{e.preventDefault();const token=$('paymentAdminToken').value.trim();if(!token){$('paymentResult').textContent='Admin Token wajib diisi';return}const method=$('method').value,pin=$('paypin').value;if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}const q={credential_id:$('credential').value,account_id:$('payaccount').value,amount:+$('payamount').value,method,provider:$('provider').value||'local',idempotency_key:$('idem').value||null,pin:pin||null};const{r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('paymentResult').textContent=JSON.stringify(d,null,2);if(r.ok){$('paypin').value='';load()}};
+async function loadPaymentMemberData(memberId){
+  const token=$('paymentAdminToken')?.value.trim();
+  const credentialSelect=$('credential'),accountSelect=$('payaccount');
+  if(!memberId||!token){credentialSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';return}
+  const accounts=dashboardAccounts.filter(x=>x.member_id===memberId&&x.status==='active');
+  const currentAccount=accountSelect.value;
+  accountSelect.innerHTML=accounts.length?accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.account_id)+' · '+money(x.balance)+'</option>').join(''):'<option value="">Tidak ada rekening aktif</option>';
+  if(accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
+  const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{headers:{'X-M-Group-Admin-Token':token}});
+  if(!r.ok){credentialSelect.innerHTML='<option value="">Gagal memuat kartu</option>';return}
+  const cards=(d.nfc_cards||[]).filter(x=>x.status==='active'&&x.credential_id);
+  credentialSelect.innerHTML=cards.length?cards.map(x=>'<option value="'+esc(x.credential_id)+'">'+esc(x.credential_id)+' · '+esc(x.card_uid||'NFC')+'</option>').join(''):'<option value="">Tidak ada kartu NFC aktif</option>';
+}
+$('payMember').onchange=()=>loadPaymentMemberData($('payMember').value);
+function renderPaymentTransactions(){
+  if(!$('payments'))return;
+  const search=($('paymentSearch')?.value||'').trim().toLowerCase();
+  const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+}
+$('paymentSearch').oninput=renderPaymentTransactions;
+$('paymentMethodFilter').onchange=renderPaymentTransactions;
+$('paymentStatusFilter').onchange=renderPaymentTransactions;
+$('paymentForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('paymentAdminToken').value.trim(),method=$('method').value,pin=$('paypin').value;
+  if(!token){$('paymentResult').textContent='Sesi admin tidak aktif.';return}
+  if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}
+  const accountId=$('payaccount').value,credentialId=$('credential').value,amount=Number($('payamount').value);
+  if(!accountId||!credentialId){$('paymentResult').textContent='Pilih member, kartu NFC aktif, dan rekening.';return}
+  if(!Number.isSafeInteger(amount)||amount<=0){$('paymentResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
+  if(!confirm('Konfirmasi pembayaran '+money(amount)+' dari rekening '+accountId+' melalui '+method+'?'))return;
+  let idem=$('idem').value.trim();
+  if(!idem){idem='webui-payment:'+(window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)));$('idem').value=idem}
+  const q={credential_id:credentialId,account_id:accountId,amount,method,provider:$('provider').value||'local',idempotency_key:idem,pin:pin||null};
+  const {r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});
+  $('paymentResult').textContent=JSON.stringify(d,null,2);
+  if(r.ok){$('paypin').value='';$('idem').value='';await load()}
+};
 let vendingCatalog=[];
 async function loadVendingCatalog(machineId){
   const token=$('vendingAdminToken').value.trim();
