@@ -956,6 +956,28 @@ def build_router(db, app_settings=None):
             return result
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
 
+    @r.get("/vending/{machine_id}/transactions")
+    def vending_machine_transactions(machine_id: str, limit: int = 100,
+                                     x_m_group_admin_token: str | None = Header(default=None)):
+        token = getattr(app_settings, "admin_token", "")
+        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token, token):
+            raise HTTPException(401, "admin_auth_required")
+        if limit < 1 or limit > 500:
+            raise HTTPException(400, "limit_must_be_1_to_500")
+        machine = resolve_vending_machine(machine_id)
+        with db.connect() as c:
+            rows = c.execute(
+                """SELECT transaction_id,machine_id,product_id,credential_id,account_id,amount,
+                          status,dispense_status,created_at,completed_at
+                   FROM vending_transactions WHERE machine_id=?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (machine["machine_id"], limit),
+            ).fetchall()
+        return {
+            "machine_id": machine["machine_id"],
+            "transactions": [public_vending_transaction(dict(row)) for row in rows],
+        }
+
     @r.post("/vending/{machine_id}/transactions")
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
