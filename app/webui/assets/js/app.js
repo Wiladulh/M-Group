@@ -56,6 +56,11 @@ async function loadDashboard(token,period=selectedAnalyticsPeriod){
   $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
   $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
+  const accountSelect=$('account'),currentAccount=accountSelect.value;
+  accountSelect.innerHTML='<option value="">Pilih rekening</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — '+esc(x.account_id)+' · '+money(x.balance)+'</option>').join('');
+  if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
+  else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
+  await loadFinancialLedger();
   $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
   $('payments').innerHTML=table(d.payments.map(x=>({...x,amount:money(x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
@@ -275,7 +280,30 @@ $('copyDeviceKey').onclick=async()=>{
   }catch(e){input.type='text';input.select();$('deviceProvisionResult').textContent='Pilih dan salin key secara manual.'}
 };
 
-$('financialForm').onsubmit=async e=>{e.preventDefault();const token=$('financialAdminToken').value.trim();if(!token){$('financialResult').textContent='Admin Token wajib diisi';return}const q={amount:+$('amount').value,reference:$('reference').value||null,idempotency_key:'webui-financial:'+crypto.randomUUID()};const{r,d}=await json('/api/v1/accounts/'+encodeURIComponent($('account').value)+'/'+$('direction').value,{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('financialResult').textContent=JSON.stringify(d,null,2);if(r.ok)load()};
+async function loadFinancialLedger(){
+  const token=$('financialAdminToken')?.value.trim(),accountId=$('account')?.value;
+  if(!token||!accountId){$('financialLedger').innerHTML='<p class="hint" style="padding:12px">Pilih rekening untuk melihat ledger.</p>';return}
+  const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/ledger?limit=100',{headers:{'X-M-Group-Admin-Token':token}});
+  $('financialLedger').innerHTML=r.ok?table((d.entries||[]).map(x=>({...x,amount:money(x.amount)})),['created_at','direction','amount','reference','id']):'<p class="hint" style="padding:12px">'+esc(d.detail||'Gagal memuat ledger')+'</p>';
+}
+$('account').onchange=loadFinancialLedger;
+$('financialForm').onsubmit=async e=>{
+  e.preventDefault();
+  const token=$('financialAdminToken').value.trim(),accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
+  if(!token){$('financialResult').textContent='Sesi admin tidak aktif.';return}
+  if(!accountId){$('financialResult').textContent='Pilih rekening terlebih dahulu.';return}
+  if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
+  if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
+  const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
+  if(!confirm('Konfirmasi '+action+' sebesar '+money(amount)+' pada rekening '+accountId+'?'))return;
+  const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+  const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
+  const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
+    method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)
+  });
+  $('financialResult').textContent=JSON.stringify(d,null,2);
+  if(r.ok){await load();await loadFinancialLedger()}
+};
 $('paymentForm').onsubmit=async e=>{e.preventDefault();const token=$('paymentAdminToken').value.trim();if(!token){$('paymentResult').textContent='Admin Token wajib diisi';return}const method=$('method').value,pin=$('paypin').value;if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}const q={credential_id:$('credential').value,account_id:$('payaccount').value,amount:+$('payamount').value,method,provider:$('provider').value||'local',idempotency_key:$('idem').value||null,pin:pin||null};const{r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},body:JSON.stringify(q)});$('paymentResult').textContent=JSON.stringify(d,null,2);if(r.ok){$('paypin').value='';load()}};
 let vendingCatalog=[];
 async function loadVendingCatalog(machineId){
