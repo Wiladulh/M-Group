@@ -258,6 +258,60 @@ $('productForm').onsubmit=async e=>{
   $('productResult').textContent=JSON.stringify(d,null,2);
   if(r.ok){await loadVendingCatalog(mid);await load()}
 };
+async function loadCashierTransactions(){
+  const token=$('cashierAdminToken').value.trim();
+  const period=$('cashierPeriod').value;
+  const {r,d}=await json('/api/v1/audit/report?source=CASHIER&period='+encodeURIComponent(period),{
+    headers:{'X-M-Group-Admin-Token':token}
+  });
+  if(!r.ok){$('cashierResult').textContent=d.detail||'Gagal memuat transaksi Cashier';return}
+  const rows=d.transactions||[];
+  const deviceSelect=$('cashierDevice');
+  if(deviceSelect){
+    const current=deviceSelect.value;
+    const devices=[...new Set(rows.map(x=>x.device_id).filter(Boolean))].sort();
+    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+    if(devices.includes(current))deviceSelect.value=current;
+  }
+  const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
+  const filtered=rows.filter(x=>(device==='ALL'||x.device_id===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
+  const completed=filtered.filter(x=>String(x.status).toLowerCase()==='completed');
+  const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
+  const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
+  $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','member_id','account_id','transaction_type','amount','status']);
+  $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
+}
+$('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
+$('cashierDevice').onchange=loadCashierTransactions;
+$('cashierType').onchange=loadCashierTransactions;
+$('cashierStatus').onchange=loadCashierTransactions;
+$('cashierPeriod').onchange=loadCashierTransactions;
+
+$('accountSettings').onsubmit=async e=>{
+  e.preventDefault();
+  const currentPassword=$('currentAdminPassword').value;
+  const username=$('newAdminUsername').value.trim();
+  const newPassword=$('newAdminPassword').value;
+  const confirmPassword=$('confirmAdminPassword').value;
+  const result=$('accountSettingsResult');
+  if(newPassword && newPassword!==confirmPassword){result.textContent='Konfirmasi password baru tidak cocok.';return}
+  if(!newPassword && confirmPassword){result.textContent='Isi password baru atau kosongkan kedua kolom password baru.';return}
+  const {r,d}=await json('/api/v1/auth/account',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({current_password:currentPassword,username,new_password:newPassword||null})
+  });
+  if(!r.ok){result.textContent=d.detail==='invalid_current_password'?'Password saat ini salah.':d.detail==='password_too_short'?'Password baru minimal 8 karakter.':d.detail==='invalid_admin_username'?'Username harus 3–64 karakter (huruf, angka, titik, garis bawah, atau tanda hubung).':d.detail||'Gagal menyimpan akun.';return}
+  $('activeUsername').textContent=d.username;
+  $('newAdminUsername').value=d.username;
+  $('currentAdminPassword').value='';
+  $('newAdminPassword').value='';
+  $('confirmAdminPassword').value='';
+  result.textContent=d.password_changed?'Akun dan password berhasil diperbarui. Sesi admin lain sudah dicabut.':'Username berhasil diperbarui. Sesi admin lain sudah dicabut.';
+};
+$('settingsLogout').onclick=()=>$('logoutButton').click();
+
 async function adminToken(){const t=$('adminToken').value.trim();if(!t)throw new Error('Admin Token wajib diisi');return t}
 async function loadAudit(){
   try{
@@ -320,6 +374,7 @@ function unlockApp(username){
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
   $('activeUsername').textContent=username||'Admin';
+  if($('newAdminUsername'))$('newAdminUsername').value=username||'admin';
   document.querySelectorAll('[data-session-token]').forEach(input=>{input.value='session'});
   $('loginError').textContent='';
   load();
