@@ -1,5 +1,6 @@
 import argparse
 from getpass import getpass
+import time
 
 from app.core.auth import hash_password
 from app.core.config import get_settings
@@ -31,7 +32,7 @@ def main():
             parser.error("password minimal 8 karakter dan konfirmasi harus cocok")
         db = Database(settings.db_path)
         db.migrate()
-        now = int(__import__("time").time())
+        now = int(time.time())
         with db.connect() as c:
             account = c.execute(
                 "SELECT username FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
