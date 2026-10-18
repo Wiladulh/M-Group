@@ -1,7 +1,12 @@
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('id-ID').format(Number(n)||0);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function table(rows,cols){if(!rows?.length)return '<p class="hint" style="padding:16px;">Belum ada data.</p>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(r[c])+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
-async function json(url,opt){const r=await fetch(url,opt);let d={};try{d=await r.json()}catch{}return{r,d}}
+async function json(url,opt={}){
+  const r=await fetch(url,{credentials:'same-origin',...opt});
+  let d={};try{d=await r.json()}catch{}
+  if(r.status===401 && !String(url).includes('/auth/'))showLogin('Sesi berakhir. Silakan masuk kembali.');
+  return{r,d};
+}
 
 // Fungsi Kontrol Tab Aktif
 function switchTab(tabName) {
@@ -303,4 +308,43 @@ $('backupRestore').onclick=async()=>{
   }catch(e){$('backupResult').textContent=e.message}
 };
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
-load();
+
+function showLogin(message=''){
+  const screen=$('loginScreen'),shell=$('appShell');
+  if(screen)screen.hidden=false;
+  if(shell)shell.hidden=true;
+  const error=$('loginError');if(error)error.textContent=message;
+  const password=$('loginPassword');if(password)password.value='';
+}
+function unlockApp(username){
+  $('loginScreen').hidden=true;
+  $('appShell').hidden=false;
+  $('activeUsername').textContent=username||'Admin';
+  document.querySelectorAll('[data-session-token]').forEach(input=>{input.value='session'});
+  $('loginError').textContent='';
+  load();
+}
+$('loginForm').onsubmit=async e=>{
+  e.preventDefault();
+  const error=$('loginError');
+  error.textContent='Memeriksa akun...';
+  const {r,d}=await json('/api/v1/auth/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value})
+  });
+  if(!r.ok){error.textContent=d.detail==='admin_login_not_configured'?'Login belum dikonfigurasi di server.':d.detail==='login_rate_limited'?'Terlalu banyak percobaan. Coba lagi nanti.':'Username atau password salah.';return}
+  $('loginPassword').value='';
+  unlockApp(d.username);
+};
+$('logoutButton').onclick=async()=>{
+  const {r,d}=await json('/api/v1/auth/logout',{method:'POST'});
+  if(r.ok){showLogin('Anda sudah keluar.');$('loginUsername').focus()}
+  else showLogin(d.detail||'Gagal mengakhiri sesi.');
+};
+async function restoreSession(){
+  const {r,d}=await json('/api/v1/auth/session');
+  if(r.ok)unlockApp(d.username);
+  else showLogin('');
+}
+restoreSession();
