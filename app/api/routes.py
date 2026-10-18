@@ -455,6 +455,8 @@ def build_router(db, app_settings=None):
                    FROM financial_accounts a JOIN identity_members m ON m.member_id=a.member_id ORDER BY a.created_at DESC""").fetchall()
             payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,status,method,provider,device_id,created_at
                    FROM payment_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
+            vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
+                   FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
             machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
@@ -481,7 +483,7 @@ def build_router(db, app_settings=None):
             ).fetchone()[0]
         return {"members":[dict(x) for x in members],
                 "accounts":[{**dict(x),"balance":financial.balance(x["account_id"])} for x in accounts],
-                "payments":[dict(x) for x in payments_rows],"loans":[dict(x) for x in loans],
+                "payments":[dict(x) for x in payments_rows],"vending_transactions":[dict(x) for x in vending_rows],"loans":[dict(x) for x in loans],
                 "machines":[dict(x) for x in machines],"products":[dict(x) for x in products],
                 "devices":[dict(x) for x in devices],
                 "stats":{
