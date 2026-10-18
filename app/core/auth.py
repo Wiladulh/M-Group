@@ -12,7 +12,7 @@ def hash_password(password: str, iterations: int = DEFAULT_ITERATIONS) -> str:
         raise ValueError("password_required")
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return f"${ALGORITHM}${iterations}${salt.hex()}${digest.hex()}"
+    return ALGORITHM + "$" + str(iterations) + "$" + salt.hex() + "$" + digest.hex()
 
 
 def verify_password(password: str, encoded: str) -> bool:
