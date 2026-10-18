@@ -218,7 +218,7 @@ void checkMemberBalance(){
   }
   String credential=uidToCredential(uid,len);
   String cardUid=credential.substring(4);
-  String body="{\\"device_id\\":\\""+String(DEVICE_ID)+"\\",\\"card_uid\\":\\""+cardUid+"\\"}";
+  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"card_uid\":\""+cardUid+"\"}";
   int code=0;
   String reply=postJson("/api/v1/devices/member-balance",body,code);
   Serial.printf("MEMBER BALANCE %d %s\\n",code,reply.c_str());
