@@ -52,6 +52,19 @@ class MemberManagementService:
             raise ValueError("member_id_and_name_required")
         with self.db.connect() as c:
             try:
+                if not member_id:
+                    # Serialize ID allocation with the insert so concurrent
+                    # registrations cannot allocate the same public Member ID.
+                    c.execute("BEGIN IMMEDIATE")
+                    rows = c.execute(
+                        "SELECT member_id FROM identity_members WHERE member_id LIKE 'ID-A%'"
+                    ).fetchall()
+                    used = [
+                        int(str(row["member_id"])[4:])
+                        for row in rows
+                        if str(row["member_id"])[4:].isdigit()
+                    ]
+                    member_id = f"ID-A{max(used, default=0) + 1:03d}"
                 c.execute(
                     """
                     INSERT INTO identity_members(member_id,name,status,nik,address,birth_place,birth_date,sex,rt,rw,village,district,city_regency,province,religion,marital_status,occupation,citizenship,phone,email,registration_date)
@@ -61,6 +74,7 @@ class MemberManagementService:
                 )
                 c.commit()
             except Exception as exc:
+                c.rollback()
                 if "UNIQUE" in str(exc).upper():
                     raise ValueError("member_id_or_nik_already_exists") from exc
                 raise
