@@ -109,6 +109,16 @@ async function loadMembers(){
     await loadMemberList();
   }catch(e){$('memberAuthResult').textContent=e.message}
 }
+let memberListRows=[];
+function renderMemberRows(){
+  const search=($('memberSearch')?.value||'').trim().toLowerCase();
+  const status=$('memberStatusFilter')?.value||'ALL';
+  const rows=memberListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.member_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
+    memberListRows=rows;renderMemberRows();
+}
+$('memberSearch').oninput=renderMemberRows;
+$('memberStatusFilter').onchange=renderMemberRows;
+
 async function loadMemberList(){
   const token=$('memberAdminToken').value.trim(); if(!token)return;
   const {r,d}=await json('/api/v1/members',{headers:{'X-M-Group-Admin-Token':token}});
