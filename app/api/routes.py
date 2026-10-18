@@ -506,12 +506,24 @@ def build_router(db, app_settings=None):
                 WHERE created_at>=datetime('now',?)
                 GROUP BY bucket ORDER BY bucket
             """,(date_modifier,)).fetchall()
+            most_used_rows=c.execute("""
+                SELECT m.machine_id,m.name,COUNT(v.transaction_id) AS transactions
+                FROM vending_machines m LEFT JOIN vending_transactions v
+                  ON v.machine_id=m.machine_id AND v.status='completed' AND v.created_at>=datetime('now',?)
+                GROUP BY m.machine_id,m.name ORDER BY transactions DESC,m.name LIMIT 5
+            """,(date_modifier,)).fetchall()
+            payment_channel_rows=c.execute("""
+                SELECT COALESCE(method,'Unknown') AS method,COUNT(*) AS transactions,
+                       COALESCE(SUM(COALESCE(final_amount,amount)),0) AS amount
+                FROM payment_transactions WHERE status='completed' AND created_at>=datetime('now',?)
+                GROUP BY method ORDER BY transactions DESC
+            """,(date_modifier,)).fetchall()
         return {"members":[dict(x) for x in members],
                 "accounts":[{**dict(x),"balance":financial.balance(x["account_id"])} for x in accounts],
                 "payments":[dict(x) for x in payments_rows],"vending_transactions":[dict(x) for x in vending_rows],"loans":[dict(x) for x in loans],
                 "machines":[dict(x) for x in machines],"products":[dict(x) for x in products],
                 "devices":[dict(x) for x in devices],
-                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],
+                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],"most_used_vending":[dict(x) for x in most_used_rows],"payment_channels":[dict(x) for x in payment_channel_rows],
                 "stats":{
                     "cashier_transactions":cashier_count,
                     "cashier_money_in_today":cashier_in,
