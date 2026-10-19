@@ -11,7 +11,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="cashier-01";
+String DEVICE_ID="Cashier_";
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -83,6 +83,17 @@ String postJson(const String& path,const String& body,int& code){
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY); code=http.POST(body);
   String out=code>0?http.getString():""; http.end(); return out;
+}
+
+bool registerDevice(){
+  if(WiFi.status()!=WL_CONNECTED)return false;
+  String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
+  String suffix=compact.substring(compact.length()-6); suffix.toLowerCase();
+  DEVICE_ID="Cashier_"+suffix;
+  String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  int code=0; String reply=postJson("/api/v1/devices/register",body,code);
+  Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
+  return code>=200&&code<300;
 }
 
 void heartbeat(){
@@ -347,7 +358,7 @@ void setup(){
     }
   }
   lcd.init(); lcd.backlight();
-  connectWifi(); heartbeat();
+  connectWifi(); registerDevice(); heartbeat();
   readerReady=card.begin(PN532_SDA,PN532_SCL);
   if(!readerReady){
     Serial.println("ERROR: no supported NFC reader detected");
