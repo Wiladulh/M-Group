@@ -678,6 +678,13 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"mac_address_required")
         if not device_key:
             raise HTTPException(400,"device_key_required")
+        mac_hex = "".join(ch for ch in mac_address if ch in "0123456789ABCDEF")
+        if len(mac_hex) != 12:
+            raise HTTPException(400,"invalid_mac_address")
+        prefix = "Cashier" if device_type == "esp32-cashier" else "Vending"
+        expected_hardware_id = f"{prefix}_{mac_hex[-6:].lower()}"
+        if hardware_id != expected_hardware_id:
+            raise HTTPException(400,"hardware_id_mac_mismatch")
 
         digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
@@ -707,12 +714,18 @@ def build_router(db, app_settings=None):
                 if matched_by_key and row["device_type"] != device_type:
                     raise HTTPException(403,"device_type_mismatch")
                 if matched_by_key:
+                    collision = c.execute(
+                        "SELECT device_id FROM device_registry WHERE hardware_id=? AND device_id<>?",
+                        (hardware_id,row["device_id"]),
+                    ).fetchone()
+                    if collision:
+                        raise HTTPException(409,"device_identity_already_registered")
                     c.execute(
                         """UPDATE device_registry
-                           SET hardware_id=?,device_type=?,mac_address=?,status='active',
-                               last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                           SET device_id=?,hardware_id=?,device_type=?,mac_address=?,display_name=?,
+                               status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                            WHERE device_id=?""",
-                        (hardware_id,device_type,mac_address,row["device_id"]),
+                        (hardware_id,hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
                     )
                 else:
                     c.execute(
@@ -765,7 +778,7 @@ def build_router(db, app_settings=None):
         require_admin(x_m_group_admin_token)
         if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
-        device_id="dev-"+uuid4().hex[:12]
+        device_id="pending-"+uuid4().hex[:12]
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
@@ -781,9 +794,8 @@ def build_router(db, app_settings=None):
                 ("device","provisioned",device_id,f"type={q.device_type};location=unassigned"),
             )
             c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,
-                "display_name":"Lokasi belum ditentukan","device_key":key,
-                "status":"active","key_shown_once":True}
+        return {"device_type":q.device_type,"device_key":key,
+                "status":"awaiting_device_registration","key_shown_once":True}
 
     @r.post("/devices/{device_id}/provision")
     def device_provision(device_id,q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
