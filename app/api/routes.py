@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import hashlib
 import secrets
+import re
 import io
 import zipfile
 from app.identity.service import IdentityService
@@ -420,25 +421,9 @@ def build_router(db, app_settings=None):
 
     @r.post("/devices/handshake")
     def device_handshake(q: DeviceRegisterRequest):
-        """
-        Identity handshake for Cashier/Vending devices.
-        Registration may leave a device pending; operational APIs still require active status.
-        """
+        """Backward-compatible alias; validation and event logging live in register."""
         result = device_register(q)
-        with db.connect() as c:
-            row = c.execute(
-                """SELECT device_id,hardware_id,device_type,mac_address,display_name,
-                          status,last_seen,created_at,updated_at
-                   FROM device_registry WHERE device_id=?""",
-                (result["device_id"],),
-            ).fetchone()
-            c.execute(
-                "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                (result["device_id"],"identity_handshake",
-                 q.model_dump_json(exclude={"device_key"})),
-            )
-            c.commit()
-        return {**dict(row), "handshake": "accepted"}
+        return {**result, "handshake": "accepted"}
 
     @r.get("/devices/{device_id}/events")
     def device_events(device_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
@@ -667,6 +652,8 @@ def build_router(db, app_settings=None):
     @r.post("/devices/register")
     def device_register(q: DeviceRegisterRequest):
         device_type = q.device_type.strip().lower()
+        if device_type == "esp32-vending":
+            device_type = "esp32-s3-vending"
         hardware_id = q.hardware_id.strip()
         mac_address = q.mac_address.strip().upper()
         device_key = q.device_key.strip()
@@ -678,11 +665,13 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"mac_address_required")
         if not device_key:
             raise HTTPException(400,"device_key_required")
-        mac_hex = "".join(ch for ch in mac_address if ch in "0123456789ABCDEF")
-        if len(mac_hex) != 12:
+        if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", mac_address):
             raise HTTPException(400,"invalid_mac_address")
+        mac_hex = mac_address.replace(":", "").lower()
         prefix = "Cashier" if device_type == "esp32-cashier" else "Vending"
-        expected_hardware_id = f"{prefix}_{mac_hex[-6:].lower()}"
+        # Use the complete station MAC to avoid collisions between devices that
+        # share only the last three bytes.
+        expected_hardware_id = f"{prefix}_{mac_hex}"
         if hardware_id != expected_hardware_id:
             raise HTTPException(400,"hardware_id_mac_mismatch")
 
@@ -711,12 +700,17 @@ def build_router(db, app_settings=None):
                     raise HTTPException(403,"invalid_device_key")
                 if row["status"] == "disabled":
                     raise HTTPException(403,"device_disabled")
-                if matched_by_key and row["device_type"] != device_type:
+                stored_type = "esp32-s3-vending" if row["device_type"] == "esp32-vending" else row["device_type"]
+                if stored_type != device_type:
                     raise HTTPException(403,"device_type_mismatch")
+                if matched_by_key and (row["hardware_id"] or row["mac_address"]):
+                    if row["hardware_id"] != hardware_id or row["mac_address"] != mac_address:
+                        raise HTTPException(409,"device_key_already_bound")
                 if matched_by_key:
                     collision = c.execute(
-                        "SELECT device_id FROM device_registry WHERE device_id=? AND device_id<>?",
-                        (hardware_id,row["device_id"]),
+                        """SELECT device_id FROM device_registry
+                           WHERE (device_id=? OR hardware_id=?) AND device_id<>?""",
+                        (hardware_id,hardware_id,row["device_id"]),
                     ).fetchone()
                     if collision:
                         raise HTTPException(409,"device_identity_already_registered")
@@ -728,6 +722,10 @@ def build_router(db, app_settings=None):
                         (hardware_id,hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
                     )
                 else:
+                    if row["mac_address"] and row["mac_address"] != mac_address:
+                        raise HTTPException(409,"device_mac_mismatch")
+                    if row["device_type"] != device_type:
+                        raise HTTPException(409,"device_type_mismatch")
                     c.execute(
                         """UPDATE device_registry
                            SET device_type=?,mac_address=?,last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
@@ -759,7 +757,10 @@ def build_router(db, app_settings=None):
     @r.post("/devices/provision")
     def device_provision_auto(q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
         require_admin(x_m_group_admin_token)
-        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+        device_type = q.device_type.strip().lower()
+        if device_type == "esp32-vending":
+            device_type = "esp32-s3-vending"
+        if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
         device_id="pending-"+uuid4().hex[:12]
         key=secrets.token_urlsafe(32)
@@ -770,34 +771,22 @@ def build_router(db, app_settings=None):
                    (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
                    VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,q.device_type,digest,key[-6:]),
+                (device_id,device_type,digest,key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device","provisioned",device_id,f"type={q.device_type};location=unassigned"),
+                ("device","provisioned",device_id,f"type={device_type};location=unassigned"),
             )
             c.commit()
-        return {"device_type":q.device_type,"device_key":key,
+        return {"device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
     @r.post("/devices/{device_id}/provision")
-    def device_provision(device_id,q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        if not getattr(app_settings,"admin_token","") or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,getattr(app_settings,"admin_token","")):
-            raise HTTPException(401,"admin_auth_required")
-        if not device_id.strip() or not q.device_type.strip():
-            raise HTTPException(400,"device_id_and_type_required")
-        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400, "invalid_device_type")
-        key=secrets.token_urlsafe(32)
-        digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
-        with db.connect() as c:
-            c.execute("""INSERT INTO device_registry(device_id,device_type,status,last_seen,auth_key_hash,auth_key_hint)
-                         VALUES(?,?, 'active',NULL,?,?)
-                         ON CONFLICT(device_id) DO UPDATE SET device_type=excluded.device_type,
-                         status='active',auth_key_hash=excluded.auth_key_hash,auth_key_hint=excluded.auth_key_hint""",
-                      (device_id,q.device_type,digest,key[-6:]))
-            c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,"device_key":key}
+    def device_provision_legacy(device_id,q:DeviceProvisionRequest,
+                                x_m_group_admin_token: str | None = Header(default=None)):
+        """Retired manual-ID provisioning endpoint; use POST /devices/provision."""
+        require_admin(x_m_group_admin_token)
+        raise HTTPException(410, "manual_device_provisioning_retired_use_devices_provision")
 
     @r.post("/devices/{device_id}/heartbeat")
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
@@ -808,18 +797,23 @@ def build_router(db, app_settings=None):
         # a device accidentally lock itself out or write arbitrary registry states.
         if q.status != "active":
             raise HTTPException(400,"invalid_heartbeat_status")
-        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+        device_type = q.device_type.strip().lower()
+        if device_type == "esp32-vending":
+            device_type = "esp32-s3-vending"
+        if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
             row = c.execute(
                 "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
             ).fetchone()
-            if not row or row["device_type"] != q.device_type:
+            stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
+            if not row or stored_type != device_type:
                 raise HTTPException(409,"device_type_mismatch")
             c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
                       (device_id,))
-            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",(device_id,"heartbeat",q.model_dump_json()))
+            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
+                      (device_id,q.model_copy(update={"device_type": device_type}).model_dump_json()))
             c.commit()
         return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
 
