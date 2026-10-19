@@ -715,7 +715,7 @@ def build_router(db, app_settings=None):
                     raise HTTPException(403,"device_type_mismatch")
                 if matched_by_key:
                     collision = c.execute(
-                        "SELECT device_id FROM device_registry WHERE hardware_id=? AND device_id<>?",
+                        "SELECT device_id FROM device_registry WHERE device_id=? AND device_id<>?",
                         (hardware_id,row["device_id"]),
                     ).fetchone()
                     if collision:
@@ -734,13 +734,14 @@ def build_router(db, app_settings=None):
                            WHERE device_id=?""",
                         (device_type,mac_address,row["device_id"]),
                     )
+                registered_device_id = hardware_id if matched_by_key else row["device_id"]
                 c.execute(
                     "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                    (row["device_id"],"registration",q.model_dump_json(exclude={"device_key"})),
+                    (registered_device_id,"registration",q.model_dump_json(exclude={"device_key"})),
                 )
                 c.commit()
-                return {"device_id":row["device_id"],"hardware_id":hardware_id,"device_type":device_type,
-                        "mac_address":mac_address,"display_name":row["display_name"],
+                return {"device_id":registered_device_id,"hardware_id":hardware_id,"device_type":device_type,
+                        "mac_address":mac_address,"display_name":hardware_id if matched_by_key else row["display_name"],
                         "status":"active" if matched_by_key else row["status"],"registered":True}
 
             device_id = "dev-" + uuid4().hex
