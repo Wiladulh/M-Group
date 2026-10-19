@@ -59,8 +59,8 @@ def test_cashier_and_vending_identity_handshake():
             assert v["hardware_id"] == "Vending_aabbcc004801"
 
             bad = client.post("/api/v1/devices/handshake", json={
-                "device_type": "esp32-vending",
-                "hardware_id": "Vending_004801",
+                "device_type": "esp32-s3-vending",
+                "hardware_id": "Vending_aabbcc004801",
                 "mac_address": "AA:BB:CC:00:48:01",
                 "device_key": "wrong",
             })
@@ -72,6 +72,6 @@ def test_cashier_and_vending_identity_handshake():
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='registration'").fetchone()[0] == 2
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='identity_handshake'").fetchone()[0] == 0
             rows = devices.json()["devices"]
-            assert {x["hardware_id"] for x in rows} >= {"Cashier_001001", "Vending_004801"}
+            assert {x["hardware_id"] for x in rows} >= {"Cashier_aabbcc001001", "Vending_aabbcc004801"}
         finally:
             main.get_settings = old
