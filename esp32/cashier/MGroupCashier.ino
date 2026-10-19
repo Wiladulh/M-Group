@@ -11,7 +11,8 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="cashier-01";
+String DEVICE_ID="Cashier_";
+bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -85,12 +86,26 @@ String postJson(const String& path,const String& body,int& code){
   String out=code>0?http.getString():""; http.end(); return out;
 }
 
+bool registerDevice(){
+  if(WiFi.status()!=WL_CONNECTED)return false;
+  String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
+  compact.toLowerCase();
+  DEVICE_ID="Cashier_"+compact;
+  String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  int code=0; String reply=postJson("/api/v1/devices/register",body,code);
+  Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
+  deviceRegistered=code>=200&&code<300;
+  return deviceRegistered;
+}
+
 void heartbeat(){
+  if(!deviceRegistered){Serial.println("HEARTBEAT skipped: device not registered");return;}
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
   String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
   String reply=postJson(String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
+  if(code<200||code>=300)deviceRegistered=false;
 }
 
 bool connectWifi(unsigned long timeoutMs=10000){
@@ -347,7 +362,9 @@ void setup(){
     }
   }
   lcd.init(); lcd.backlight();
-  connectWifi(); heartbeat();
+  connectWifi();
+  if(registerDevice())heartbeat();
+  else lcdShow("REGISTRATION WAIT","Cek server/key");
   readerReady=card.begin(PN532_SDA,PN532_SCL);
   if(!readerReady){
     Serial.println("ERROR: no supported NFC reader detected");
@@ -361,6 +378,13 @@ void setup(){
 
 void loop(){
   if(WiFi.status()!=WL_CONNECTED)connectWifi(3000);
+  static unsigned long lastRegistrationAttempt=0;
+  if(WiFi.status()==WL_CONNECTED && !deviceRegistered && millis()-lastRegistrationAttempt>=10000UL){
+    lastRegistrationAttempt=millis();
+    if(registerDevice())heartbeat();
+    else {lcdShow("REGISTRATION WAIT","Cek server/key");delay(250);return;}
+  }
+  if(!deviceRegistered){delay(100);return;}
   // Resolve an ambiguous payment before permitting another transaction.
   // The PIN is re-entered and is never persisted in NVS.
   if(pendingPayment){

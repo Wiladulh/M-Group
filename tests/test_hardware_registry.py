@@ -3,7 +3,8 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import app.main as main
 
-def test_hardware_auto_registration_and_identity_stability():
+
+def test_server_key_provisions_mac_derived_device_identity():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
@@ -12,78 +13,88 @@ def test_hardware_auto_registration_and_identity_stability():
         })()
         try:
             client = TestClient(main.create_app())
-
-            first = client.post(
-                "/api/v1/devices/register",
-                json={
-                    "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier2ab3u",
-                    "mac_address": "aa:bb:cc:dd:ee:01",
-                    "device_key": "factory-secret-01",
-                },
+            headers = {"X-M-Group-Admin-Token": "admin-secret"}
+            provision = client.post(
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier"},
+                headers=headers,
             )
+            assert provision.status_code == 200
+            payload = provision.json()
+            assert "device_id" not in payload
+            key = payload["device_key"]
+
+            with client.app.state.db.connect() as conn:
+                row = conn.execute(
+                    "SELECT device_id,hardware_id,auth_key_hash FROM device_registry"
+                ).fetchone()
+                assert row["device_id"].startswith("pending-")
+                assert row["hardware_id"] is None
+
+            registration = {
+                "device_type": "esp32-cashier",
+                "hardware_id": "Cashier_aabbccddee01",
+                "mac_address": "AA:BB:CC:DD:EE:01",
+                "device_key": key,
+            }
+            first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["status"] == "pending"
-            assert data["registered"] is False
-            assert data["device_id"].startswith("dev-")
-            device_id = data["device_id"]
+            assert data["device_id"] == "Cashier_aabbccddee01"
+            assert data["hardware_id"] == "Cashier_aabbccddee01"
+            assert data["status"] == "active"
+            assert data["registered"] is True
 
-            repeat = client.post(
-                "/api/v1/devices/register",
-                json={
-                    "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier2ab3u",
-                    "mac_address": "AA:BB:CC:DD:EE:02",
-                    "device_key": "factory-secret-01",
-                },
-            )
+            repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["device_id"] == device_id
-            assert repeat.json()["registered"] is True
-            assert repeat.json()["mac_address"] == "AA:BB:CC:DD:EE:02"
+            assert repeat.json()["device_id"] == "Cashier_aabbccddee01"
 
-            bad = client.post(
-                "/api/v1/devices/register",
-                json={
-                    "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier2ab3u",
-                    "mac_address": "AA:BB:CC:DD:EE:03",
-                    "device_key": "wrong-secret",
-                },
-            )
+            wrong_key = {**registration, "device_key": "wrong-secret"}
+            bad = client.post("/api/v1/devices/register", json=wrong_key)
             assert bad.status_code == 403
 
-            rename = client.patch(
-                f"/api/v1/devices/{device_id}",
-                json={
-                    "device_type": "esp32-cashier",
-                    "status": "active",
-                    "display_name": "Cashier Utama",
-                },
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
-            )
-            assert rename.status_code == 200
-            assert rename.json()["display_name"] == "Cashier Utama"
-            assert rename.json()["hardware_id"] == "Cashier2ab3u"
+            wrong_mac_identity = {**registration, "hardware_id": "Cashier_wrong"}
+            mismatch = client.post("/api/v1/devices/register", json=wrong_mac_identity)
+            assert mismatch.status_code == 400
+            malformed_mac = {**registration, "mac_address": "AA:BB:CC:DD:EE:0Z"}
+            assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
-                f"/api/v1/devices/{device_id}/heartbeat",
+                "/api/v1/devices/Cashier_aabbccddee01/heartbeat",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-M-Group-Device-Key": "factory-secret-01"},
+                headers={"X-M-Group-Device-Key": key},
             )
             assert heartbeat.status_code == 200
 
-            listed = client.get(
-                "/api/v1/devices",
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
-            )
+            listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_id"] == device_id)
-            assert item["hardware_id"] == "Cashier2ab3u"
-            assert item["display_name"] == "Cashier Utama"
-            assert item["mac_address"] == "AA:BB:CC:DD:EE:02"
+            item = next(x for x in listed.json()["devices"] if x["device_id"] == "Cashier_aabbccddee01")
+            assert item["hardware_id"] == "Cashier_aabbccddee01"
+            assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
-            assert item["last_seen"] is not None
+        finally:
+            main.get_settings = old
+
+
+def test_unprovisioned_key_cannot_create_device():
+    with TemporaryDirectory() as d:
+        old = main.get_settings
+        main.get_settings = lambda: type("S", (), {
+            "db_path": Path(d) / "m-group.db",
+            "admin_token": "admin-secret"
+        })()
+        try:
+            client = TestClient(main.create_app())
+            response = client.post(
+                "/api/v1/devices/register",
+                json={
+                    "device_type": "esp32-cashier",
+                    "hardware_id": "Cashier_aabbccddee01",
+                    "mac_address": "AA:BB:CC:DD:EE:01",
+                    "device_key": "arbitrary-unprovisioned-key",
+                },
+            )
+            assert response.status_code == 403
+            assert response.json()["detail"] == "device_not_provisioned"
         finally:
             main.get_settings = old
