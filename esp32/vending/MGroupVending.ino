@@ -7,13 +7,14 @@
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
 #include "MGroupCardReader.h"
+#include "MGroupConfigPortal.h"
 
-const char* WIFI_SSID="CHANGE_ME";
-const char* WIFI_PASSWORD="CHANGE_ME";
-// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
-const char* DEVICE_ID="vm-01";
-const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
+String WIFI_SSID="";
+String WIFI_PASSWORD="";
+String M_GROUP_BASE_URL="http://192.168.1.10:8011";
+String DEVICE_ID="vm-01";
+String M_GROUP_DEVICE_KEY="";
+MGroupConfigPortal configPortal;
 
 #define I2C_SDA 8
 #define I2C_SCL 9
@@ -248,6 +249,9 @@ void scanCard(){
 }
 void setup(){
   Serial.begin(115200);delay(300);
+  pinMode(BUTTON_SELECT,INPUT_PULLUP);delay(50);
+  const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,DEVICE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
   vendingPrefs.begin("M_GROUP-vend",false);
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);

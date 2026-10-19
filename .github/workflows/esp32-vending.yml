@@ -35,6 +35,7 @@ jobs:
           mkdir -p src
           cp esp32/vending/*.ino src/
           cp esp32/vending/*.h src/
+          cp esp32/common/*.h src/
 
       - name: Build ESP32-S3 Vending
         run: pio run -e esp32-s3

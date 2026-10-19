@@ -25,7 +25,7 @@ The product API keeps `price` / `base_price` as the configured base price and ex
 
 ## Device enrollment
 
-Manual provisioning remains the official installation procedure for this release. An administrator provisions a device through the authenticated provisioning endpoint and places the returned device key into protected device configuration. The public handshake endpoint is not automatic enrollment: firmware must not self-authorize or activate itself merely by presenting a MAC address. Automatic enrollment would require a separate secure commissioning flow.
+Manual provisioning remains the official flow. An administrator provisions a device through the authenticated dashboard/API using the exact Device ID and device type, then enters the returned one-time key into the firmware mini WebUI. On first boot (or when setup mode is deliberately triggered), firmware starts a temporary password-protected setup AP and a local WebUI for SSID, server URL, Device ID, and key. The key is stored in ESP32 NVS and is never rendered back into the page. Firmware then authenticates using the existing device key header and heartbeat endpoint. This is configuration, not self-enrollment: the portal does not create a server registry entry, generate a server key, or activate pending devices. The public handshake endpoint is not automatic enrollment.
 
 ## Verification levels
 

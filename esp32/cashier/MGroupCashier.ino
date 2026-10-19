@@ -4,15 +4,16 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include "MGroupConfigPortal.h"
 #include "MGroupKeypad.h"
 #include "MGroupCardReader.h"
 
-const char* WIFI_SSID="CHANGE_ME";
-const char* WIFI_PASSWORD="CHANGE_ME";
-// Replace with the server LAN IP; default API port is 8011. Do not add a trailing slash.
-const char* M_GROUP_BASE_URL="http://192.168.1.10:8011";
-const char* DEVICE_ID="cashier-01";
-const char* M_GROUP_DEVICE_KEY="CHANGE_DEVICE_KEY";
+String WIFI_SSID="";
+String WIFI_PASSWORD="";
+String M_GROUP_BASE_URL="http://192.168.1.10:8011";
+String DEVICE_ID="cashier-01";
+String M_GROUP_DEVICE_KEY="";
+MGroupConfigPortal configPortal;
 LiquidCrystal_I2C lcd(0x27,16,2);
 
 #define PN532_SDA 21
@@ -320,6 +321,9 @@ long readCashierAmount(){
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("M_GROUP-cashier",false);
+  bool forceConfigPortal=false; const unsigned long configCheckStarted=millis();
+  while(millis()-configCheckStarted<900UL){char setupKey=M_GROUPKeypad.getKey();if(setupKey==68)forceConfigPortal=true;delay(5);}
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,DEVICE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
