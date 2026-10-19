@@ -60,7 +60,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 },
             )
             assert registered.status_code == 200
-            assert registered.json()["device_id"] == "Cashier_ddeeff"
+            assert registered.json()["device_id"] == "Cashier_aabbccddeeff"
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
