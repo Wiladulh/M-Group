@@ -4,17 +4,14 @@
     <div id="accounts" class="scroll"></div>
   </section>
   <section class="section">
-    <h2>Deposit / Penarikan</h2>
-    <div class="hint">Gunakan Account ID anggota. Mutasi saldo memerlukan sesi admin yang aktif.</div>
+    <h2>Top Up / Penarikan Member</h2>
+    <div class="hint">Pilih member dan nominal secara langsung. Top-up berhasil akan menambah saldo dan otomatis tercatat di Ledger.</div>
     <form id="financialForm">
       <input id="financialAdminToken" type="hidden" value="session" data-session-token>
-      <select id="account" required><option value="">Muat akun setelah login</option></select>
-      <input id="amount" type="number" min="1" step="1" placeholder="Jumlah (IDR)" required>
-      <select id="direction">
-        <option value="credit">Deposit / Kredit</option>
-        <option value="debit">Penarikan / Debit</option>
-      </select>
-      <input id="reference" placeholder="Referensi transaksi unik" required>
+      <label>Member<select id="account" required><option value="">Muat member setelah login</option></select></label>
+      <label>Nominal (Rp)<input id="amount" type="number" min="1" step="1" placeholder="Contoh: 500000" required></label>
+      <label>Jenis mutasi<select id="direction"><option value="credit">Top Up / Kredit</option><option value="debit">Penarikan / Debit</option></select></label>
+      <label>Referensi / alasan<input id="reference" placeholder="Contoh: TOPUP-LOKET-001" required></label>
       <button>Proses</button>
     </form>
     <div id="financialResult" class="result"></div>
