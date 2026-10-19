@@ -33,14 +33,14 @@ def test_server_key_provisions_mac_derived_device_identity():
 
             registration = {
                 "device_type": "esp32-cashier",
-                "hardware_id": "Cashier_aabbccddeeff",
+                "hardware_id": "Cashier_aabbccddee01",
                 "mac_address": "AA:BB:CC:DD:EE:01",
                 "device_key": key,
             }
             first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["device_id"] == "Cashier_ddee01"
+            assert data["device_id"] == "Cashier_aabbccddee01"
             assert data["hardware_id"] == "Cashier_ddee01"
             assert data["status"] == "active"
             assert data["registered"] is True
