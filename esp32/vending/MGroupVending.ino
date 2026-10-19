@@ -12,7 +12,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="vm-01";
+String DEVICE_ID="Vending_";
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
 
@@ -79,6 +79,17 @@ void showMessage(const String&a,const String&b="",const String&c=""){
   display.clearDisplay();display.setTextSize(1);display.setTextColor(SSD1306_WHITE);display.setCursor(0,0);
   display.println(a);if(b.length())display.println(b);if(c.length())display.println(c);display.display();
 }
+bool registerDevice(){
+  if(WiFi.status()!=WL_CONNECTED)return false;
+  String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
+  String suffix=compact.substring(compact.length()-6); suffix.toLowerCase();
+  DEVICE_ID="Vending_"+suffix;
+  String body="{\"device_type\":\"esp32-s3-vending\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  int code=0; String reply=request("POST","/api/v1/devices/register",body,code);
+  Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
+  return code>=200&&code<300;
+}
+
 void heartbeat(){
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;String body="{\"device_type\":\"esp32-s3-vending\",\"status\":\"active\"}";
@@ -275,7 +286,7 @@ void setup(){
   Wire.begin(I2C_SDA,I2C_SCL);displayReady=display.begin(SSD1306_SWITCHCAPVCC,OLED_ADDR);
   for(int i=0;i<SERVO_COUNT;i++){dispensers[i].setPeriodHertz(50);dispensers[i].attach(SERVO_PINS[i],500,2400);dispensers[i].write(10);}
   showMessage("M-Group VENDING","Starting...");
-  if(connectWifi()){heartbeat();products();}
+  if(connectWifi()){registerDevice();heartbeat();products();}
   readerReady=card.begin(I2C_SDA,I2C_SCL);
 }
 void loop(){
