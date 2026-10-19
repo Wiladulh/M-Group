@@ -686,6 +686,17 @@ def build_router(db, app_settings=None):
                    FROM device_registry WHERE hardware_id=?""",
                 (hardware_id,),
             ).fetchone()
+            # A newly provisioned device has an internal server ID and key but
+            # does not know its hardware ID until its first authenticated boot.
+            # Resolve that first registration by the one-time provisioned key.
+            matched_by_key = False
+            if row is None:
+                row = c.execute(
+                    """SELECT device_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                       FROM device_registry WHERE auth_key_hash=? ORDER BY created_at DESC LIMIT 1""",
+                    (digest,),
+                ).fetchone()
+                matched_by_key = row is not None
             if row:
                 if not row["auth_key_hash"]:
                     raise HTTPException(403,"device_not_provisioned")
@@ -693,12 +704,21 @@ def build_router(db, app_settings=None):
                     raise HTTPException(403,"invalid_device_key")
                 if row["status"] == "disabled":
                     raise HTTPException(403,"device_disabled")
-                c.execute(
-                    """UPDATE device_registry
-                       SET device_type=?,mac_address=?,last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                       WHERE device_id=?""",
-                    (device_type,mac_address,row["device_id"]),
-                )
+                if matched_by_key:
+                    c.execute(
+                        """UPDATE device_registry
+                           SET hardware_id=?,device_type=?,mac_address=?,status='active',
+                               last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                           WHERE device_id=?""",
+                        (hardware_id,device_type,mac_address,row["device_id"]),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE device_registry
+                           SET device_type=?,mac_address=?,last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                           WHERE device_id=?""",
+                        (device_type,mac_address,row["device_id"]),
+                    )
                 c.execute(
                     "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
                     (row["device_id"],"registration",q.model_dump_json(exclude={"device_key"})),
@@ -706,7 +726,7 @@ def build_router(db, app_settings=None):
                 c.commit()
                 return {"device_id":row["device_id"],"hardware_id":hardware_id,"device_type":device_type,
                         "mac_address":mac_address,"display_name":row["display_name"],
-                        "status":row["status"],"registered":True}
+                        "status":"active" if matched_by_key else row["status"],"registered":True}
 
             device_id = "dev-" + uuid4().hex
             c.execute(
@@ -737,6 +757,31 @@ def build_router(db, app_settings=None):
             return devices.soft_delete(device_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
+
+    @r.post("/devices/provision")
+    def device_provision_auto(q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
+        require_admin(x_m_group_admin_token)
+        if q.device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400,"invalid_device_type")
+        device_id="dev-"+uuid4().hex[:12]
+        key=secrets.token_urlsafe(32)
+        digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
+        with db.connect() as c:
+            c.execute(
+                """INSERT INTO device_registry
+                   (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
+                    auth_key_hash,auth_key_hint,created_at,updated_at)
+                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (device_id,q.device_type,digest,key[-6:]),
+            )
+            c.execute(
+                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                ("device","provisioned",device_id,f"type={q.device_type};location=unassigned"),
+            )
+            c.commit()
+        return {"device_id":device_id,"device_type":q.device_type,
+                "display_name":"Lokasi belum ditentukan","device_key":key,
+                "status":"active","key_shown_once":True}
 
     @r.post("/devices/{device_id}/provision")
     def device_provision(device_id,q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
