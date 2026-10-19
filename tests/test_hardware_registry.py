@@ -41,13 +41,13 @@ def test_server_key_provisions_mac_derived_device_identity():
             assert first.status_code == 200
             data = first.json()
             assert data["device_id"] == "Cashier_aabbccddee01"
-            assert data["hardware_id"] == "Cashier_ddee01"
+            assert data["hardware_id"] == "Cashier_aabbccddee01"
             assert data["status"] == "active"
             assert data["registered"] is True
 
             repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["device_id"] == "Cashier_ddee01"
+            assert repeat.json()["device_id"] == "Cashier_aabbccddee01"
 
             wrong_key = {**registration, "device_key": "wrong-secret"}
             bad = client.post("/api/v1/devices/register", json=wrong_key)
@@ -60,7 +60,7 @@ def test_server_key_provisions_mac_derived_device_identity():
             assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
-                "/api/v1/devices/Cashier_ddee01/heartbeat",
+                "/api/v1/devices/Cashier_aabbccddee01/heartbeat",
                 json={"device_type": "esp32-cashier"},
                 headers={"X-M-Group-Device-Key": key},
             )
@@ -68,8 +68,8 @@ def test_server_key_provisions_mac_derived_device_identity():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_id"] == "Cashier_ddee01")
-            assert item["hardware_id"] == "Cashier_ddee01"
+            item = next(x for x in listed.json()["devices"] if x["device_id"] == "Cashier_aabbccddee01")
+            assert item["hardware_id"] == "Cashier_aabbccddee01"
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
         finally:
@@ -89,7 +89,7 @@ def test_unprovisioned_key_cannot_create_device():
                 "/api/v1/devices/register",
                 json={
                     "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier_ddee01",
+                    "hardware_id": "Cashier_aabbccddee01",
                     "mac_address": "AA:BB:CC:DD:EE:01",
                     "device_key": "arbitrary-unprovisioned-key",
                 },
