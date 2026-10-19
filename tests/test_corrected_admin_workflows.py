@@ -54,7 +54,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 "/api/v1/devices/register",
                 json={
                     "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier_ddeeff",
+                    "hardware_id": "Cashier_aabbccddeeff",
                     "mac_address": "AA:BB:CC:DD:EE:FF",
                     "device_key": key,
                 },
