@@ -283,17 +283,16 @@ $('deviceProvisionForm').onsubmit=async e=>{
   const deviceType=$('provisionDeviceType').value;
   const result=$('deviceProvisionResult');
   if(!token){result.textContent='Sesi admin tidak aktif.';return}
-  if(!confirm('Generate key baru untuk perangkat '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Server akan membuat ID internal baru.'))return;
+  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json','X-M-Group-Admin-Token':token},
     body:JSON.stringify({device_type:deviceType})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
-  $('provisionedDeviceId').value=d.device_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Key dibuat untuk perangkat baru. Simpan Device ID dan Key sekarang; key tidak dapat ditampilkan ulang.';
+  result.textContent='Key autentikasi dibuat. Salin key ke WebUI perangkat; Device ID dibuat otomatis dari MAC address saat registrasi pertama.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
