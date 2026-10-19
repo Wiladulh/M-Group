@@ -1438,13 +1438,15 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.get("/audit/report")
-    def audit_report(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None)):
+    def audit_report(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None),method:str="ALL"):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month"}: raise HTTPException(400,"invalid_period")
+        method=method.upper()
+        if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
         import datetime as dt
         date=date or dt.date.today().isoformat()
         if period=="day":
@@ -1460,36 +1462,39 @@ def build_router(db, app_settings=None):
         queries=[]
         if source in {"ALL","CASHIER"}:
             queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id,member_id,account_id,
-                              'DEPOSIT' transaction_type,amount,status FROM cashier_deposits""")
+                              'DEPOSIT' transaction_type,amount,status,'NFC' payment_method,'local' payment_provider
+                              FROM cashier_deposits""")
             queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id,a.member_id,p.account_id,
-                              'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status
+                              'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status,
+                              COALESCE(p.method,'NFC') payment_method,COALESCE(p.provider,'local') payment_provider
                               FROM payment_transactions p
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
                               WHERE p.transaction_source='CASHIER'""")
         if source in {"ALL","VENDING"}:
             queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,a.member_id,
-                              v.account_id,'PURCHASE' transaction_type,v.amount,v.status
+                              v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
+                              COALESCE(v.payment_method,'NFC') payment_method,COALESCE(v.payment_provider,'local') payment_provider
                               FROM vending_transactions v
                               LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
                               LEFT JOIN financial_accounts a ON a.account_id=v.account_id""")
-        sql=" UNION ALL ".join("SELECT * FROM ("+q+") WHERE created_at>=? AND created_at<?" for q in queries)+" ORDER BY created_at DESC"
-        args=[v for _ in queries for v in (start,end)]
+        combined=" UNION ALL ".join("SELECT * FROM ("+q+") WHERE created_at>=? AND created_at<?" for q in queries)
+        sql="SELECT * FROM ("+combined+") WHERE (?='ALL' OR UPPER(COALESCE(payment_method,''))=?) ORDER BY created_at DESC"
+        args=[v for _ in queries for v in (start,end)]+[method,method]
         with db.connect() as c:
             rows=c.execute(sql,args).fetchall()
-        return {"source":source,"period":period,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
+        return {"source":source,"period":period,"method":method,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
 
     @r.get("/audit/export.xlsx")
-    def audit_export(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None)):
+    def audit_export(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None),method:str="ALL"):
         token=getattr(app_settings,"admin_token","")
         if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
             raise HTTPException(401,"admin_auth_required")
         # Reuse the endpoint's authorization and parameter validation, passing
         # the already-validated token explicitly because this is a direct call.
-        data=audit_report(source,period,date,x_m_group_admin_token)
+        data=audit_report(source,period,date,x_m_group_admin_token,method)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
-        # Use normalized values from the validated report for the filename.
-        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['start']}.xlsx"
+        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['method'].lower()}-{data['start']}.xlsx"
         export_rows_excel(data["transactions"],path)
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
