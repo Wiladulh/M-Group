@@ -33,7 +33,7 @@ def test_server_key_provisions_mac_derived_device_identity():
 
             registration = {
                 "device_type": "esp32-cashier",
-                "hardware_id": "Cashier_ddee01",
+                "hardware_id": "Cashier_aabbccddeeff",
                 "mac_address": "AA:BB:CC:DD:EE:01",
                 "device_key": key,
             }
@@ -56,6 +56,8 @@ def test_server_key_provisions_mac_derived_device_identity():
             wrong_mac_identity = {**registration, "hardware_id": "Cashier_wrong"}
             mismatch = client.post("/api/v1/devices/register", json=wrong_mac_identity)
             assert mismatch.status_code == 400
+            malformed_mac = {**registration, "mac_address": "AA:BB:CC:DD:EE:0Z"}
+            assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
                 "/api/v1/devices/Cashier_ddee01/heartbeat",
