@@ -43,7 +43,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
   void startPortal() {
     WiFi.mode(WIFI_AP_STA);
     uint64_t mac=ESP.getEfuseMac(); char suffix[7]; snprintf(suffix,sizeof(suffix),"%06X",(uint32_t)(mac&0xFFFFFF));
-    String apName=String("MGroup-Setup-")+suffix; char pass[13]; snprintf(pass,sizeof(pass),"%08X",(uint32_t)esp_random());
+    String apName=String("MGroup-Setup-")+suffix; char pass[17]; snprintf(pass,sizeof(pass),"%08X%08X",(uint32_t)esp_random(),(uint32_t)esp_random());
     WiFi.softAP(apName.c_str(),pass); active_=true;
     Serial.printf("\nM-GROUP CONFIG PORTAL: %s\nPassword setup: %s\nBuka http://192.168.4.1/\n",apName.c_str(),pass);
     server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){req->send(200,"text/html; charset=utf-8",page(label_));});
