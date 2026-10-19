@@ -40,11 +40,11 @@ The UID is converted to nfc-<lowercase hexadecimal UID>. The M-Group server rema
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/vending/MGroupVending.ino`.
+Set Wi-Fi/server defaults and `M_GROUP_DEVICE_KEY` in `esp32/vending/MGroupVending.ino` only for development fallback; production configuration should be entered through the mini WebUI. Device ID is generated at runtime.
 
 - `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
-- Provision `DEVICE_ID` with type `esp32-s3-vending` and use the returned device key. Register a vending machine in M-Group with its `device_id` pointing to this device; the machine ID may be different from the device ID.
+- Generate a Device Key for type `esp32-s3-vending` in the server dashboard and enter it in the mini WebUI. Register a vending machine in M-Group with its `device_id` pointing to the MAC-derived device ID; the machine ID may be different from the device ID.
 - Each machine exposes fixed public Product IDs `1`–`5`; Product ID determines the physical slot and servo channel. The server keeps internal database product keys private so the same public Product ID can exist on different machines.
 - The product API returns `enabled` as a JSON boolean. The firmware uses Product ID, name, price, stock, enabled state, and server-derived servo channel from that response.
 
