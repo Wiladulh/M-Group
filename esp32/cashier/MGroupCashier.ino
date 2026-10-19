@@ -4,9 +4,9 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include "MGroupConfigPortal.h"
 #include "MGroupKeypad.h"
 #include "MGroupCardReader.h"
-#include "MGroupConfigPortal.h"
 
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
