@@ -38,7 +38,8 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
             )
             assert created.status_code == 200
             payload = created.json()
-            assert "device_id" not in payload
+            assert payload["device_id"].startswith("pending-")
+            provisioned_id = payload["device_id"]
             key = payload["device_key"]
             assert len(key) >= 32
             with client.app.state.db.connect() as c:
@@ -60,14 +61,14 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 },
             )
             assert registered.status_code == 200
-            assert registered.json()["device_id"] == "Cashier_aabbccddeeff"
+            assert registered.json()["device_id"] == provisioned_id
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
                     "SELECT device_id,hardware_id,status FROM device_registry"
                 ).fetchone()
-                assert row["device_id"] == "Cashier_aabbccddeeff"
-                assert row["hardware_id"] == "Cashier_aabbccddeeff"
+                assert row["device_id"] == provisioned_id
+                assert row["hardware_id"] == "cashier_aabbccddeeff"
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
         finally:
