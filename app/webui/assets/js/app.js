@@ -1,5 +1,10 @@
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('id-ID').format(Number(n)||0);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function formatDateTime(value){
+  if(!value)return 'Belum ada interaksi';
+  const m=String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  return m?m[3]+'/'+m[2]+'/'+m[1]+(m[4]?' '+m[4]+':'+m[5]: ''):String(value);
+}
 function table(rows,cols){if(!rows?.length)return '<p class="hint" style="padding:16px;">Belum ada data.</p>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(r[c])+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
 async function json(url,opt={}){
   const r=await fetch(url,{credentials:'same-origin',...opt});
