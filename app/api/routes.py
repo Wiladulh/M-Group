@@ -842,7 +842,7 @@ def build_router(db, app_settings=None):
             c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
                       (device_id,))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                      (device_id,q.model_copy(update={"device_type": device_type}).model_dump_json()))
+                      (device_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
             c.commit()
         return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
 
