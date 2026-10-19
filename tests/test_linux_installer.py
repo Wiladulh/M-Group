@@ -21,7 +21,9 @@ def test_linux_installer_defaults_to_all_interfaces_and_prompts_for_configuratio
     assert 'if [ "$MODE" = system ] && [ -t 0 ]; then' in installer
     assert "Admin API token (hidden" not in installer
     assert "Generated admin token (save it now)" not in installer
-    assert "WebUI admin username/password" in installer
+    assert 'configure-admin-login.sh' in installer
+    login_setup = (ROOT / "installer" / "configure-admin-login.sh").read_text()
+    assert "WebUI admin username/password configuration saved." in login_setup
     assert 'CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}' in installer
     assert "/etc/m-group/m-group.env" in docs
     assert "DHCP" in docs
