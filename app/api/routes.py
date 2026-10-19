@@ -1494,7 +1494,8 @@ def build_router(db, app_settings=None):
         data=audit_report(source,period,date,x_m_group_admin_token,method)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
-        path=root/f"audit-{data['source'].lower()}-{data['period']}-{data['method'].lower()}-{data['start']}.xlsx"
+        method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
+        path=root/f"audit-{data['source'].lower()}-{data['period']}{method_segment}-{data['start']}.xlsx"
         export_rows_excel(data["transactions"],path)
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
