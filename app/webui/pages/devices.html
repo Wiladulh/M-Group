@@ -1,7 +1,7 @@
 <div id="tab-devices" class="tab-pane">
   <section class="section">
     <h2>Perangkat</h2>
-    <div class="hint">Kelola identitas perangkat Cashier dan Vending. Hardware ID dan kredensial perangkat tidak dapat diubah dari WebUI.</div>
+    <div class="hint">Kelola lokasi pemasangan perangkat Cashier dan Vending. ID internal tetap digunakan server untuk mengikat perangkat, key, dan transaksi.</div>
     <form id="deviceAuthForm">
       <input id="deviceAdminToken" type="hidden" value="session" data-session-token>
       <button type="submit">Muat Perangkat</button>
@@ -10,19 +10,19 @@
     <div id="devices" class="scroll" style="margin-top:12px"></div>
   </section>
   <section class="section">
-    <h2>Device Key Manager</h2>
-    <p class="hint">Buat key baru untuk satu perangkat. Key ditampilkan satu kali; salin ke konfigurasi perangkat dan jangan membagikannya.</p>
+    <h2>Generate Key Perangkat</h2>
+    <p class="hint">Admin hanya memilih jenis perangkat. Server membuat Device ID internal dan Device Key unik. Key ditampilkan satu kali; salin bersama ID internal ke WebUI mini perangkat.</p>
     <form id="deviceProvisionForm">
-      <label>Device ID<input id="provisionDeviceId" minlength="3" maxlength="80" required placeholder="contoh: cashier-01"></label>
       <label>Jenis perangkat
         <select id="provisionDeviceType" required>
-          <option value="esp32-cashier">ESP32 Cashier</option>
-          <option value="esp32-vending">ESP32 Vending</option>
-          <option value="esp32-s3-vending">ESP32-S3 Vending</option>
+          <option value="esp32-cashier">Cashier</option>
+          <option value="esp32-vending">Vending</option>
+          <option value="esp32-s3-vending">Vending ESP32-S3</option>
         </select>
       </label>
-      <button type="submit">Generate Device Key</button>
+      <button type="submit">Generate Key</button>
     </form>
+    <label>Device ID internal (dibuat otomatis oleh server)<input id="provisionedDeviceId" readonly autocomplete="off" placeholder="Dibuat setelah generate key"></label>
     <div id="deviceProvisionResult" class="result"></div>
     <label>Device key (hanya ditampilkan setelah dibuat)
       <input id="provisionedDeviceKey" type="password" readonly autocomplete="off" placeholder="Belum ada key baru">
