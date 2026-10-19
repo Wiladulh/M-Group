@@ -66,8 +66,8 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 row = c.execute(
                     "SELECT device_id,hardware_id,status FROM device_registry"
                 ).fetchone()
-                assert row["device_id"] == "Cashier_ddeeff"
-                assert row["hardware_id"] == "Cashier_ddeeff"
+                assert row["device_id"] == "Cashier_aabbccddeeff"
+                assert row["hardware_id"] == "Cashier_aabbccddeeff"
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
         finally:
