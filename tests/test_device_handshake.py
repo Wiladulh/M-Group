@@ -26,7 +26,7 @@ def test_cashier_and_vending_identity_handshake():
 
             cashier = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-cashier",
-                "hardware_id": "Cashier_001001",
+                "hardware_id": "Cashier_aabbcc001001",
                 "mac_address": "AA:BB:CC:00:10:01",
                 "device_key": cashier_key.json()["device_key"],
             })
@@ -35,7 +35,7 @@ def test_cashier_and_vending_identity_handshake():
             assert c["handshake"] == "accepted"
             assert c["status"] == "active"
             assert c["device_type"] == "esp32-cashier"
-            assert c["hardware_id"] == "Cashier_001001"
+            assert c["hardware_id"] == "Cashier_aabbcc001001"
 
             vending_key = client.post(
                 "/api/v1/devices/provision",
@@ -47,7 +47,7 @@ def test_cashier_and_vending_identity_handshake():
 
             vending = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-vending",
-                "hardware_id": "Vending_004801",
+                "hardware_id": "Vending_aabbcc004801",
                 "mac_address": "AA:BB:CC:00:48:01",
                 "device_key": vending_key.json()["device_key"],
             })
@@ -55,8 +55,8 @@ def test_cashier_and_vending_identity_handshake():
             v = vending.json()
             assert v["handshake"] == "accepted"
             assert v["status"] == "active"
-            assert v["device_type"] == "esp32-vending"
-            assert v["hardware_id"] == "Vending_004801"
+            assert v["device_type"] == "esp32-s3-vending"
+            assert v["hardware_id"] == "Vending_aabbcc004801"
 
             bad = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-vending",
@@ -68,6 +68,9 @@ def test_cashier_and_vending_identity_handshake():
 
             devices = client.get("/api/v1/devices", headers=headers)
             assert devices.status_code == 200
+            with client.app.state.db.connect() as conn:
+                assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='registration'").fetchone()[0] == 2
+                assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='identity_handshake'").fetchone()[0] == 0
             rows = devices.json()["devices"]
             assert {x["hardware_id"] for x in rows} >= {"Cashier_001001", "Vending_004801"}
         finally:
