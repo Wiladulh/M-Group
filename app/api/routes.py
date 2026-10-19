@@ -844,7 +844,7 @@ def build_router(db, app_settings=None):
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
                       (device_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
             c.commit()
-        return {"device_id":device_id,"device_type":q.device_type,"status":"active"}
+        return {"device_id":device_id,"device_type":device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
     def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
