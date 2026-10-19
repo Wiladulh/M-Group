@@ -13,7 +13,12 @@ class MemberManagementService:
             rows = c.execute(
                 f"""
                 SELECT member_id,name,status,nik,address,birth_place,birth_date,sex,rt,rw,village,district,city_regency,province,religion,marital_status,occupation,citizenship,phone,email,registration_date,created_at,deleted_at,
-                       COALESCE((SELECT c.status FROM member_nfc_cards c WHERE c.member_id=identity_members.member_id AND c.status='active' ORDER BY c.created_at DESC LIMIT 1),'unregistered') AS nfc_credential_status
+                       COALESCE((SELECT c.status FROM member_nfc_cards c WHERE c.member_id=identity_members.member_id AND c.status='active' ORDER BY c.created_at DESC LIMIT 1),'unregistered') AS nfc_credential_status,
+                       NULLIF(MAX(
+                         COALESCE((SELECT MAX(p.created_at) FROM payment_transactions p JOIN financial_accounts a ON a.account_id=p.account_id WHERE a.member_id=identity_members.member_id AND p.status='completed'),''),
+                         COALESCE((SELECT MAX(d.created_at) FROM cashier_deposits d WHERE d.member_id=identity_members.member_id AND d.status='completed'),''),
+                         COALESCE((SELECT MAX(e.created_at) FROM identity_access_events e WHERE e.member_id=identity_members.member_id),'')
+                       ),'') AS last_interaction_at
                 FROM identity_members
                 {where}
                 ORDER BY created_at DESC
