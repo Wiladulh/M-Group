@@ -1,7 +1,7 @@
 <div id="tab-audit" class="tab-pane">
   <section class="section">
     <h2>Audit Transaksi</h2>
-    <div class="hint">Audit terpisah untuk transaksi Cashier dan Vending. Filter tersedia per hari, minggu, atau bulan.</div>
+    <div class="hint">Audit terpisah untuk transaksi Cashier dan Vending. Filter tersedia per hari, minggu, atau bulan. Laporan dapat diunduh sebagai file Excel (.xlsx).</div>
     <form id="auditForm">
       <input id="adminToken" type="hidden" value="session" data-session-token>
       <select id="auditSource">
@@ -33,7 +33,7 @@
   </section>
   <section class="section">
     <h2>Backup & Restore</h2>
-    <div class="hint">Backup native .mgroup.zip adalah format pemulihan utama. XLSX digunakan untuk laporan/interchange.</div>
+    <div class="hint">Backup mencakup database operasional, member, perangkat, transaksi, Ledger, produk/inventory, manifest, dan checksum. Arsip native .mgroup.zip adalah format pemulihan utama; XLSX untuk pelaporan.</div>
     <div class="grid">
       <button type="button" id="backupCreate">Buat Backup M-Group</button>
       <label class="check" style="padding:11px 14px;border:1px solid var(--line);border-radius:10px">
