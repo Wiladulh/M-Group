@@ -11,9 +11,11 @@ class MGroupConfigPortal {
     prefs_.begin(storageNamespace,false);
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
     *url_=prefs_.getString("server_url",*url_); *key_=prefs_.getString("device_key",*key_);
+    // Initialize the station interface before reading its hardware MAC.
+    WiFi.mode(WIFI_STA);
     String prefix=String(label_).startsWith("Cashier")?"Cashier_":"Vending_";
     String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
-    *id_=prefix+mac.substring(mac.length()-6);
+    *id_=prefix+mac;
     bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
     if(needed) startPortal();
   }
@@ -33,7 +35,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Device ID dibuat otomatis dari MAC address perangkat dan tidak perlu dimasukkan.</p>
+<p class="warn">Device ID dibuat otomatis dari seluruh MAC address perangkat dan tidak perlu dimasukkan.</p>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
