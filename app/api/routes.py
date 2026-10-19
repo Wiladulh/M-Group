@@ -773,7 +773,7 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','pending',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
                 (device_id,q.device_type,digest,key[-6:]),
             )
             c.execute(
