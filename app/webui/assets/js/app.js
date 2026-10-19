@@ -493,22 +493,22 @@ $('settingsLogout').onclick=()=>$('logoutButton').click();
 async function adminToken(){const t=$('adminToken').value.trim();if(!t)throw new Error('Admin Token wajib diisi');return t}
 async function loadAudit(){
   try{
-    const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value;
-    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+(date?'&date='+encodeURIComponent(date):'');
+    const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value;
+    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const token=await adminToken();
     const {r,d}=await json('/api/v1/audit/report'+q,{headers:{'X-M-Group-Admin-Token':token}});
-    $('auditResult').innerHTML=r.ok?table(d.transactions,['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
+    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
 }
 $('auditForm').onsubmit=async e=>{e.preventDefault();await loadAudit()};
 $('auditExport').onclick=async()=>{
   try{
     const token=await adminToken();
-    const source=$('auditSource').value,period=$('auditPeriod').value,date=$('auditDate').value;
-    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+(date?'&date='+encodeURIComponent(date):'');
+    const source=$('auditSource').value,period=$('auditPeriod').value,date=$('auditDate').value,method=$('auditMethod').value;
+    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const r=await fetch('/api/v1/audit/export.xlsx'+q,{headers:{'X-M-Group-Admin-Token':token}});
     if(!r.ok)throw new Error('Export gagal: '+r.status);
-    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M-Group-audit-'+source.toLowerCase()+'-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
+    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M-Group-audit-'+source.toLowerCase()+'-'+method.toLowerCase()+'-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
   }catch(e){$('auditResult').textContent=e.message}
 };
 $('operatorPinForm').onsubmit=async e=>{
