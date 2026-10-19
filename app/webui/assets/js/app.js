@@ -245,12 +245,10 @@ async function loadDevices(){
     $('deviceAuthResult').textContent='Data perangkat berhasil dimuat.';
     const rows=(d.devices||[]);
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
-    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Hardware ID</th><th>MAC</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
+    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>'<tr>'+
         '<td><input data-device-name="'+esc(x.device_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><code>'+esc(x.hardware_id||x.device_id)+'</code></td>'+
-        '<td><code>'+esc(x.mac_address||'—')+'</code></td>'+
         '<td><select data-device-status="'+esc(x.device_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
         '<td><button type="button" data-device-save="'+esc(x.device_id)+'">Simpan</button></td>'+
