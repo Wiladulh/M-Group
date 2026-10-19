@@ -78,3 +78,54 @@ def test_vending_requires_device_key():
             assert ok.json()["account_id"]=="a1"
         finally:
             main.get_settings=old
+
+def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
+    with TemporaryDirectory() as d:
+        old=main.get_settings
+        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
+        try:
+            client=TestClient(main.create_app())
+            provision=client.post(
+                "/api/v1/devices/provision",
+                json={"device_type":"esp32-cashier"},
+                headers={"X-M-Group-Admin-Token":"admin-secret"},
+            )
+            assert provision.status_code == 200
+            payload=provision.json()
+            assert payload["device_id"].startswith("pending-")
+            assert payload["status"] == "awaiting_device_registration"
+            key=payload["device_key"]
+
+            with client.app.state.db.connect() as c:
+                before=c.execute(
+                    "SELECT device_id,status FROM device_registry WHERE device_id=?",
+                    (payload["device_id"],),
+                ).fetchone()
+                assert before["status"] == "awaiting_device_registration"
+
+            registered=client.post(
+                "/api/v1/devices/register",
+                json={
+                    "device_type":"esp32-cashier",
+                    "hardware_id":"CASHIER_AABBCC112233",
+                    "mac_address":"aa:bb:cc:11:22:33",
+                    "device_key":key,
+                },
+            )
+            assert registered.status_code == 200, registered.text
+            body=registered.json()
+            assert body["hardware_id"] == "cashier_aabbcc112233"
+            assert body["device_id"] == payload["device_id"]
+            assert body["status"] == "active"
+
+            with client.app.state.db.connect() as c:
+                after=c.execute(
+                    "SELECT device_id,hardware_id,status FROM device_registry WHERE device_id=?",
+                    (payload["device_id"],),
+                ).fetchone()
+                assert after["device_id"] == payload["device_id"]
+                assert after["hardware_id"] == "cashier_aabbcc112233"
+                assert after["status"] == "active"
+        finally:
+            main.get_settings=old
+
