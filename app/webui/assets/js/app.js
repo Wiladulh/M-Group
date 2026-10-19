@@ -70,7 +70,7 @@ async function loadDashboard(token,period=selectedAnalyticsPeriod){
   if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
   else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
   await loadFinancialLedger();
-  $('members').innerHTML=table(d.members,['member_id','name','status','created_at']);
+  await loadMemberList();
   dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
