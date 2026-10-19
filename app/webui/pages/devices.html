@@ -1,7 +1,7 @@
 <div id="tab-devices" class="tab-pane">
   <section class="section">
     <h2>Perangkat</h2>
-    <div class="hint">Kelola lokasi pemasangan perangkat Cashier dan Vending. ID internal tetap digunakan server untuk mengikat perangkat, key, dan transaksi.</div>
+    <div class="hint">Kelola perangkat Cashier dan Vending. Device ID dibuat otomatis dari MAC address ketika perangkat pertama kali terhubung.</div>
     <form id="deviceAuthForm">
       <input id="deviceAdminToken" type="hidden" value="session" data-session-token>
       <button type="submit">Muat Perangkat</button>
@@ -16,7 +16,6 @@
       <label>Jenis perangkat
         <select id="provisionDeviceType" required>
           <option value="esp32-cashier">Cashier</option>
-          <option value="esp32-s3-vending">Vending</option>
           <option value="esp32-s3-vending">Vending ESP32-S3</option>
         </select>
       </label>
