@@ -70,11 +70,11 @@ Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
 
 ## Server configuration
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `M_GROUP_BASE_URL`, `DEVICE_ID`, and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino`.
+Set Wi-Fi/server defaults and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino` only for development fallback; production configuration should be entered through the mini WebUI. Device ID is generated at runtime.
 
 - `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
-- Provision the device using the exact `DEVICE_ID` and paste the returned key into `M_GROUP_DEVICE_KEY`. The key must be active in the server registry.
+- Generate a Device Key in the authenticated server dashboard, then enter the key in the mini WebUI. The ESP32 derives its Device ID from its MAC address during registration.
 - Configure the operator top-up PIN through the authenticated M-Group API/WebUI. Set the member PIN and ensure the NFC credential is active and linked to an active member with an active savings account.
 
 The firmware persists top-up idempotency sequence and pending transaction metadata. If a request times out, it blocks new top-ups and asks the operator/member to retry the same transaction; PINs are never saved in NVS.
