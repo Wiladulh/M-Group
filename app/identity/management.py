@@ -17,6 +17,8 @@ class MemberManagementService:
                        NULLIF(MAX(
                          COALESCE((SELECT MAX(p.created_at) FROM payment_transactions p JOIN financial_accounts a ON a.account_id=p.account_id WHERE a.member_id=identity_members.member_id AND p.status='completed'),''),
                          COALESCE((SELECT MAX(d.created_at) FROM cashier_deposits d WHERE d.member_id=identity_members.member_id AND d.status='completed'),''),
+                         COALESCE((SELECT MAX(t.created_at) FROM financial_transactions t JOIN financial_accounts a ON a.account_id=t.account_id WHERE a.member_id=identity_members.member_id AND t.status='completed'),''),
+                         COALESCE((SELECT MAX(v.created_at) FROM vending_transactions v JOIN financial_accounts a ON a.account_id=v.account_id WHERE a.member_id=identity_members.member_id AND v.status='completed'),''),
                          COALESCE((SELECT MAX(e.created_at) FROM identity_access_events e WHERE e.member_id=identity_members.member_id),'')
                        ),'') AS last_interaction_at
                 FROM identity_members
