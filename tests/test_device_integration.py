@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_device_heartbeat_and_vending_product_sync():
     with TemporaryDirectory() as d:
         old = main.get_settings
