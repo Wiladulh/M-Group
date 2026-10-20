@@ -70,7 +70,7 @@ def test_system_reinstall_preserves_existing_config_unless_environment_overrides
     config_load = installer.index('if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then')
     prompt_start = installer.index('# Interactive setup for headless/server installs.')
     config_write = installer.index('cat > "$ENV_FILE" <<EOF')
-    for key in ("M_GROUP_PREFIX", "M_GROUP_DATA_DIR", "M_GROUP_HOST", "M_GROUP_PORT", "M_GROUP_ADMIN_TOKEN"):
+    for key in ("M_GROUP_PREFIX", "M_GROUP_DATA_DIR", "M_GROUP_HOST", "M_GROUP_PORT", "M_GROUP_ADMIN_USERNAME", "M_GROUP_ADMIN_PASSWORD_HASH"):
         assert f"sed -n 's/^{key}=//p'" in installer
     assert config_load < prompt_start < config_write
     assert 'M_GROUP_PREFIX=$PREFIX' in installer
