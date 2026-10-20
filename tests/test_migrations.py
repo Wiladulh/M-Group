@@ -252,3 +252,13 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
             assert c.execute(
                 "SELECT COUNT(*) FROM vending_transactions WHERE transaction_id='vending-legacy'"
             ).fetchone()[0] == 1
+
+def test_only_app_migrations_is_the_canonical_migration_source():
+    root = Path(__file__).resolve().parents[1]
+    migrations = root / "app" / "migrations"
+    assert migrations.is_dir()
+    assert (migrations / "001_initial.sql").is_file()
+    assert (migrations / "023_device_balance_lookup_limits.sql").is_file()
+    assert not (root / "database" / "migrations").exists()
+    names = [path.name for path in migrations.glob("*.sql")]
+    assert names == sorted(names)
