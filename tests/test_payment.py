@@ -139,3 +139,31 @@ def test_payment_idempotency_rejects_different_credential_for_same_account():
             assert False, "a different credential must not replay the prior payment"
         except ValueError as exc:
             assert str(exc) == "idempotency_key_conflict"
+
+def test_concurrent_payment_retries_debit_exactly_once():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+
+        def submit():
+            return PaymentService(db).pay(
+                "cred-1", "acct-1", 25000, method="CASH",
+                idempotency_key="concurrent-payment-1",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = list(pool.map(lambda _: submit(), range(2)))
+
+        assert first["transaction_id"] == second["transaction_id"]
+        with db.connect() as c:
+            assert c.execute(
+                "SELECT COUNT(*) FROM payment_transactions WHERE idempotency_key='concurrent-payment-1'"
+            ).fetchone()[0] == 1
+            assert c.execute(
+                "SELECT COUNT(*) FROM financial_transactions WHERE idempotency_key=?",
+                ("payment:" + first["transaction_id"],),
+            ).fetchone()[0] == 1
+        assert PaymentService(db).financial.balance("acct-1") == 75000

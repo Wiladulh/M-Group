@@ -12,7 +12,7 @@ cd M-Group
 sudo sh installer/install.sh --system
 ```
 
-The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory and configuration file, and registers/starts a service when systemd or OpenRC is available. In an interactive system install it prompts for listen address, port, application directory, database/data directory, configuration directory, the admin API token, WebUI username/password, and an optional initial Cashier operator PIN. Secret inputs are hidden while typing. Leave the admin token blank to generate a cryptographically random token; save a generated token from the installer output. The bootstrap WebUI credentials are stored as a username and PBKDF2 password hash, not as a plaintext password. After the first successful login, account changes are persisted in the SQLite admin account table. Leave the operator PIN blank to configure it later from the admin WebUI. There is no shared default operator PIN. If an initial PIN is supplied, the installer stores only its hash in SQLite and removes the one-time plaintext setting from the environment file after successful first initialization. On non-interactive system installs, set `M_GROUP_ADMIN_USERNAME` and `M_GROUP_ADMIN_PASSWORD_HASH` in the environment; if login credentials are missing, setup stops instead of creating an inaccessible dashboard. The admin API token is generated automatically when omitted; the operator PIN remains unset until explicitly configured. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database. Re-running the system installer reuses saved install prefix, data directory, listen address, port, admin token, and WebUI login credentials from the existing environment file unless explicitly overridden with environment variables or changed at the interactive prompts; this avoids accidentally starting a fresh empty instance after a reinstall. The data directory is private to the service account, and the SQLite database file is mode `0600`.
+The installer builds an isolated environment, installs the API/WebUI, creates a persistent data directory and configuration file, and registers/starts a service when systemd or OpenRC is available. In an interactive system install it prompts for listen address, port, application directory, database/data directory, configuration directory, WebUI admin username/password, and an optional initial Cashier operator PIN. The password and PIN inputs are hidden while typing. An internal API compatibility secret is generated automatically when needed; it is not requested from or displayed to the operator. The bootstrap WebUI credentials are stored as a username and PBKDF2 password hash, not as a plaintext password. After the first successful login, account changes are persisted in the SQLite admin account table. Leave the operator PIN blank to configure it later from the admin WebUI. There is no shared default operator PIN. If an initial PIN is supplied, the installer stores only its hash in SQLite and removes the one-time plaintext setting from the environment file after successful first initialization. On non-interactive system installs, set `M_GROUP_ADMIN_USERNAME` and `M_GROUP_ADMIN_PASSWORD_HASH` in the environment; if login credentials are missing, setup stops instead of creating an inaccessible dashboard. The internal API compatibility secret is generated automatically when omitted and must not be shared; the operator PIN remains unset until explicitly configured. SQLite data is kept outside the application directory, so upgrades/reinstalls do not delete the database. Re-running the system installer reuses saved install prefix, data directory, listen address, port, internal API compatibility secret, and WebUI login credentials from the existing environment file unless explicitly overridden with environment variables or changed at the interactive prompts; this avoids accidentally starting a fresh empty instance after a reinstall. The data directory is private to the service account, and the SQLite database file is mode `0600`.
 
 For a per-user installation without a system service:
 
@@ -34,7 +34,7 @@ Then open `http://127.0.0.1:8011` locally.
 
 To bind only to a specific interface, set `M_GROUP_HOST` to that interface address in the configuration file. Do not expose the raw API port publicly without HTTPS and appropriate network controls.
 
-System install configuration and the admin API token are stored in `/etc/m-group/m-group.env` by default with mode `0640`, owned by root and readable only by root and the service group. Keep this file secret. During installation, the default locations are `/opt/M-Group` (application), `/var/lib/M-Group` (database/data), and `/etc/m-group` (configuration); the installer lets you change these locations interactively. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
+System configuration, including the internal API compatibility secret and password hash, is stored in `/etc/m-group/m-group.env` by default with mode `0640`, owned by root and readable only by root and the service group. Keep this file secret. During installation, the default locations are `/opt/M-Group` (application), `/var/lib/M-Group` (database/data), and `/etc/m-group` (configuration); the installer lets you change these locations interactively. Change `M_GROUP_HOST` or `M_GROUP_PORT` there and restart the service:
 
 - systemd: `sudo systemctl restart m-group`
 - OpenRC: `sudo rc-service m-group restart`
@@ -50,7 +50,7 @@ curl -fsS http://127.0.0.1:8011/ >/dev/null && echo "M-Group WebUI is responding
 - Application data: `/var/lib/M-Group`
 - CLI: `/opt/M-Group/bin/m-group init` (initializes/migrates the local database)
 
-For custom paths, set `M_GROUP_PREFIX` and `M_GROUP_DATA_DIR` when running the installer. Set `M_GROUP_ADMIN_TOKEN` to preserve/use a known token. Set `M_GROUP_SKIP_SERVICE=1` to install without registering a service.
+For custom paths, set `M_GROUP_PREFIX` and `M_GROUP_DATA_DIR` when running the installer. `M_GROUP_ADMIN_TOKEN` is an advanced internal compatibility override; normal installs should leave it unset. Set `M_GROUP_SKIP_SERVICE=1` to install without registering a service.
 
 ## WebUI login and upgrades
 
@@ -71,7 +71,7 @@ M_GROUP_ADMIN_USERNAME=admin
 M_GROUP_ADMIN_PASSWORD_HASH='pbkdf2_sha256$310000$...'
 ```
 
-Restart the service after manual configuration changes. Never commit the hash, admin token, or environment file to GitHub.
+Restart the service after manual configuration changes. Never commit the password hash, internal API compatibility secret, or environment file to GitHub.
 
 If the admin password is forgotten after changing it in WebUI, reset it interactively with:
 

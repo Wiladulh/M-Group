@@ -277,3 +277,44 @@ def test_native_restore_waits_for_inflight_database_users():
                 assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         finally:
             main.get_settings = old
+
+def test_native_backup_restore_preserves_financial_ledger_and_balance():
+    from app.core.backup import create_native_backup, restore_native_backup
+    from app.financial.service import FinancialService
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "Settings", (), {
+                "db_path": root / "m-group.db",
+                "data_dir": root,
+                "admin_token": "admin-secret",
+            }
+        )()
+        try:
+            app = main.create_app()
+            db = app.state.db
+            with db.connect() as c:
+                c.execute("INSERT INTO identity_members(member_id,name) VALUES('restore-fin-member','Member')")
+                c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('restore-fin-account','restore-fin-member','savings')")
+                c.commit()
+
+            financial = FinancialService(db)
+            financial.credit("restore-fin-account", 50000, reference="pre-backup", idempotency_key="restore-pre-backup")
+            before = financial.balance("restore-fin-account")
+            archive = root / "financial-backup.mgroup.zip"
+            create_native_backup(db, archive, include_excel=False)
+            financial.debit("restore-fin-account", 10000, reference="post-backup", idempotency_key="restore-post-backup")
+
+            restore_native_backup(db, archive)
+            restored = FinancialService(db)
+            assert restored.balance("restore-fin-account") == before
+            with db.connect() as c:
+                assert c.execute("SELECT COUNT(*) FROM financial_ledger WHERE account_id='restore-fin-account'").fetchone()[0] == 1
+                assert c.execute("SELECT COUNT(*) FROM financial_transactions WHERE idempotency_key='restore-pre-backup'").fetchone()[0] == 1
+                assert c.execute("SELECT COUNT(*) FROM financial_transactions WHERE idempotency_key='restore-post-backup'").fetchone()[0] == 0
+                assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+        finally:
+            main.get_settings = old

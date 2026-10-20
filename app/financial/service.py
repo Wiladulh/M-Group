@@ -44,6 +44,10 @@ class FinancialService:
             raise ValueError("unsupported_transaction_type")
 
         with self.db.connect() as c:
+            # Serialize the idempotency lookup and ledger write. Without an
+            # immediate write lock, concurrent retries can both observe no row
+            # before either commits and one request can fail after a lock race.
+            c.execute("BEGIN IMMEDIATE")
             existing = None
             if idempotency_key:
                 existing = c.execute(

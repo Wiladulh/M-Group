@@ -63,6 +63,10 @@ class PaymentService:
                 raise PermissionError("invalid_pin")
 
         with self.db.connect() as c:
+            # Reserve the SQLite write transaction before checking the key.
+            # Concurrent retries now serialize and the later request replays
+            # the committed result instead of racing the unique index/debit.
+            c.execute("BEGIN IMMEDIATE")
             if idempotency_key:
                 row = c.execute(
                     "SELECT transaction_id,status,credential_id,device_id,original_amount,discount_amount,final_amount,"

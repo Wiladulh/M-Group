@@ -146,16 +146,8 @@ if [ "$MODE" = system ] && [ -t 0 ]; then
   printf "Configuration directory [%s]: " "$CONFIG_DIR"
   IFS= read -r answer || answer=
   [ -z "$answer" ] || CONFIG_DIR=$answer
-  if [ -z "$ADMIN_TOKEN" ]; then
-    printf "Admin API token (hidden; blank generates one automatically): "
-    if stty -echo 2>/dev/null; then
-      IFS= read -r ADMIN_TOKEN || ADMIN_TOKEN=
-      stty echo 2>/dev/null || true
-      printf "\n"
-    else
-      IFS= read -r ADMIN_TOKEN || ADMIN_TOKEN=
-    fi
-  fi
+  # Admin API token is an internal server-side compatibility secret.
+  # Generate it automatically; never prompt for it or display it to the operator.
   if [ -z "$OPERATOR_PIN" ]; then
     printf "Initial Cashier operator PIN (4-6 digits; blank lets you set it later in WebUI, hidden): "
     if stty -echo 2>/dev/null; then
@@ -248,8 +240,7 @@ if [ "$MODE" = system ]; then
   if [ -z "$ADMIN_TOKEN" ] && [ -f "$ENV_FILE" ]; then
     ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
   fi
-  GENERATED_TOKEN=0
-  if [ -z "$ADMIN_TOKEN" ]; then ADMIN_TOKEN=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(40))'); GENERATED_TOKEN=1; fi
+  if [ -z "$ADMIN_TOKEN" ]; then ADMIN_TOKEN=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(40))'); fi
   umask 077
   cat > "$ENV_FILE" <<EOF
 M_GROUP_PREFIX=$PREFIX
@@ -360,7 +351,6 @@ EOF
     echo "No active systemd/OpenRC detected; service was not registered."
   fi
   echo "Configuration stored in $ENV_FILE (permissions 0640, readable only by root and the service group); keep it secret."
-  if [ "$GENERATED_TOKEN" = 1 ]; then echo "Generated admin token (save it now): $ADMIN_TOKEN"; fi
 fi
 echo "M-Group installed successfully."
 echo "Install prefix: $PREFIX"

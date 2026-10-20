@@ -32,8 +32,11 @@ jobs:
               "app/webui/assets/js/app.js",
               "app/migrations/001_initial.sql",
               "app/migrations/020_vending_integrity.sql",
+              "app/migrations/023_device_balance_lookup_limits.sql",
           ]
           missing = [path for path in required if path not in names]
           if missing:
               raise SystemExit(f"Missing packaged WebUI files: {missing}")
+          if any(name.startswith("database/migrations/") for name in names):
+              raise SystemExit("Legacy duplicate migrations must not be packaged")
           PY
