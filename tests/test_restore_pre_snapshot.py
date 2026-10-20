@@ -7,7 +7,7 @@ import app.main as main
 from app.core.backup import create_native_backup
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_restore_endpoint_creates_pre_restore_snapshot():
     with TemporaryDirectory() as directory:
         root = Path(directory)
