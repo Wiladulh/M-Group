@@ -4,16 +4,15 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from conftest import login_admin
 def test_server_key_provisions_mac_derived_device_identity():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
-            "db_path": Path(d) / "m-group.db",
-            "admin_token": "admin-secret"
-        })()
+            "db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
-            headers = {"X-M-Group-Admin-Token": "admin-secret"}
+            headers = login_admin(client)
             provision = client.post(
                 "/api/v1/devices/provision",
                 json={"device_type": "esp32-cashier"},
@@ -81,9 +80,7 @@ def test_unprovisioned_key_cannot_create_device():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
-            "db_path": Path(d) / "m-group.db",
-            "admin_token": "admin-secret"
-        })()
+            "db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             response = client.post(
