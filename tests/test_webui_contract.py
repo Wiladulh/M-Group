@@ -19,11 +19,13 @@ def test_navigation_tab_ids_match_loaded_page_panes():
     assert buttons == pane_ids
 
 
-def test_dashboard_data_fetch_requires_admin_token_and_reports_loading_errors():
+def test_dashboard_data_fetch_uses_session_cookie_and_reports_loading_errors():
     js = (ROOT / "app" / "webui" / "assets" / "js" / "app.js").read_text(encoding="utf-8")
     index = (ROOT / "app" / "webui" / "index.html").read_text(encoding="utf-8")
-    assert "X-M-Group-Admin-Token':token" in js
-    assert "dashboardAdminToken" in js
+    assert "X-M-Group-Admin-Token" not in js
+    assert "dashboardAdminToken" not in js
+    assert "credentials" in js
+    assert "restoreSession()" in js
     assert "Gagal memuat JavaScript WebUI" in index
     assert "unhandledrejection" in index
 
