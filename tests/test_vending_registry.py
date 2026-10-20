@@ -5,7 +5,7 @@ import app.main as main
 from app.core.db import Database
 from app.vending.service import VendingService
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_vending_registry_supports_many_machines_and_five_slots():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate()
