@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from conftest import login_admin
 def test_audit_export_authorizes_and_returns_workbook():
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -16,7 +17,6 @@ def test_audit_export_authorizes_and_returns_workbook():
             {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "audit-test-token",
             },
         )()
         try:
@@ -28,7 +28,7 @@ def test_audit_export_authorizes_and_returns_workbook():
 
             response = client.get(
                 "/api/v1/audit/export.xlsx?source=CASHIER&period=day&date=2026-01-01",
-                headers={"X-M-Group-Admin-Token": "audit-test-token"},
+                headers=login_admin(client),
             )
             assert response.status_code == 200, response.text
             assert response.headers["content-type"].startswith(
