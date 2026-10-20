@@ -7,7 +7,7 @@ Usage: sh installer/install.sh [--system|--user]
   --system  Install in /opt/M-Group and register systemd/OpenRC when available (root).
   --user    Install in ~/.local/lib/M-Group without a system service.
 Environment: M_GROUP_PREFIX, M_GROUP_DATA_DIR, M_GROUP_CONFIG_DIR, M_GROUP_HOST,
-M_GROUP_PORT, M_GROUP_ADMIN_TOKEN, M_GROUP_ADMIN_USERNAME,\nM_GROUP_ADMIN_PASSWORD_HASH, M_GROUP_PYTHON, M_GROUP_SKIP_SERVICE=1.
+M_GROUP_PORT, M_GROUP_ADMIN_USERNAME,\nM_GROUP_ADMIN_PASSWORD_HASH, M_GROUP_PYTHON, M_GROUP_SKIP_SERVICE=1.
 EOF
 }
 MODE=""
