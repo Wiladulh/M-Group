@@ -271,7 +271,7 @@ def build_router(db, app_settings=None):
         configured_hash = getattr(app_settings, "admin_password_hash", "")
         if request.headers.get("origin"):
             origin = urlsplit(request.headers["origin"])
-            if origin.netloc != request.headers.get("host"):
+            if origin.netloc != request.headers.get("host") or origin.scheme.lower() != request.url.scheme.lower():
                 raise HTTPException(403, "cross_origin_request_rejected")
         client_ip = request.client.host if request.client else "unknown"
         client_key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
@@ -344,7 +344,7 @@ def build_router(db, app_settings=None):
     @r.post("/auth/account")
     def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
         origin = request.headers.get("origin")
-        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+        if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
             raise HTTPException(403, "same_origin_required")
         token = request.cookies.get("m_group_session", "")
         if not token:
@@ -392,7 +392,7 @@ def build_router(db, app_settings=None):
     @r.post("/auth/logout")
     def admin_logout(request: Request, response: Response):
         origin = request.headers.get("origin")
-        if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+        if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
             raise HTTPException(403, "same_origin_required")
         token = request.cookies.get("m_group_session", "")
         if token:
@@ -523,6 +523,10 @@ def build_router(db, app_settings=None):
     def require_admin(request: Request):
         if not getattr(request.state, "admin_authenticated", False):
             raise HTTPException(401, "admin_session_required")
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origin = request.headers.get("origin")
+            if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
+                raise HTTPException(403, "same_origin_required")
 
     @r.get("/members")
     def members_list(request: Request, include_deleted: bool = False):

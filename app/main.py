@@ -26,9 +26,6 @@ def create_app():
         request.state.admin_authenticated = False
         if request.url.path.startswith("/api/v1/"):
             origin = request.headers.get("origin")
-            if request.method not in {"GET", "HEAD", "OPTIONS"} and request.cookies.get("m_group_session") and origin:
-                if urlsplit(origin).netloc != request.headers.get("host"):
-                    return JSONResponse({"detail": "same_origin_required"}, status_code=403)
             token = request.cookies.get("m_group_session", "")
             if token:
                 from app.core.auth import hash_session_token
