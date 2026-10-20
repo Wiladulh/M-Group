@@ -21,7 +21,8 @@ def test_server_key_provisions_mac_derived_device_identity():
             )
             assert provision.status_code == 200
             payload = provision.json()
-            assert "device_id" not in payload
+            assert payload["device_id"].startswith("pending-")
+            provisioned_id = payload["device_id"]
             key = payload["device_key"]
 
             with client.app.state.db.connect() as conn:
@@ -40,14 +41,14 @@ def test_server_key_provisions_mac_derived_device_identity():
             first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["device_id"] == "Cashier_aabbccddee01"
-            assert data["hardware_id"] == "Cashier_aabbccddee01"
+            assert data["device_id"] == provisioned_id
+            assert data["hardware_id"] == "cashier_aabbccddee01"
             assert data["status"] == "active"
             assert data["registered"] is True
 
             repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["device_id"] == "Cashier_aabbccddee01"
+            assert repeat.json()["device_id"] == provisioned_id
 
             wrong_key = {**registration, "device_key": "wrong-secret"}
             bad = client.post("/api/v1/devices/register", json=wrong_key)
@@ -60,7 +61,7 @@ def test_server_key_provisions_mac_derived_device_identity():
             assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
-                "/api/v1/devices/Cashier_aabbccddee01/heartbeat",
+                f"/api/v1/devices/{provisioned_id}/heartbeat",
                 json={"device_type": "esp32-cashier"},
                 headers={"X-M-Group-Device-Key": key},
             )
@@ -68,8 +69,8 @@ def test_server_key_provisions_mac_derived_device_identity():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_id"] == "Cashier_aabbccddee01")
-            assert item["hardware_id"] == "Cashier_aabbccddee01"
+            item = next(x for x in listed.json()["devices"] if x["device_id"] == provisioned_id)
+            assert item["hardware_id"] == "cashier_aabbccddee01"
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
         finally:

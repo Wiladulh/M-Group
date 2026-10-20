@@ -654,7 +654,7 @@ def build_router(db, app_settings=None):
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
-        hardware_id = q.hardware_id.strip()
+        hardware_id = q.hardware_id.strip().lower()
         mac_address = q.mac_address.strip().upper()
         device_key = q.device_key.strip()
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
@@ -668,7 +668,8 @@ def build_router(db, app_settings=None):
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", mac_address):
             raise HTTPException(400,"invalid_mac_address")
         mac_hex = mac_address.replace(":", "").lower()
-        prefix = "Cashier" if device_type == "esp32-cashier" else "Vending"
+        prefix = "cashier" if device_type == "esp32-cashier" else "vending"
+        # Normalize the hardware ID and MAC-derived identity consistently.
         # Use the complete station MAC to avoid collisions between devices that
         # share only the last three bytes.
         expected_hardware_id = f"{prefix}_{mac_hex}"
@@ -716,10 +717,10 @@ def build_router(db, app_settings=None):
                         raise HTTPException(409,"device_identity_already_registered")
                     c.execute(
                         """UPDATE device_registry
-                           SET device_id=?,hardware_id=?,device_type=?,mac_address=?,display_name=?,
+                           SET hardware_id=?,device_type=?,mac_address=?,display_name=?,
                                status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                            WHERE device_id=?""",
-                        (hardware_id,hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
+                        (hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
                     )
                 else:
                     if row["mac_address"] and row["mac_address"] != mac_address:
@@ -732,7 +733,8 @@ def build_router(db, app_settings=None):
                            WHERE device_id=?""",
                         (device_type,mac_address,row["device_id"]),
                     )
-                registered_device_id = hardware_id if matched_by_key else row["device_id"]
+                # Keep the database primary key stable; hardware_id is the physical identity.
+                registered_device_id = row["device_id"]
                 c.execute(
                     "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
                     (registered_device_id,"registration",q.model_dump_json(exclude={"device_key"})),
@@ -770,7 +772,7 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
                 (device_id,device_type,digest,key[-6:]),
             )
             c.execute(
@@ -778,7 +780,8 @@ def build_router(db, app_settings=None):
                 ("device","provisioned",device_id,f"type={device_type};location=unassigned"),
             )
             c.commit()
-        return {"device_type":device_type,"device_key":key,
+        return {"device_id":device_id,"display_name":"Lokasi belum ditentukan",
+                "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
     @r.post("/devices/{device_id}/provision")
