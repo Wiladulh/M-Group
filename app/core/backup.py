@@ -161,9 +161,13 @@ def restore_native_backup(db, archive):
     probe = None
     try:
         probe = sqlite3.connect(tmp)
-        probe.execute("PRAGMA foreign_keys=ON")
+        # sqlite3.iterdump may emit child-table INSERTs before parent-table
+        # definitions/data. Disable FK enforcement only during archive loading,
+        # then validate every relationship after migrations below.
+        probe.execute("PRAGMA foreign_keys=OFF")
         probe.executescript(sql)
         probe.commit()
+        probe.execute("PRAGMA foreign_keys=ON")
         probe.close()
         probe = None
 
