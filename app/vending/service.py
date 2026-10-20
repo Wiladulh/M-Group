@@ -206,6 +206,9 @@ class VendingService:
         if payment_method=="QRIS" and not payment_provider: raise ValueError("qris_provider_required")
         product_id = str(product_id)
         with self.db.connect() as c:
+            # Reserve the write transaction before the idempotency lookup so
+            # concurrent retries replay the committed transaction reliably.
+            c.execute("BEGIN IMMEDIATE")
             if product_id in self.PRODUCT_IDS:
                 p=c.execute("SELECT * FROM vending_products WHERE machine_id=? AND slot=?",(machine_id,int(product_id))).fetchone()
                 expected_product_key = p["product_id"] if p else self._internal_product_id(machine_id,int(product_id))
