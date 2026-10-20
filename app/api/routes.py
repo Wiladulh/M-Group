@@ -1081,9 +1081,7 @@ def build_router(db, app_settings=None):
 
     @r.get("/vending/{machine_id}/transactions")
     def vending_machine_transactions(request: Request, machine_id: str, limit: int = 100):
-        token = getattr(app_settings, "admin_token", "")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token, token):
-            raise HTTPException(401, "admin_auth_required")
+        require_admin(request)
         if limit < 1 or limit > 500:
             raise HTTPException(400, "limit_must_be_1_to_500")
         machine = resolve_vending_machine(machine_id)
