@@ -90,6 +90,16 @@ def create_native_backup(db, target, include_excel=True):
     target=Path(target)
     target.parent.mkdir(parents=True,exist_ok=True)
     with db.connect() as c:
+        # Keep the schema/data dump on one SQLite read snapshot. Otherwise a
+        # concurrent transaction could commit between table dumps and produce
+        # an archive whose tables reflect different points in time.
+        c.execute("BEGIN")
+        integrity = c.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise ValueError("backup_database_integrity_check_failed")
+        foreign_key_errors = c.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise ValueError("backup_database_foreign_key_check_failed")
         raw=c.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         dump="\n".join(c.iterdump()).encode()
     manifest={
