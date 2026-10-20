@@ -7,6 +7,7 @@ import app.main as main
 from app.core.backup import create_native_backup
 
 
+from conftest import login_admin
 def test_restore_endpoint_creates_pre_restore_snapshot():
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -17,7 +18,6 @@ def test_restore_endpoint_creates_pre_restore_snapshot():
             {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "admin-test-token",
             },
         )()
         try:
@@ -33,7 +33,7 @@ def test_restore_endpoint_creates_pre_restore_snapshot():
             create_native_backup(client.app.state.db, archive, include_excel=False)
             response = client.post(
                 "/api/v1/backup/restore",
-                headers={"X-M-Group-Admin-Token": "admin-test-token"},
+                headers=login_admin(client),
                 files={"file": ("valid.mgroup.zip", archive.read_bytes(), "application/zip")},
             )
             assert response.status_code == 200, response.text
