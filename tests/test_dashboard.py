@@ -36,6 +36,7 @@ def test_dashboard_and_admin_routes_require_valid_session_cookie():
             ):
                 assert client.get(path).status_code == 401, path
             assert client.post("/api/v1/access/private-credential").status_code == 401
+            admin = {"X-M-Group-Admin-Token": "admin-secret"}
             assert client.post("/api/v1/access/private-credential", headers=admin).status_code == 200
             assert client.get("/api/v1/audit", headers=admin).status_code == 200
             assert client.get("/api/v1/accounts/a1/balance", headers=admin).json()["balance"] == 50000
