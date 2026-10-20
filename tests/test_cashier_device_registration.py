@@ -6,7 +6,7 @@ import app.main as main
 from app.core.db import Database
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_cashier_device_registration_and_heartbeat_gate():
     with TemporaryDirectory() as d:
         old = main.get_settings
