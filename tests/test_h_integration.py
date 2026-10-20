@@ -196,11 +196,10 @@ def test_h_full_integration_one_by_one():
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
 
             # H-10 Error/authorization flow
+            client.cookies.clear()
             client.cookies.set("m_group_session", "invalid-session")
             assert client.get("/api/v1/members").status_code == 401
-            assert client.get(
-                "/api/v1/devices", headers=login_admin(client)
-            ).status_code == 401
+            assert client.get("/api/v1/devices").status_code == 401
             assert client.get(
                 "/api/v1/cashier/cashier-h/nfc-registration",
                 headers={"X-M-Group-Device-Key": "wrong"},
