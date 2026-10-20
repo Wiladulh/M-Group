@@ -5,6 +5,7 @@ from app.core.db import Database
 from app.financial.service import FinancialService
 
 
+from conftest import login_admin
 def test_topup_correction_is_ledger_backed_and_idempotent():
     with TemporaryDirectory() as tmp:
         db = Database(Path(tmp) / "m-group.db")
@@ -63,7 +64,7 @@ def test_pin_reset_requires_admin_and_identity_verification():
 
     with TemporaryDirectory() as tmp:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -71,7 +72,7 @@ def test_pin_reset_requires_admin_and_identity_verification():
                 c.commit()
             url = "/api/v1/members/NTR-00003/pin"
             assert client.post(url, json={"pin": "1234"}).status_code == 401
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             assert client.post(url, headers=admin, json={"pin": "1234", "operator_id": "operator-1"}).status_code == 400
             response = client.post(url, headers=admin, json={
                 "pin": "1234", "operator_id": "operator-1",
@@ -93,10 +94,10 @@ def test_nfc_replacement_revokes_old_credential():
 
     with TemporaryDirectory() as tmp:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('NTR-00004','NFC Test')")
                 c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
