@@ -6,11 +6,11 @@ import app.main as main
 
 
 from conftest import login_admin
-def test_financial_and_vending_mutations_require_admin_token():
+def test_financial_and_vending_mutations_require_admin_session():
     with TemporaryDirectory() as directory:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(directory) / "m-group.db",}
+            "S", (), {"db_path": Path(directory) / "m-group.db"}
         )()
         try:
             client = TestClient(main.create_app())
