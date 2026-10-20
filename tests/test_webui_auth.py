@@ -55,7 +55,11 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
 
             # Authenticated state-changing requests must not bypass CSRF
             # protection when Origin is absent or belongs to another origin.
-            missing_origin = client.post("/api/v1/members", json={"name": "CSRF Missing Origin"})
+            missing_origin = client.post(
+                "/api/v1/members",
+                headers={"Sec-Fetch-Site": "cross-site"},
+                json={"name": "CSRF Missing Origin"},
+            )
             assert missing_origin.status_code == 403
             assert missing_origin.json()["detail"] == "same_origin_required"
             foreign_origin = client.post(
