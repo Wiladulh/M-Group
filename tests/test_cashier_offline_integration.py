@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_cashier_replay_after_lost_response_is_idempotent():
     """Simulate server commit followed by a lost response during an offline period."""
     with TemporaryDirectory() as d:
