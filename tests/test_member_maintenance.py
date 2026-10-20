@@ -5,7 +5,7 @@ from app.core.db import Database
 from app.financial.service import FinancialService
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_topup_correction_is_ledger_backed_and_idempotent():
     with TemporaryDirectory() as tmp:
         db = Database(Path(tmp) / "m-group.db")
