@@ -7,11 +7,27 @@ on:
       - "esp32/cashier/**"
       - "platformio.ini"
       - ".github/workflows/esp32-cashier.yml"
+      - "app/api/routes.py"
+      - "app/device/**"
+      - "app/payment/service.py"
+      - "app/financial/service.py"
+      - "app/identity/service.py"
+      - "app/core/db.py"
+      - "tests/test_cashier_firmware_contract.py"
+      - "tests/test_api_firmware_contract.py"
   push:
     paths:
       - "esp32/cashier/**"
       - "platformio.ini"
       - ".github/workflows/esp32-cashier.yml"
+      - "app/api/routes.py"
+      - "app/device/**"
+      - "app/payment/service.py"
+      - "app/financial/service.py"
+      - "app/identity/service.py"
+      - "app/core/db.py"
+      - "tests/test_cashier_hardware_contract.py"
+      - "tests/test_api_firmware_contract.py"
 
 jobs:
   build-cashier:
