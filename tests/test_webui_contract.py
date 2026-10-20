@@ -26,6 +26,9 @@ def test_dashboard_data_fetch_uses_session_cookie_and_reports_loading_errors():
     assert "dashboardAdminToken" not in js
     assert "credentials" in js
     assert "restoreSession()" in js
+    assert "sessionStorage.setItem('m-group-active-tab', tabName)" in js
+    assert "sessionStorage.getItem('m-group-active-tab')" in js
+    assert "validTabs.includes(savedTab)" in js
     assert "Gagal memuat JavaScript WebUI" in index
     assert "unhandledrejection" in index
 
