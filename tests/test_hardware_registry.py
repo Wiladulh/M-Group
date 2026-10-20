@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_server_key_provisions_mac_derived_device_identity():
     with TemporaryDirectory() as d:
         old = main.get_settings
