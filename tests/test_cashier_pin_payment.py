@@ -4,10 +4,11 @@ from fastapi.testclient import TestClient
 import hashlib
 import app.main as main
 
+from conftest import login_admin
 def test_cashier_pin_payment_debits_and_returns_balance():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -17,7 +18,7 @@ def test_cashier_pin_payment_debits_and_returns_balance():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',50000,'seed')")
                 c.commit()
-            assert client.post("/api/v1/members/m1/pin", json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"}, headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code == 200
+            assert client.post("/api/v1/members/m1/pin", json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"}, headers=login_admin(client)).status_code == 200
             assert client.post("/api/v1/devices/cashier-01/heartbeat",
                                json={"device_type":"esp32-cashier","status":"active"}, headers={"X-M-Group-Device-Key":"cash-secret"}).status_code == 200
             bad = client.post("/api/v1/cashier/payments", json={
@@ -31,7 +32,7 @@ def test_cashier_pin_payment_debits_and_returns_balance():
             assert ok.json()["balance"] == 40000
             audit = client.get(
                 "/api/v1/audit/report?source=CASHIER&period=day",
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert audit.status_code == 200
             assert any(
