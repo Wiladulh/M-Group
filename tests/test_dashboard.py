@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import app.main as main
 
-def test_dashboard_exposes_financial_payment_and_vending_data():
+def test_dashboard_and_admin_routes_require_valid_session_cookie():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
@@ -23,7 +23,7 @@ def test_dashboard_exposes_financial_payment_and_vending_data():
             assert data["members"][0]["member_id"] == "m1"
             assert data["accounts"][0]["balance"] == 50000
             assert data["machines"][0]["machine_id"] == "v1"
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            client.cookies.clear()
             for path in (
                 "/api/v1/audit",
                 "/api/v1/devices/private-device/events",
