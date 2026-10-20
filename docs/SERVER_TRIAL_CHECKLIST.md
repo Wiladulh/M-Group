@@ -6,7 +6,7 @@ This checklist is for a **controlled server/API trial** from the audit branch. I
 
 - [ ] Use a disposable test machine or a separate database path; do not point the trial at the active PMOS UF02 production database.
 - [ ] Take a native backup and verify the backup file is copied off the test machine.
-- [ ] Set a unique, strong admin token in the instance configuration. Do not reuse a sample/test token.
+- [ ] Configure a unique admin username and strong password; verify login, idle timeout, logout, and session revocation.
 - [ ] Keep the API port private to the LAN or localhost. For remote access, use TLS and an authenticated reverse proxy/Cloudflare Access; do not expose the application port directly to the Internet.
 - [ ] Ensure the service account owns the config, data, database, lock, and log paths it needs. Keep secrets and database files inaccessible to other users.
 

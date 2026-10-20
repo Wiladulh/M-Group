@@ -79,7 +79,7 @@ esac
 DIR=$(dirname "$CONFIG_FILE")
 TMP="$DIR/.m-group.env.$$"
 GROUP=$(stat -c %G "$CONFIG_FILE" 2>/dev/null || echo root)
-awk -F= '$1 != "M_GROUP_ADMIN_USERNAME" && $1 != "M_GROUP_ADMIN_PASSWORD_HASH" { print }' "$CONFIG_FILE" > "$TMP"
+awk -F= '$1 != "M_GROUP_ADMIN_USERNAME" && $1 != "M_GROUP_ADMIN_PASSWORD_HASH" && $1 != "M_GROUP_ADMIN_TOKEN" { print }' "$CONFIG_FILE" > "$TMP"
 printf "M_GROUP_ADMIN_USERNAME=%s\nM_GROUP_ADMIN_PASSWORD_HASH='%s'\n" "$ADMIN_USERNAME" "$ADMIN_PASSWORD_HASH" >> "$TMP"
 chmod 0640 "$TMP"
 if [ "$(id -u)" -eq 0 ] && command -v chown >/dev/null 2>&1; then

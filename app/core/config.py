@@ -8,7 +8,6 @@ class Settings:
     host: str
     port: int
     db_path: Path
-    admin_token: str
     admin_username: str = ""
     admin_password_hash: str = ""
 
@@ -19,7 +18,6 @@ def get_settings() -> Settings:
         os.getenv("M_GROUP_HOST","127.0.0.1"),
         int(os.getenv("M_GROUP_PORT","8011")),
         Path(os.getenv("M_GROUP_DB_PATH",str(data_dir/"M_GROUP.db"))).expanduser(),
-        os.getenv("M_GROUP_ADMIN_TOKEN",""),
         os.getenv("M_GROUP_ADMIN_USERNAME",""),
         os.getenv("M_GROUP_ADMIN_PASSWORD_HASH",""),
     )

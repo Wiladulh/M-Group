@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi import Request
-from starlette.datastructures import MutableHeaders
-import hashlib
 import time
 from urllib.parse import urlsplit
 from fastapi.staticfiles import StaticFiles
@@ -24,29 +22,30 @@ def create_app():
     app.include_router(build_router(db, s))
 
     @app.middleware("http")
-    async def bridge_webui_session(request: Request, call_next):
-        token = request.cookies.get("m_group_session", "")
-        if token and request.url.path.startswith("/api/v1/"):
+    async def authenticate_admin_session(request: Request, call_next):
+        request.state.admin_authenticated = False
+        if request.url.path.startswith("/api/v1/"):
             origin = request.headers.get("origin")
-            if request.method not in {"GET", "HEAD", "OPTIONS"}:
-                if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            if request.method not in {"GET", "HEAD", "OPTIONS"} and request.cookies.get("m_group_session") and origin:
+                if urlsplit(origin).netloc != request.headers.get("host"):
                     return JSONResponse({"detail": "same_origin_required"}, status_code=403)
-            now = int(time.time())
-            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                row = c.execute(
-                    """SELECT session_hash FROM webui_sessions
-                       WHERE session_hash=? AND revoked_at IS NULL
-                         AND expires_at>? AND last_seen>?""",
-                    (token_hash, now, now - 1800),
-                ).fetchone()
-                if row and getattr(s, "admin_token", ""):
-                    c.execute("UPDATE webui_sessions SET last_seen=? WHERE session_hash=?",
-                              (now, token_hash))
-                    c.commit()
-                    # Existing API authorization remains authoritative. A valid,
-                    # server-checked session is bridged to its existing admin guard.
-                    MutableHeaders(scope=request.scope)["X-M-Group-Admin-Token"] = s.admin_token
+            token = request.cookies.get("m_group_session", "")
+            if token:
+                from app.core.auth import hash_session_token
+                now = int(time.time())
+                token_hash = hash_session_token(token)
+                with db.connect() as c:
+                    row = c.execute(
+                        """SELECT session_hash FROM webui_sessions
+                           WHERE session_hash=? AND revoked_at IS NULL
+                             AND expires_at>? AND last_seen>?""",
+                        (token_hash, now, now - 1800),
+                    ).fetchone()
+                    if row:
+                        c.execute("UPDATE webui_sessions SET last_seen=? WHERE session_hash=?",
+                                  (now, token_hash))
+                        c.commit()
+                        request.state.admin_authenticated = True
         return await call_next(request)
     webui_dir = Path(__file__).resolve().parent / "webui"
     app.mount("/assets", StaticFiles(directory=webui_dir / "assets"), name="webui-assets")

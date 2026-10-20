@@ -207,6 +207,9 @@ class AdminAccountUpdateRequest(BaseModel):
     username: str
     new_password: str | None = None
 
+def request_is_https(request: Request) -> bool:
+    return request.url.scheme.lower() == "https"
+
 def build_router(db, app_settings=None):
     r = APIRouter(prefix="/api/v1")
     if app_settings is None:
@@ -266,8 +269,6 @@ def build_router(db, app_settings=None):
         username = q.username.strip()
         configured_username = getattr(app_settings, "admin_username", "")
         configured_hash = getattr(app_settings, "admin_password_hash", "")
-        if not getattr(app_settings, "admin_token", ""):
-            raise HTTPException(503, "admin_login_not_configured")
         if request.headers.get("origin"):
             origin = urlsplit(request.headers["origin"])
             if origin.netloc != request.headers.get("host"):
@@ -316,7 +317,7 @@ def build_router(db, app_settings=None):
             raise HTTPException(401, "invalid_username_or_password")
         response.set_cookie(
             key="m_group_session", value=token, max_age=43200, httponly=True,
-            secure=request.url.scheme == "https", samesite="lax", path="/",
+            secure=request_is_https(request), samesite="lax", path="/",
         )
         return {"authenticated": True, "username": account["username"]}
 
@@ -402,7 +403,7 @@ def build_router(db, app_settings=None):
                 )
                 c.commit()
         response.delete_cookie("m_group_session", path="/", httponly=True,
-                               secure=request.url.scheme == "https", samesite="lax")
+                               secure=request_is_https(request), samesite="lax")
         return {"authenticated": False}
 
     @r.get("/health")
@@ -412,8 +413,8 @@ def build_router(db, app_settings=None):
     def system(): return {"service": "M-Group", "api_version": "v1"}
 
     @r.get("/audit")
-    def audit(limit: int = 100, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def audit(request: Request, limit: int = 100):
+        require_admin(request)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
@@ -426,16 +427,16 @@ def build_router(db, app_settings=None):
         return {**result, "handshake": "accepted"}
 
     @r.get("/devices/{device_id}/events")
-    def device_events(device_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def device_events(request: Request, device_id,limit:int=100):
+        require_admin(request)
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
         return {"device_id":device_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
-    def dashboard(period: str = "1w", x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def dashboard(request: Request, period: str = "1w"):
+        require_admin(request)
         analytics_periods = {
             "1d": ("strftime('%H:00', created_at)", "start of day"),
             "1w": ("date(created_at)", "-6 days"),
@@ -519,35 +520,34 @@ def build_router(db, app_settings=None):
                     "vending_money_in_today":vending_in
                 }}
 
-    def require_admin(token):
-        configured = getattr(app_settings,"admin_token","")
-        if not configured or not token or not secrets.compare_digest(token,configured):
-            raise HTTPException(401,"admin_auth_required")
+    def require_admin(request: Request):
+        if not getattr(request.state, "admin_authenticated", False):
+            raise HTTPException(401, "admin_session_required")
 
     @r.get("/members")
-    def members_list(include_deleted: bool = False, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def members_list(request: Request, include_deleted: bool = False):
+        require_admin(request)
         return {"members": members.list(include_deleted)}
 
     @r.post("/members")
-    def member_create(q: MemberCreateRequest, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_create(request: Request, q: MemberCreateRequest):
+        require_admin(request)
         try:
             return members.create("",q.name,q.nik,q.address,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
         except ValueError as e:
             raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/members/{member_id}")
-    def member_get(member_id, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_get(request: Request, member_id):
+        require_admin(request)
         result = members.get(member_id)
         if result is None:
             raise HTTPException(404,"member_not_found")
         return result
 
     @r.patch("/members/{member_id}")
-    def member_update(member_id,q: MemberUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_update(request: Request, member_id,q: MemberUpdateRequest):
+        require_admin(request)
         try:
             return members.update(member_id,q.name,q.nik,q.address,q.status,q.birth_place,q.birth_date,q.sex,q.rt,q.rw,q.village,q.district,q.city_regency,q.province,q.religion,q.marital_status,q.occupation,q.citizenship,q.phone,q.email,q.registration_date)
         except ValueError as e:
@@ -555,16 +555,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if "already" in code else 400,code)
 
     @r.delete("/members/{member_id}")
-    def member_delete(member_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_delete(request: Request, member_id):
+        require_admin(request)
         try:
             return members.soft_delete(member_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
     @r.post("/members/{member_id}/nfc-cards")
-    def member_add_nfc(member_id,q: NfcCardRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_add_nfc(request: Request, member_id,q: NfcCardRequest):
+        require_admin(request)
         try:
             return members.add_card(member_id,q.card_uid,q.credential_id)
         except ValueError as e:
@@ -572,8 +572,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if "already" in code else 400,code)
 
     @r.post("/members/{member_id}/nfc-cards/{card_id}/revoke")
-    def member_revoke_nfc(member_id,card_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_revoke_nfc(request: Request, member_id,card_id):
+        require_admin(request)
         try:
             member = members.get(member_id)
             if member is None or not any(
@@ -585,16 +585,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(404,str(e))
 
     @r.get("/nfc/cards/{card_uid}")
-    def nfc_card_resolve(card_uid,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def nfc_card_resolve(request: Request, card_uid):
+        require_admin(request)
         result = members.resolve_card(card_uid)
         if result is None:
             raise HTTPException(404,"nfc_card_not_found")
         return result
 
     @r.post("/members/{member_id}/pin")
-    def set_member_pin(member_id,q:PinRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def set_member_pin(request: Request, member_id,q:PinRequest):
+        require_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         if not q.identity_verified:
@@ -612,9 +612,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(404 if str(e)=="member_not_found" else 400,str(e))
 
     @r.post("/members/{member_id}/topup-corrections")
-    def member_topup_correction(member_id,q:MemberCorrectionRequest,
-                                 x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def member_topup_correction(request: Request, member_id,q:MemberCorrectionRequest):
+        require_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         try:
@@ -629,21 +628,21 @@ def build_router(db, app_settings=None):
             raise HTTPException(status,code)
 
     @r.get("/devices")
-    def devices_list(include_deleted: bool = False, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def devices_list(request: Request, include_deleted: bool = False):
+        require_admin(request)
         return {"devices": devices.list(include_deleted)}
 
     @r.get("/devices/{device_id}")
-    def device_get(device_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def device_get(request: Request, device_id):
+        require_admin(request)
         result = devices.get(device_id)
         if result is None:
             raise HTTPException(404,"device_not_found")
         return result
 
     @r.patch("/devices/{device_id}")
-    def device_update(device_id,q: DeviceHeartbeatRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def device_update(request: Request, device_id,q: DeviceHeartbeatRequest):
+        require_admin(request)
         try:
             return devices.update(device_id,q.device_type,q.status,q.display_name)
         except ValueError as e:
@@ -749,16 +748,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(403,"device_not_provisioned")
 
     @r.delete("/devices/{device_id}")
-    def device_delete(device_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def device_delete(request: Request, device_id):
+        require_admin(request)
         try:
             return devices.soft_delete(device_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
     @r.post("/devices/provision")
-    def device_provision_auto(q:DeviceProvisionRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def device_provision_auto(request: Request, q:DeviceProvisionRequest):
+        require_admin(request)
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
@@ -785,10 +784,9 @@ def build_router(db, app_settings=None):
                 "status":"awaiting_device_registration","key_shown_once":True}
 
     @r.post("/devices/{device_id}/provision")
-    def device_provision_legacy(device_id,q:DeviceProvisionRequest,
-                                x_m_group_admin_token: str | None = Header(default=None)):
+    def device_provision_legacy(request: Request, device_id,q:DeviceProvisionRequest):
         """Deprecated compatibility endpoint; new firmware must use key-only provisioning."""
-        require_admin(x_m_group_admin_token)
+        require_admin(request)
         legacy_id = device_id.strip()
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
@@ -850,8 +848,8 @@ def build_router(db, app_settings=None):
         return {"device_id":device_id,"device_type":device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
-    def access(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def access(request: Request, credential_id):
+        require_admin(request)
         result=identity.authorize_credential(credential_id)
         with db.connect() as c:
             c.execute("INSERT INTO identity_access_events(credential_id,member_id,result,reason) VALUES(?,?,?,?)",
@@ -860,15 +858,15 @@ def build_router(db, app_settings=None):
         return result
 
     @r.get("/credentials/{credential_id}/account")
-    def credential_account(credential_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def credential_account(request: Request, credential_id):
+        require_admin(request)
         result=identity.account_for_credential(credential_id)
         if not result["authorized"]: raise HTTPException(404,result["reason"])
         return result
 
     @r.get("/accounts/{account_id}/balance")
-    def account_balance(account_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def account_balance(request: Request, account_id):
+        require_admin(request)
         try:return {"account_id":account_id,"balance":financial.balance(account_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
@@ -931,37 +929,37 @@ def build_router(db, app_settings=None):
         }
 
     @r.get("/accounts/{account_id}/ledger")
-    def account_ledger(account_id,limit:int=100,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def account_ledger(request: Request, account_id,limit:int=100):
+        require_admin(request)
         try:return {"account_id":account_id,"entries":financial.ledger(account_id,limit)}
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.post("/accounts/{account_id}/credit")
-    def account_credit(account_id,q:FinancialRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def account_credit(request: Request, account_id,q:FinancialRequest):
+        require_admin(request)
         try:return financial.credit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
 
     @r.post("/accounts/{account_id}/debit")
-    def account_debit(account_id,q:FinancialRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def account_debit(request: Request, account_id,q:FinancialRequest):
+        require_admin(request)
         try:return financial.debit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
 
     @r.get("/promotions")
-    def promotions_list(machine_id: str | None = None, payment_method: str | None = None,
-                         include_disabled: bool = True, x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def promotions_list(request: Request, machine_id: str | None = None, payment_method: str | None = None,
+                         include_disabled: bool = True):
+        require_admin(request)
         try:
             return {"promotions": promos.list(machine_id,payment_method,include_disabled)}
         except ValueError as e:
             raise HTTPException(400,str(e))
 
     @r.post("/promotions")
-    def promotion_create(q: PromoRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def promotion_create(request: Request, q: PromoRequest):
+        require_admin(request)
         try:
             return promos.create(q.scope,q.machine_id,q.product_id,q.payment_method,
                                  q.payment_provider,q.discount_percent,q.starts_at,q.ends_at,
@@ -970,10 +968,9 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,str(e))
 
     @r.get("/promotions/resolve")
-    def promotion_resolve(machine_id: str,product_id: str,payment_method: str,
-                           payment_provider: str | None = None,
-                           x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def promotion_resolve(request: Request, machine_id: str,product_id: str,payment_method: str,
+                           payment_provider: str | None = None):
+        require_admin(request)
         try:
             result = promos.resolve(machine_id,product_id,payment_method,payment_provider)
             return {"promotion":result}
@@ -981,65 +978,65 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,str(e))
 
     @r.get("/promotions/{promo_id}")
-    def promotion_get(promo_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def promotion_get(request: Request, promo_id):
+        require_admin(request)
         result = promos.get(promo_id)
         if result is None:
             raise HTTPException(404,"promo_not_found")
         return result
 
     @r.patch("/promotions/{promo_id}")
-    def promotion_update(promo_id,q: PromoUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def promotion_update(request: Request, promo_id,q: PromoUpdateRequest):
+        require_admin(request)
         try:
             return promos.update(promo_id,**q.model_dump(exclude_none=True))
         except ValueError as e:
             raise HTTPException(400,str(e))
 
     @r.get("/vending")
-    def vending_list(x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_list(request: Request):
+        require_admin(request)
         return {"machines": vending.machines()}
 
     @r.post("/vending")
-    def vending_register(q:VendingRegisterRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_register(request: Request, q:VendingRegisterRequest):
+        require_admin(request)
         try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
-    def vending_detail(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_detail(request: Request, machine_id):
+        require_admin(request)
         try:return {"machine":vending.machine(machine_id),"slots":vending.slots(machine_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.patch("/vending/{machine_id}")
-    def vending_update(machine_id,q:VendingUpdateRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_update(request: Request, machine_id,q:VendingUpdateRequest):
+        require_admin(request)
         try:return vending.update_machine(machine_id,q.name,q.location,q.device_id,q.status)
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
-    def vending_enable(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_enable(request: Request, machine_id):
+        require_admin(request)
         try:return vending.set_status(machine_id,"active")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.post("/vending/{machine_id}/disable")
-    def vending_disable(machine_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_disable(request: Request, machine_id):
+        require_admin(request)
         try:return vending.set_status(machine_id,"disabled")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/{machine_id}/products")
-    def vending_products(machine_id, x_m_group_device_key: str | None = Header(default=None), x_m_group_admin_token: str | None = Header(default=None)):
+    def vending_products(request: Request, machine_id, x_m_group_device_key: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
         if x_m_group_device_key:
             if not machine.get("device_id"):
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
         else:
-            require_admin(x_m_group_admin_token)
+            require_admin(request)
         catalog = vending.products(machine["machine_id"])
         # Preserve base price while exposing the exact NFC/local amount shown
         # by the current firmware. QRIS remains a separately configured,
@@ -1066,8 +1063,8 @@ def build_router(db, app_settings=None):
         return {"machine": machine, "products": catalog}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
-    def vending_product(machine_id,product_id,q:VendingProductRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def vending_product(request: Request, machine_id,product_id,q:VendingProductRequest):
+        require_admin(request)
         if product_id not in VendingService.PRODUCT_IDS:
             raise HTTPException(400,"product_id_must_be_1_to_5")
         if q.product_id!=product_id:raise HTTPException(400,"product_id_mismatch")
@@ -1083,11 +1080,8 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
 
     @r.get("/vending/{machine_id}/transactions")
-    def vending_machine_transactions(machine_id: str, limit: int = 100,
-                                     x_m_group_admin_token: str | None = Header(default=None)):
-        token = getattr(app_settings, "admin_token", "")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token, token):
-            raise HTTPException(401, "admin_auth_required")
+    def vending_machine_transactions(request: Request, machine_id: str, limit: int = 100):
+        require_admin(request)
         if limit < 1 or limit > 500:
             raise HTTPException(400, "limit_must_be_1_to_500")
         machine = resolve_vending_machine(machine_id)
@@ -1152,8 +1146,8 @@ def build_router(db, app_settings=None):
         except ValueError as e:raise HTTPException(409,str(e))
 
     @r.post("/payments")
-    def payment(q:PaymentRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def payment(request: Request, q:PaymentRequest):
+        require_admin(request)
         if q.method == "NFC":
             if not q.pin:
                 raise HTTPException(403, "pin_required")
@@ -1169,8 +1163,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.post("/members/{member_id}/nfc-registration/start")
-    def nfc_registration_start(member_id,q:NfcRegistrationStartRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def nfc_registration_start(request: Request, member_id,q:NfcRegistrationStartRequest):
+        require_admin(request)
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
@@ -1202,8 +1196,8 @@ def build_router(db, app_settings=None):
         return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending"}
 
     @r.post("/members/{member_id}/nfc-replacement/start")
-    def nfc_replacement_start(member_id,q:NfcRegistrationStartRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def nfc_replacement_start(request: Request, member_id,q:NfcRegistrationStartRequest):
+        require_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         member=members.get(member_id)
@@ -1224,8 +1218,8 @@ def build_router(db, app_settings=None):
         return {"session_id":session_id,"member_id":member_id,"cashier_device_id":q.cashier_device_id,"status":"scan_pending","operation":"replacement"}
 
     @r.get("/members/{member_id}/nfc-registration/{session_id}")
-    def nfc_registration_status(member_id,session_id,x_m_group_admin_token: str | None = Header(default=None)):
-        require_admin(x_m_group_admin_token)
+    def nfc_registration_status(request: Request, member_id,session_id):
+        require_admin(request)
         with db.connect() as c:
             row=c.execute(
                 "SELECT session_id,member_id,device_id,status,card_uid,credential_id,created_at,completed_at "
@@ -1323,10 +1317,8 @@ def build_router(db, app_settings=None):
                 "card_uid":card_uid,"status":"completed","pin_status":"set"}
 
     @r.post("/cashier/operator-pin")
-    def cashier_operator_pin(q:OperatorPinRequest,x_m_group_admin_token: str | None = Header(default=None)):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    def cashier_operator_pin(request: Request, q:OperatorPinRequest):
+        require_admin(request)
         if not q.pin.isdigit() or not 4 <= len(q.pin) <= 6:
             raise HTTPException(400,"pin_must_be_4_to_6_digits")
         salt=secrets.token_hex(16)
@@ -1461,10 +1453,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.get("/audit/report")
-    def audit_report(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None),method:str="ALL"):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL"):
+        require_admin(request)
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month"}: raise HTTPException(400,"invalid_period")
@@ -1508,13 +1498,11 @@ def build_router(db, app_settings=None):
         return {"source":source,"period":period,"method":method,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
 
     @r.get("/audit/export.xlsx")
-    def audit_export(source:str="ALL",period:str="day",date:str|None=None,x_m_group_admin_token: str | None = Header(default=None),method:str="ALL"):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL"):
+        require_admin(request)
         # Reuse the endpoint's authorization and parameter validation, passing
         # the already-validated token explicitly because this is a direct call.
-        data=audit_report(source,period,date,x_m_group_admin_token,method)
+        data=audit_report(request, source, period, date, method)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
@@ -1523,10 +1511,8 @@ def build_router(db, app_settings=None):
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
-    def backup_create(x_m_group_admin_token: str | None = Header(default=None)):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    def backup_create(request: Request):
+        require_admin(request)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
         import datetime as dt
@@ -1535,10 +1521,8 @@ def build_router(db, app_settings=None):
         return FileResponse(path,filename=path.name,media_type="application/zip")
 
     @r.post("/backup/restore")
-    async def backup_restore(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    async def backup_restore(request: Request, file:UploadFile=File(...)):
+        require_admin(request)
         if not file.filename or not file.filename.endswith(".mgroup.zip"):
             raise HTTPException(400,"invalid_backup_file")
         content = await file.read(MAX_BACKUP_UPLOAD_BYTES + 1)
@@ -1565,10 +1549,8 @@ def build_router(db, app_settings=None):
             await file.close()
 
     @r.post("/backup/import-excel")
-    async def backup_import_excel(file:UploadFile=File(...),x_m_group_admin_token: str | None = Header(default=None)):
-        token=getattr(app_settings,"admin_token","")
-        if not token or not x_m_group_admin_token or not secrets.compare_digest(x_m_group_admin_token,token):
-            raise HTTPException(401,"admin_auth_required")
+    async def backup_import_excel(request: Request, file:UploadFile=File(...)):
+        require_admin(request)
         if not file.filename or not file.filename.lower().endswith(".xlsx"):
             raise HTTPException(400,"invalid_excel_file")
         content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)

@@ -97,3 +97,35 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             assert new_credentials.status_code == 200
         finally:
             main.get_settings = old
+
+def test_login_cookie_secure_flag_matches_http_and_https_scheme():
+    with TemporaryDirectory() as tmp:
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "S", (),
+            {
+                "db_path": Path(tmp) / "m-group.db",
+                "admin_username": "admin-test",
+                "admin_password_hash": hash_password("strong-test-password"),
+            },
+        )()
+        try:
+            app = main.create_app()
+            http_client = TestClient(app, base_url="http://testserver")
+            http = http_client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin-test", "password": "strong-test-password"},
+            )
+            assert http.status_code == 200
+            assert "secure" not in http.headers.get("set-cookie", "").lower()
+
+            https_client = TestClient(app, base_url="https://testserver")
+            https = https_client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin-test", "password": "strong-test-password"},
+            )
+            assert https.status_code == 200
+            assert "secure" in https.headers.get("set-cookie", "").lower()
+            assert https_client.get("/api/v1/members").status_code == 200
+        finally:
+            main.get_settings = old
