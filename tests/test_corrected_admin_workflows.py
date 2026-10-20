@@ -7,10 +7,11 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from conftest import login_admin
 def _client(tmp_path):
     old = main.get_settings
     main.get_settings = lambda: type(
-        "S", (), {"db_path": Path(tmp_path) / "m-group.db", "admin_token": "admin-secret"}
+        "S", (), {"db_path": Path(tmp_path) / "m-group.db",}
     )()
     client = TestClient(main.create_app())
     with client.app.state.db.connect() as c:
@@ -30,7 +31,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
     with TemporaryDirectory() as tmp:
         client, old = _client(tmp)
         try:
-            headers = {"X-M-Group-Admin-Token": "admin-secret"}
+            headers = login_admin(client)
             created = client.post(
                 "/api/v1/devices/provision",
                 json={"device_type": "esp32-cashier"},
@@ -89,7 +90,7 @@ def test_member_list_returns_latest_payment_or_access_interaction():
                 c.commit()
             response = client.get(
                 "/api/v1/members",
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert response.status_code == 200
             member = next(x for x in response.json()["members"] if x["member_id"] == "ID-A001")
