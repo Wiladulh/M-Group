@@ -523,6 +523,10 @@ def build_router(db, app_settings=None):
     def require_admin(request: Request):
         if not getattr(request.state, "admin_authenticated", False):
             raise HTTPException(401, "admin_session_required")
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origin = request.headers.get("origin")
+            if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+                raise HTTPException(403, "same_origin_required")
 
     @r.get("/members")
     def members_list(request: Request, include_deleted: bool = False):
