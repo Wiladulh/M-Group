@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_daily_audit_report_includes_last_second_of_day():
     with TemporaryDirectory() as directory:
         root = Path(directory)
