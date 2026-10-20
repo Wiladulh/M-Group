@@ -18,5 +18,5 @@ def login_admin(client, username="admin-test", password="strong-test-password"):
         json={"username": username, "password": password},
     )
     assert response.status_code == 200, response.text
-    assert client.cookies.get("m_group_session")
+    assert response.cookies.get("m_group_session")
     return {}
