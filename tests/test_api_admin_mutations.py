@@ -5,11 +5,12 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from conftest import login_admin
 def test_financial_and_vending_mutations_require_admin_token():
     with TemporaryDirectory() as directory:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(directory) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(directory) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
@@ -38,7 +39,7 @@ def test_financial_and_vending_mutations_require_admin_token():
                 },
             ).status_code == 401
 
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             credit = client.post(
                 "/api/v1/accounts/account-1/credit",
                 headers=admin,
