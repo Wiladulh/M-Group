@@ -4,15 +4,17 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-ADMIN = {"X-M-Group-Admin-Token": "admin-secret"}
+from conftest import login_admin
+ADMIN = {}
 
 
 def configured_client(directory):
     old = main.get_settings
     main.get_settings = lambda: type(
-        "S", (), {"db_path": Path(directory) / "m-group.db", "admin_token": "admin-secret"}
+        "S", (), {"db_path": Path(directory) / "m-group.db",}
     )()
     client = TestClient(main.create_app())
+    login_admin(client)
     return old, client
 
 
