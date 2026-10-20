@@ -11,8 +11,8 @@ from app.core.auth import hash_password
 def login_admin(client, username="admin-test", password="strong-test-password"):
     """Log in through the real WebUI endpoint and return optional request headers."""
     settings = client.app.state.settings
-    settings.admin_username = username
-    settings.admin_password_hash = hash_password(password)
+    object.__setattr__(settings, "admin_username", username)
+    object.__setattr__(settings, "admin_password_hash", hash_password(password))
     response = client.post(
         "/api/v1/auth/login",
         json={"username": username, "password": password},
