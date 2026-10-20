@@ -6,7 +6,7 @@ import app.main as main
 from app.identity.service import IdentityService
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_manual_nfc_payment_requires_and_verifies_member_pin():
     with TemporaryDirectory() as directory:
         old = main.get_settings
