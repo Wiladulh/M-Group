@@ -76,6 +76,6 @@ def test_cashier_and_vending_identity_handshake():
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='registration'").fetchone()[0] == 2
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='identity_handshake'").fetchone()[0] == 0
             rows = devices.json()["devices"]
-            assert {x["hardware_id"] for x in rows} >= {"Cashier_aabbcc001001", "Vending_aabbcc004801"}
+            assert {x["hardware_id"] for x in rows} >= {"cashier_aabbcc001001", "vending_aabbcc004801"}
         finally:
             main.get_settings = old
