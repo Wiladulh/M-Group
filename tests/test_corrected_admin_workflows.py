@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def _client(tmp_path):
     old = main.get_settings
     main.get_settings = lambda: type(
