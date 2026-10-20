@@ -185,9 +185,8 @@ $('members').addEventListener('click',async e=>{
 
 let nfcPollTimer=null;
 async function loadNfcCashiers(){
-  const token=$('memberAdminToken')?.value.trim();
   const sel=$('nfcCashierDevice');
-  if(!sel||!token)return;
+  if(!sel)return;
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
@@ -196,7 +195,6 @@ async function loadNfcCashiers(){
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
-    const token=$('memberAdminToken').value.trim();
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
     if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
@@ -214,8 +212,7 @@ async function pollNfcRegistration(memberId,sessionId){
 }
 $('nfcStart').onclick=async()=>{
   try{
-    const token=$('memberAdminToken').value.trim(),memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
-    if(!token)throw new Error('Sesi admin tidak aktif');
+  const memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
     if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
     if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
@@ -237,8 +234,6 @@ $('nfcStart').onclick=async()=>{
 };
 
 async function loadDevices(){
-  const token=$('deviceAdminToken').value.trim();
-  if(!token){$('deviceAuthResult').textContent='Admin Token wajib diisi';return}
   try{
     const {r,d}=await json('/api/v1/devices',{});
     if(!r.ok)throw new Error(d.detail||'Gagal memuat perangkat');
@@ -257,7 +252,6 @@ async function loadDevices(){
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 async function saveDevice(deviceId){
-  const token=$('deviceAdminToken').value.trim();
   const name=document.querySelector('[data-device-name="'+CSS.escape(deviceId)+'"]').value.trim();
   const status=document.querySelector('[data-device-status="'+CSS.escape(deviceId)+'"]').value;
   if(!name){$('deviceAuthResult').textContent='Nama perangkat wajib diisi';return}
@@ -274,10 +268,8 @@ async function saveDevice(deviceId){
 $('deviceAuthForm').onsubmit=async e=>{e.preventDefault();await loadDevices()};
 $('deviceProvisionForm').onsubmit=async e=>{
   e.preventDefault();
-  const token=$('deviceAdminToken').value.trim();
   const deviceType=$('provisionDeviceType').value;
   const result=$('deviceProvisionResult');
-  if(!token){result.textContent='Sesi admin tidak aktif.';return}
   if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
@@ -305,16 +297,14 @@ $('copyDeviceKey').onclick=async()=>{
 };
 
 async function loadFinancialLedger(){
-  const token=$('financialAdminToken')?.value.trim(),accountId=$('account')?.value;
-  if(!token||!accountId){$('financialLedger').innerHTML='<p class="hint" style="padding:12px">Pilih rekening untuk melihat ledger.</p>';return}
+  const accountId=$('account')?.value;
   const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/ledger?limit=100',{});
   $('financialLedger').innerHTML=r.ok?table((d.entries||[]).map(x=>({...x,amount:money(x.amount)})),['created_at','direction','amount','reference','id']):'<p class="hint" style="padding:12px">'+esc(d.detail||'Gagal memuat ledger')+'</p>';
 }
 $('account').onchange=loadFinancialLedger;
 $('financialForm').onsubmit=async e=>{
   e.preventDefault();
-  const token=$('financialAdminToken').value.trim(),accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
-  if(!token){$('financialResult').textContent='Sesi admin tidak aktif.';return}
+  const accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
   if(!accountId){$('financialResult').textContent='Pilih rekening terlebih dahulu.';return}
   if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
   if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
@@ -331,9 +321,8 @@ $('financialForm').onsubmit=async e=>{
   if(r.ok){await load();await loadFinancialLedger()}
 };
 async function loadPaymentMemberData(memberId){
-  const token=$('paymentAdminToken')?.value.trim();
   const credentialSelect=$('credential'),accountSelect=$('payaccount');
-  if(!memberId||!token){credentialSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';return}
+  if(!memberId){credentialSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';return}
   const accounts=dashboardAccounts.filter(x=>x.member_id===memberId&&x.status==='active');
   const currentAccount=accountSelect.value;
   accountSelect.innerHTML=accounts.length?accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.account_id)+' · '+money(x.balance)+'</option>').join(''):'<option value="">Tidak ada rekening aktif</option>';
@@ -356,8 +345,7 @@ $('paymentMethodFilter').onchange=renderPaymentTransactions;
 $('paymentStatusFilter').onchange=renderPaymentTransactions;
 $('paymentForm').onsubmit=async e=>{
   e.preventDefault();
-  const token=$('paymentAdminToken').value.trim(),method=$('method').value,pin=$('paypin').value;
-  if(!token){$('paymentResult').textContent='Sesi admin tidak aktif.';return}
+  const method=$('method').value,pin=$('paypin').value;
   if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}
   const accountId=$('payaccount').value,credentialId=$('credential').value,amount=Number($('payamount').value);
   if(!accountId||!credentialId){$('paymentResult').textContent='Pilih member, kartu NFC aktif, dan rekening.';return}
@@ -372,8 +360,6 @@ $('paymentForm').onsubmit=async e=>{
 };
 let vendingCatalog=[];
 async function loadVendingCatalog(machineId){
-  const token=$('vendingAdminToken').value.trim();
-  if(!token)throw new Error('Admin Token wajib diisi');
   if(!machineId)return;
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
@@ -382,8 +368,6 @@ async function loadVendingCatalog(machineId){
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
-  const token=$('vendingAdminToken').value.trim();
-  if(!token){$('productResult').textContent='Admin Token wajib diisi';return}
   try{
     const {r,d}=await json('/api/v1/vending',{});
     if(!r.ok)throw new Error(d.detail||'Gagal memuat daftar mesin');
@@ -407,8 +391,7 @@ $('productId').onchange=()=>{
 };
 $('productForm').onsubmit=async e=>{
   e.preventDefault();
-  const token=$('vendingAdminToken').value.trim(),mid=$('machineId').value.trim(),pid=$('productId').value.trim();
-  if(!token){$('productResult').textContent='Admin Token wajib diisi';return}
+  const mid=$('machineId').value.trim(),pid=$('productId').value.trim();
   if(!mid||!pid){$('productResult').textContent='Muat daftar mesin lalu pilih mesin dan Product ID';return}
   const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
@@ -417,8 +400,6 @@ $('productForm').onsubmit=async e=>{
 };
 let vendingTransactions=[];
 async function loadVendingTransactions(machineId){
-  const token=$('vendingAdminToken').value.trim();
-  if(!token||!machineId){$('vendingTxnResult').textContent='Pilih mesin untuk melihat riwayat transaksi.';return}
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/transactions?limit=100',{
     
   });
@@ -436,7 +417,6 @@ $('vendingTxnStatus').onchange=renderVendingTransactions;
 $('vendingTxnProduct').onchange=renderVendingTransactions;
 
 async function loadCashierTransactions(){
-  const token=$('cashierAdminToken').value.trim();
   const period=$('cashierPeriod').value;
   const {r,d}=await json('/api/v1/audit/report?source=CASHIER&period='+encodeURIComponent(period),{
     
@@ -489,12 +469,10 @@ $('accountSettings').onsubmit=async e=>{
 };
 $('settingsLogout').onclick=()=>$('logoutButton').click();
 
-async function adminToken(){const t=$('adminToken').value.trim();if(!t)throw new Error('Admin Token wajib diisi');return t}
 async function loadAudit(){
   try{
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
-    const token=await adminToken();
     const {r,d}=await json('/api/v1/audit/report'+q,{});
     $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
@@ -502,7 +480,6 @@ async function loadAudit(){
 $('auditForm').onsubmit=async e=>{e.preventDefault();await loadAudit()};
 $('auditExport').onclick=async()=>{
   try{
-    const token=await adminToken();
     const source=$('auditSource').value,period=$('auditPeriod').value,date=$('auditDate').value,method=$('auditMethod').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const r=await fetch('/api/v1/audit/export.xlsx'+q,{});
@@ -513,7 +490,6 @@ $('auditExport').onclick=async()=>{
 $('operatorPinForm').onsubmit=async e=>{
   e.preventDefault();
   try{
-    const token=await adminToken();
     const {r,d}=await json('/api/v1/cashier/operator-pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:$('newOperatorPin').value})});
     $('operatorPinResult').textContent=JSON.stringify(d,null,2);
     if(r.ok)$('newOperatorPin').value='';
@@ -521,7 +497,7 @@ $('operatorPinForm').onsubmit=async e=>{
 };
 $('backupCreate').onclick=async()=>{
   try{
-    const token=await adminToken(),r=await fetch('/api/v1/backup',{method:'POST',});
+  const r=await fetch('/api/v1/backup',{method:'POST'});
     if(!r.ok)throw new Error('Backup gagal: '+r.status);
     const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M-Group_BACKUP.mgroup.zip';a.click();URL.revokeObjectURL(a.href);
     $('backupResult').textContent='Backup berhasil dibuat.';
@@ -529,11 +505,11 @@ $('backupCreate').onclick=async()=>{
 };
 $('backupRestore').onclick=async()=>{
   try{
-    const token=await adminToken(),file=$('restoreFile').files[0];
+  const file=$('restoreFile').files[0];
     if(!file)throw new Error('Pilih file .mgroup.zip terlebih dahulu');
     if(!confirm('Restore akan mengganti database aktif. Lanjutkan?'))return;
     const fd=new FormData();fd.append('file',file);
-    const {r,d}=await json('/api/v1/backup/restore',{method:'POST',,body:fd});
+    const {r,d}=await json('/api/v1/backup/restore',{method:'POST',body:fd});
     $('backupResult').textContent=JSON.stringify(d,null,2);
     if(r.ok)setTimeout(()=>location.reload(),1000);
   }catch(e){$('backupResult').textContent=e.message}
