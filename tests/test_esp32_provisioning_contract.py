@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_dashboard_provisioning_key_activates_firmware_heartbeat_for_both_device_types():
     with TemporaryDirectory() as tmp:
         old = main.get_settings
