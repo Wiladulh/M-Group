@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import hashlib
 import app.main as main
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def seed(client):
     with client.app.state.db.connect() as c:
         c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
