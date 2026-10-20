@@ -23,7 +23,6 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             (),
             {
                 "db_path": Path(tmp) / "m-group.db",
-                "admin_token": "server-admin-token",
                 "admin_username": "admin-test",
                 "admin_password_hash": hash_password("strong-test-password"),
             },
