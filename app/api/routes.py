@@ -525,7 +525,10 @@ def build_router(db, app_settings=None):
             raise HTTPException(401, "admin_session_required")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
-            if not origin or urlsplit(origin).netloc != request.headers.get("host"):
+            fetch_site = request.headers.get("sec-fetch-site", "").lower()
+            if origin and urlsplit(origin).netloc != request.headers.get("host"):
+                raise HTTPException(403, "same_origin_required")
+            if not origin and fetch_site == "cross-site":
                 raise HTTPException(403, "same_origin_required")
 
     @r.get("/members")
