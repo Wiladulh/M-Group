@@ -19,6 +19,7 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   const pane=$('tab-'+tabName); if(pane)pane.classList.add('active');
   const btn=document.querySelector('.tab-btn[data-tab="'+tabName+'"]'); if(btn)btn.classList.add('active');
+  try { sessionStorage.setItem('m-group-active-tab', tabName); } catch (_) {}
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -515,6 +516,11 @@ $('backupRestore').onclick=async()=>{
   }catch(e){$('backupResult').textContent=e.message}
 };
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
+const validTabs=['dashboard','member','financial','payment','vending','cashier','devices','audit','settings'];
+try {
+  const savedTab=sessionStorage.getItem('m-group-active-tab');
+  if(validTabs.includes(savedTab)) switchTab(savedTab);
+} catch (_) {}
 document.querySelectorAll('[data-analytics-period]').forEach(btn=>btn.addEventListener('click',async()=>{
   selectedAnalyticsPeriod=btn.dataset.analyticsPeriod;
   document.querySelectorAll('[data-analytics-period]').forEach(x=>x.classList.toggle('active',x===btn));
