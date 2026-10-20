@@ -5,6 +5,7 @@ import app.main as main
 from app.core.db import Database
 from app.vending.service import VendingService
 
+from conftest import login_admin
 def test_vending_registry_supports_many_machines_and_five_slots():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate()
@@ -45,10 +46,10 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
 def test_vending_registry_api():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
+        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db",})()
         try:
             client=TestClient(main.create_app())
-            admin={"X-M-Group-Admin-Token":"admin-secret"}
+            admin=login_admin(client)
             created=client.post("/api/v1/vending",headers=admin,json={
                 "machine_id":"api-v1","name":"API Vending","location":"Lobby","device_id":"api-esp32"
             })
