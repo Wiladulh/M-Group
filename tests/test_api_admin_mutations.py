@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_financial_and_vending_mutations_require_admin_session():
     with TemporaryDirectory() as directory:
         old = main.get_settings
