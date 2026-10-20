@@ -69,6 +69,13 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             )
             assert foreign_origin.status_code == 403
             assert foreign_origin.json()["detail"] == "same_origin_required"
+            scheme_mismatch = client.post(
+                "/api/v1/members",
+                headers={"Origin": "https://testserver"},
+                json={"name": "CSRF Scheme Mismatch"},
+            )
+            assert scheme_mismatch.status_code == 403
+            assert scheme_mismatch.json()["detail"] == "same_origin_required"
 
             dashboard = client.get("/api/v1/dashboard?period=1w")
             assert dashboard.status_code == 200
