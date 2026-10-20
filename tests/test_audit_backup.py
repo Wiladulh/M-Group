@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import hashlib
 import app.main as main
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_cashier_deposit_and_audit_are_separate_from_vending():
     with TemporaryDirectory() as d:
         old=main.get_settings
