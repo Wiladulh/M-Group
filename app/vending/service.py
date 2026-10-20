@@ -264,13 +264,53 @@ class VendingService:
                 discount_amount=tx["discount_amount"],
                 promo_id=tx.get("promo_id")
             )
-        except Exception:
+        except Exception as exc:
+            # A payment can commit while the caller loses the response or
+            # encounters a transient error before Vending status is updated.
+            # Reconcile the durable payment record first; never mark a paid
+            # purchase failed solely because the acknowledgement was lost.
+            payment_key = "vending-payment:" + transaction_id
             with self.db.connect() as c:
-                c.execute("UPDATE vending_transactions SET status='failed',payment_status='failed',dispense_status='not_started' WHERE transaction_id=?",(transaction_id,))
-                c.commit()
+                paid = c.execute(
+                    """SELECT transaction_id,status,credential_id,account_id,amount
+                       FROM payment_transactions WHERE idempotency_key=?""",
+                    (payment_key,),
+                ).fetchone()
+                if (
+                    paid
+                    and paid["status"] == "completed"
+                    and paid["transaction_id"] == transaction_id
+                    and paid["credential_id"] == tx["credential_id"]
+                    and paid["account_id"] == tx["account_id"]
+                    and paid["amount"] == tx["amount"]
+                ):
+                    c.execute(
+                        """UPDATE vending_transactions
+                           SET status='authorized',payment_status='completed',payment_transaction_id=?
+                           WHERE transaction_id=? AND status IN ('pending','authorized')""",
+                        (paid["transaction_id"], transaction_id),
+                    )
+                    c.commit()
+                    return self.get(transaction_id)
+
+                # Only definitive business-rule failures transition to failed.
+                # Unexpected DB/runtime failures remain pending for a safe retry.
+                if isinstance(exc, (ValueError, PermissionError)):
+                    c.execute(
+                        """UPDATE vending_transactions
+                           SET status='failed',payment_status='failed',dispense_status='not_started'
+                           WHERE transaction_id=? AND status='pending'""",
+                        (transaction_id,),
+                    )
+                    c.commit()
             raise
         with self.db.connect() as c:
-            c.execute("UPDATE vending_transactions SET status='authorized',payment_status='completed',payment_transaction_id=? WHERE transaction_id=?",(payment["transaction_id"],transaction_id))
+            c.execute(
+                """UPDATE vending_transactions
+                   SET status='authorized',payment_status='completed',payment_transaction_id=?
+                   WHERE transaction_id=? AND status IN ('pending','authorized')""",
+                (payment["transaction_id"], transaction_id),
+            )
             c.commit()
         return self.get(transaction_id)
 
