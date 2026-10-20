@@ -93,7 +93,6 @@ BIN_DIR="$PREFIX/bin"
 CONFIG_DIR=${M_GROUP_CONFIG_DIR:-/etc/m-group}
 HOST=${M_GROUP_HOST:-0.0.0.0}
 PORT=${M_GROUP_PORT:-8011}
-ADMIN_TOKEN=${M_GROUP_ADMIN_TOKEN:-}
 ADMIN_USERNAME=${M_GROUP_ADMIN_USERNAME:-}
 ADMIN_PASSWORD_HASH=${M_GROUP_ADMIN_PASSWORD_HASH:-}
 OPERATOR_PIN=${M_GROUP_CASHIER_OPERATOR_PIN:-}
@@ -117,9 +116,6 @@ if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then
   if [ "${M_GROUP_PORT+x}" != x ]; then
     saved=$(sed -n 's/^M_GROUP_PORT=//p' "$ENV_FILE" | head -n 1)
     [ -z "$saved" ] || PORT=$saved
-  fi
-  if [ -z "$ADMIN_TOKEN" ]; then
-    ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
   fi
   if [ -z "$ADMIN_USERNAME" ]; then
     ADMIN_USERNAME=$(sed -n 's/^M_GROUP_ADMIN_USERNAME=//p' "$ENV_FILE" | head -n 1)
@@ -171,10 +167,6 @@ for path_value in "$PREFIX" "$DATA" "$CONFIG_DIR"; do
     exit 2
   esac
 done
-if [ -n "$ADMIN_TOKEN" ]; then
-  case "$ADMIN_TOKEN" in *[!A-Za-z0-9._~-]*) echo "Admin token may contain only letters, numbers, dot, underscore, tilde, and hyphen." >&2; exit 2 ;; esac
-  [ "${#ADMIN_TOKEN}" -ge 24 ] || { echo "Admin token must be at least 24 characters." >&2; exit 2; }
-fi
 if [ -n "$OPERATOR_PIN" ]; then
   case "$OPERATOR_PIN" in *[!0-9]*) echo "Cashier operator PIN must contain digits only." >&2; exit 2 ;; esac
   [ "${#OPERATOR_PIN}" -ge 4 ] && [ "${#OPERATOR_PIN}" -le 6 ] || { echo "Cashier operator PIN must be 4-6 digits." >&2; exit 2; }
@@ -237,10 +229,6 @@ chmod 0755 "$BIN_DIR/m-group-server"
 if [ "$MODE" = system ]; then
   ENV_FILE="$CONFIG_DIR/m-group.env"
   mkdir -p "$CONFIG_DIR"
-  if [ -z "$ADMIN_TOKEN" ] && [ -f "$ENV_FILE" ]; then
-    ADMIN_TOKEN=$(sed -n 's/^M_GROUP_ADMIN_TOKEN=//p' "$ENV_FILE" | head -n 1)
-  fi
-  if [ -z "$ADMIN_TOKEN" ]; then ADMIN_TOKEN=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(40))'); fi
   umask 077
   cat > "$ENV_FILE" <<EOF
 M_GROUP_PREFIX=$PREFIX
@@ -248,7 +236,6 @@ M_GROUP_HOST=$HOST
 M_GROUP_PORT=$PORT
 M_GROUP_DATA_DIR=$DATA
 M_GROUP_DB_PATH=$DATA/M-Group.db
-M_GROUP_ADMIN_TOKEN=$ADMIN_TOKEN
 M_GROUP_ADMIN_USERNAME=$ADMIN_USERNAME
 M_GROUP_ADMIN_PASSWORD_HASH='$ADMIN_PASSWORD_HASH'
 M_GROUP_CASHIER_OPERATOR_PIN=$OPERATOR_PIN
