@@ -6,7 +6,7 @@ import app.main as main
 from app.core.db import Database
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_cashier_payment_requires_active_registered_device():
     with TemporaryDirectory() as d:
         old = main.get_settings
