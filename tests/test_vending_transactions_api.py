@@ -7,7 +7,7 @@ import app.main as main
 from app.vending.service import VendingService
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_admin_can_read_vending_transactions_for_selected_machine():
     with TemporaryDirectory() as tmp:
         old = main.get_settings
