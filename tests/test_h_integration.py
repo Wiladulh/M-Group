@@ -195,7 +195,8 @@ def test_h_full_integration_one_by_one():
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
 
             # H-10 Error/authorization flow
-            assert client.get("/api/v1/members", headers={}).status_code == 401
+            client.cookies.set("m_group_session", "invalid-session")
+            assert client.get("/api/v1/members").status_code == 401
             assert client.get(
                 "/api/v1/devices", headers={"X-M-Group-Admin-Token": "wrong"}
             ).status_code == 401
