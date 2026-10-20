@@ -19,4 +19,6 @@ def login_admin(client, username="admin-test", password="strong-test-password"):
     )
     assert response.status_code == 200, response.text
     assert response.cookies.get("m_group_session")
-    return {}
+    # Emulate a browser's same-origin header for authenticated WebUI requests.
+    client.headers.update({"Origin": "http://testserver"})
+    return {"Origin": "http://testserver"}
