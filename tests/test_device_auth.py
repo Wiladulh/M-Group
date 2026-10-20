@@ -4,15 +4,16 @@ from fastapi.testclient import TestClient
 import app.main as main
 import hashlib
 
+from conftest import login_admin
 def test_device_authentication_and_provisioning():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
+        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
         try:
             client=TestClient(main.create_app())
             p=client.post("/api/v1/devices/cashier-01/provision",
                           json={"device_type":"esp32-cashier"},
-                          headers={"X-M-Group-Admin-Token":"admin-secret"})
+                          headers=login_admin(client))
             assert p.status_code==200
             key=p.json()["device_key"]
             denied=client.post("/api/v1/devices/cashier-01/heartbeat",
@@ -54,7 +55,7 @@ def test_device_authentication_and_provisioning():
 def test_vending_requires_device_key():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
+        main.get_settings=lambda:type("S",(),{"db_path":Path(d)/"m-group.db",})()
         try:
             client=TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -82,13 +83,13 @@ def test_vending_requires_device_key():
 def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
     with TemporaryDirectory() as d:
         old=main.get_settings
-        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db","admin_token":"admin-secret"})()
+        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
         try:
             client=TestClient(main.create_app())
             provision=client.post(
                 "/api/v1/devices/provision",
                 json={"device_type":"esp32-cashier"},
-                headers={"X-M-Group-Admin-Token":"admin-secret"},
+                headers=login_admin(client),
             )
             assert provision.status_code == 200
             payload=provision.json()
