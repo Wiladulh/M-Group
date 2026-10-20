@@ -155,7 +155,7 @@ Implementasi server/WebUI yang aktif mengikuti kontrak katalog tetap:
 - Database tetap menyimpan kunci internal produk yang stabil agar data lama dan relasi transaksi tidak perlu dihapus atau dirombak. Katalog API hanya menampilkan identitas publik 1–5 untuk slot valid.
 - Produk lama dipetakan menurut slot hasil migrasi yang sudah ada; promosi yang masih memakai ID internal lama tetap dicoba sebagai fallback.
 - Pengujian kontrak mencakup pemakaian Product ID 1 pada dua mesin berbeda, pemetaan servo, penolakan ID lama/arbitrer melalui API, dan katalog yang dikonsumsi firmware.
-- Endpoint katalog memerlukan kunci perangkat terdaftar untuk firmware atau Admin Token untuk WebUI.
+- Endpoint katalog memerlukan kunci perangkat terdaftar untuk firmware atau sesi admin yang tervalidasi untuk WebUI.
 
 Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diuji; pengujian perangkat nyata tetap wajib sebelum vending dioperasikan dengan saldo nyata.
 
