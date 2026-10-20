@@ -50,7 +50,7 @@ curl -fsS http://127.0.0.1:8011/ >/dev/null && echo "M-Group WebUI is responding
 - Application data: `/var/lib/M-Group`
 - CLI: `/opt/M-Group/bin/m-group init` (initializes/migrates the local database)
 
-For custom paths, set `M_GROUP_PREFIX` and `M_GROUP_DATA_DIR` when running the installer. `M_GROUP_ADMIN_TOKEN` is an advanced internal compatibility override; normal installs should leave it unset. Set `M_GROUP_SKIP_SERVICE=1` to install without registering a service.
+For custom paths, set `M_GROUP_PREFIX` and `M_GROUP_DATA_DIR` when running the installer. Set `M_GROUP_SKIP_SERVICE=1` to install without registering a service.
 
 ## WebUI login and upgrades
 
