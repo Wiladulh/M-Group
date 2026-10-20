@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_audit_export_authorizes_and_returns_workbook():
     with TemporaryDirectory() as directory:
         root = Path(directory)
