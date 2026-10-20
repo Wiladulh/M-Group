@@ -51,3 +51,53 @@ def test_vending_failed_dispense_refunds_payment():
         assert failed["status"]=="refunded"
         assert f.payment.financial.balance("vm-acct")==5000
         assert f.products("vm-01")[0]["stock"]==2
+
+def test_concurrent_vending_begin_retries_create_one_transaction():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        vending = VendingService(db)
+
+        def submit():
+            return VendingService(db).begin(
+                "vm-01", "water", "vm-nfc", "vm-acct", "concurrent-vend-1"
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = list(pool.map(lambda _: submit(), range(2)))
+
+        assert first["transaction_id"] == second["transaction_id"]
+        with db.connect() as c:
+            assert c.execute(
+                "SELECT COUNT(*) FROM vending_transactions WHERE idempotency_key='concurrent-vend-1'"
+            ).fetchone()[0] == 1
+
+
+def test_vending_recovers_when_payment_commits_but_acknowledgement_is_lost():
+    with TemporaryDirectory() as d:
+        db = Database(Path(d) / "m-group.db")
+        db.migrate()
+        seed(db)
+        vending = VendingService(db)
+        vending.payment.financial.credit("vm-acct", 10000, idempotency_key="lost-ack-seed")
+        tx = vending.begin("vm-01", "water", "vm-nfc", "vm-acct", "lost-ack-vend")
+        original_pay = vending.payment.pay
+
+        def commit_then_lose_acknowledgement(*args, **kwargs):
+            original_pay(*args, **kwargs)
+            raise RuntimeError("simulated lost payment acknowledgement")
+
+        vending.payment.pay = commit_then_lose_acknowledgement
+        recovered = vending.authorize(tx["transaction_id"])
+
+        assert recovered["status"] == "authorized"
+        assert recovered["payment_status"] == "completed"
+        assert vending.payment.financial.balance("vm-acct") == 5000
+        with db.connect() as c:
+            assert c.execute(
+                "SELECT COUNT(*) FROM payment_transactions WHERE idempotency_key=?",
+                ("vending-payment:" + tx["transaction_id"],),
+            ).fetchone()[0] == 1
