@@ -7,7 +7,7 @@ import app.main as main
 from app.identity.management import MemberManagementService
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_nfc_revoke_rejects_card_owned_by_another_member():
     with TemporaryDirectory() as directory:
         root = Path(directory)
