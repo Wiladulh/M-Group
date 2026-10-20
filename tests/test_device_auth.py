@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import app.main as main
 import hashlib
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_device_authentication_and_provisioning():
     with TemporaryDirectory() as d:
         old=main.get_settings
