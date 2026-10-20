@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import app.main as main
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_dashboard_and_admin_routes_require_valid_session_cookie():
     with TemporaryDirectory() as d:
         old = main.get_settings
