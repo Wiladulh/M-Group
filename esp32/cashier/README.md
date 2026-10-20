@@ -116,3 +116,22 @@ Record board model, reader model, LCD address, firmware commit, results, and any
 ## Installation and wiring tutorial
 
 See [INSTALLATION_AND_WIRING.md](INSTALLATION_AND_WIRING.md) for the full step-by-step installation, pin mapping, power-safety notes, and physical test checklist.
+
+## CSH-09 configuration Web UI and build plan
+
+The next firmware build adds a small configuration Web UI hosted by the ESP32. This is a planned implementation scope, not a claim that the feature is already present. Follow [BUILD_PLAN.md](BUILD_PLAN.md) for the agreed requirements and build order.
+
+- Configure Wi-Fi without reflashing: scan networks, set a primary network, save multiple fallback networks with priority, and show connection state, DHCP IP, and signal strength.
+- Configure the M-Group server base URL and device name/ID; test connectivity before applying changes. Persist configuration in NVS.
+- Access the UI at the device's DHCP IP. Show the IP on the LCD/Serial; support a local mDNS name when available.
+- If all saved networks fail, offer a temporary recovery access point for setup. Do not keep an open access point enabled during normal operation.
+- Require local administrator authentication. Never display saved Wi-Fi passwords or device keys. Do not log PINs, passwords, or device keys.
+- Validate the new network/server settings before replacing the last known-good configuration. A network reset must not erase device identity, pending transactions, or server records.
+- Keep the UI lightweight and responsive while the cashier keypad, NFC reader, heartbeat, and transaction recovery remain functional.
+- Server URL changes must not silently disable TLS certificate verification or bypass M-Group device authorization. For a trusted local HTTP deployment, explicitly document that the LAN is trusted; use validated HTTPS when configured for TLS.
+- Bluetooth thermal printing is optional and must not block a payment. The Cashier UI will provide scan/select/connect, connection status, test print, reconnect, and clear/remove pairing where supported. Print a receipt only after the server confirms the transaction. Reprinting must not submit a new transaction.
+- The M-Group server remains the source of truth for transactions and reports. Do not move ledger logic or transaction authority into the ESP32.
+
+Build order: (1) preserve current payment/deposit safety and CI build, (2) add persistent configuration and network recovery, (3) add the configuration Web UI and tests, (4) add optional Bluetooth printer support and tests, (5) validate on the physical board. Keep the printer isolated behind an optional interface so unsupported printer models do not break cashier operation.
+
+**CSH-09 status:** requirements agreed; implementation and hardware validation pending. Do not mark this feature complete until CI passes and the actual device is tested.
