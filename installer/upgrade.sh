@@ -91,7 +91,7 @@ case "$MANAGER" in
 esac
 
 # A successful process start is not enough: health must respond and sensitive
-# dashboard data must remain protected without the admin token.
+# dashboard data must remain protected without an authenticated admin session.
 PORT=$(read_config_value M_GROUP_PORT)
 PORT=${PORT:-8011}
 if ! "$PYTHON" - "$PORT" <<'PY'
