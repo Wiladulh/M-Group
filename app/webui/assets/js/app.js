@@ -534,7 +534,6 @@ function unlockApp(username){
   $('appShell').hidden=false;
   $('activeUsername').textContent=username||'Admin';
   if($('newAdminUsername'))$('newAdminUsername').value=username||'admin';
-  document.querySelectorAll('[data-session-token]').forEach(input=>{input.value='session'});
   $('loginError').textContent='';
   load();
 }
