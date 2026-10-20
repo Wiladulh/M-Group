@@ -52,6 +52,20 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
 
             authorized = client.get("/api/v1/members")
             assert authorized.status_code == 200
+
+            # Authenticated state-changing requests must not bypass CSRF
+            # protection when Origin is absent or belongs to another origin.
+            missing_origin = client.post("/api/v1/members", json={"name": "CSRF Missing Origin"})
+            assert missing_origin.status_code == 403
+            assert missing_origin.json()["detail"] == "same_origin_required"
+            foreign_origin = client.post(
+                "/api/v1/members",
+                headers={"Origin": "https://attacker.example"},
+                json={"name": "CSRF Foreign Origin"},
+            )
+            assert foreign_origin.status_code == 403
+            assert foreign_origin.json()["detail"] == "same_origin_required"
+
             dashboard = client.get("/api/v1/dashboard?period=1w")
             assert dashboard.status_code == 200
             assert dashboard.json()["analytics_period"] == "1w"
