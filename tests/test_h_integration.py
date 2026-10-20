@@ -4,7 +4,7 @@ import app.main as main
 from fastapi.testclient import TestClient
 
 
-from conftest import login_admin
+from tests.auth_helpers import login_admin
 def test_h_full_integration_one_by_one():
     with TemporaryDirectory() as d:
         old = main.get_settings
