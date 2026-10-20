@@ -7,11 +7,12 @@ import app.main as main
 from app.vending.service import VendingService
 
 
+from tests.auth_helpers import login_admin
 def test_admin_can_read_vending_transactions_for_selected_machine():
     with TemporaryDirectory() as tmp:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(tmp) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
@@ -31,7 +32,7 @@ def test_admin_can_read_vending_transactions_for_selected_machine():
 
             response = client.get(
                 "/api/v1/vending/vm-01/transactions",
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert response.status_code == 200
             rows = response.json()["transactions"]

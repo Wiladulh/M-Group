@@ -3,10 +3,11 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import app.main as main
 
+from tests.auth_helpers import login_admin
 def test_dashboard_and_admin_routes_require_valid_session_cookie():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             with client.app.state.db.connect() as c:
@@ -17,7 +18,7 @@ def test_dashboard_and_admin_routes_require_valid_session_cookie():
                 c.commit()
             denied = client.get("/api/v1/dashboard")
             assert denied.status_code == 401
-            r = client.get("/api/v1/dashboard", headers={"X-M-Group-Admin-Token": "admin-secret"})
+            r = client.get("/api/v1/dashboard", headers=login_admin(client))
             assert r.status_code == 200
             data = r.json()
             assert data["members"][0]["member_id"] == "m1"
@@ -36,7 +37,7 @@ def test_dashboard_and_admin_routes_require_valid_session_cookie():
             ):
                 assert client.get(path).status_code == 401, path
             assert client.post("/api/v1/access/private-credential").status_code == 401
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             assert client.post("/api/v1/access/private-credential", headers=admin).status_code == 200
             assert client.get("/api/v1/audit", headers=admin).status_code == 200
             assert client.get("/api/v1/accounts/a1/balance", headers=admin).json()["balance"] == 50000

@@ -7,6 +7,7 @@ import app.main as main
 from app.identity.management import MemberManagementService
 
 
+from tests.auth_helpers import login_admin
 def test_nfc_revoke_rejects_card_owned_by_another_member():
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -14,7 +15,7 @@ def test_nfc_revoke_rejects_card_owned_by_another_member():
         main.get_settings = lambda: type(
             "Settings",
             (),
-            {"db_path": root / "m-group.db", "admin_token": "admin-test-token"},
+            {"db_path": root / "m-group.db",},
         )()
         try:
             client = TestClient(main.create_app())
@@ -30,7 +31,7 @@ def test_nfc_revoke_rejects_card_owned_by_another_member():
                 ).fetchone()
             response = client.post(
                 f"/api/v1/members/member-a/nfc-cards/{card['card_id']}/revoke",
-                headers={"X-M-Group-Admin-Token": "admin-test-token"},
+                headers=login_admin(client),
             )
             assert response.status_code == 404
             with client.app.state.db.connect() as c:

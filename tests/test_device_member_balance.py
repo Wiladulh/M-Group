@@ -7,10 +7,11 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from tests.auth_helpers import login_admin
 def _client_with_member(tmp_path):
     old = main.get_settings
     main.get_settings = lambda: type(
-        "S", (), {"db_path": Path(tmp_path) / "m-group.db", "admin_token": "admin-secret"}
+        "S", (), {"db_path": Path(tmp_path) / "m-group.db",}
     )()
     client = TestClient(main.create_app())
     with client.app.state.db.connect() as c:
@@ -117,7 +118,7 @@ def test_member_registration_generates_sequential_demo_format_id():
             response = client.post(
                 "/api/v1/members",
                 json={"name": "Second Member", "nik": "1234567890123456"},
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert response.status_code == 200
             assert response.json()["member_id"] == "ID-A002"
@@ -128,7 +129,7 @@ def test_device_provisioning_validates_type_and_returns_one_time_key():
     with TemporaryDirectory() as tmp:
         client, old = _client_with_member(tmp)
         try:
-            headers = {"X-M-Group-Admin-Token": "admin-secret"}
+            headers = login_admin(client)
             invalid = client.post(
                 "/api/v1/devices/vending-02/provision",
                 json={"device_type": "unknown-device"},

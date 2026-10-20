@@ -14,8 +14,12 @@ This checklist is for a **controlled server/API trial** from the audit branch. I
 
 - [ ] Start the server using the package/service procedure for the target OS and confirm the process remains running.
 - [ ] Request `GET /api/v1/health` and `GET /api/v1/system`; confirm healthy responses.
-- [ ] Confirm protected admin endpoints reject requests with no token and accept the configured token.
-- [ ] Confirm device endpoints reject missing/incorrect device keys.
+- [ ] Confirm protected admin endpoints return `401` without a valid session cookie.
+- [ ] Log in through `POST /api/v1/auth/login` with the configured admin username/password; confirm `m_group_session` is issued and `GET /api/v1/auth/session` reports the authenticated account.
+- [ ] Confirm the valid session authorizes protected dashboard, member, finance, device-management, vending-management, audit, and backup endpoints.
+- [ ] Confirm an incorrect password is rejected, a fabricated/expired/revoked session is rejected, and logout invalidates the session on the server.
+- [ ] Confirm state-changing requests with a session enforce same-origin protections.
+- [ ] Confirm device endpoints reject missing/incorrect device keys and accept only the registered device's key where required. Device keys are device credentials, not admin login credentials.
 - [ ] Open the WebUI and confirm the dashboard, members, finance, devices, vending, and audit views load without browser console errors.
 - [ ] Exercise only disposable test records: member/account creation, cashier deposit with idempotency key, vending purchase, dispense failure/refund, and audit reporting.
 - [ ] Retry a transaction with the same idempotency key and confirm it does not double-charge; reuse that key with conflicting transaction data and confirm it is rejected.
@@ -35,7 +39,8 @@ This checklist is for a **controlled server/API trial** from the audit branch. I
 - [ ] Verify the service runs as the intended non-root account and can read config, write data/database/lock files, and write logs.
 - [ ] Simulate a failed upgrade only on the disposable image and verify documented rollback restores the previous package and database snapshot.
 - [ ] Rehearse migration from a **copy** of each supported legacy schema. Compare row counts and key identities/relationships before and after migration; run SQLite integrity and foreign-key checks.
+- [ ] Verify legacy `M_GROUP_ADMIN_TOKEN` values are removed from upgraded configuration by the installer migration/cleanup step; this is configuration cleanup only and must never grant admin access.
 
 ## Exit criteria
 
-The server is ready for a limited user trial only after startup, authentication, WebUI, representative API transactions, backup/restore, and service restart pass on the target test machine. Keep the PR unmerged until the owner reviews the results. Hardware acceptance for Cashier/Vending (NFC, Wi-Fi recovery, physical dispensing, and power-loss recovery) remains a separate test.
+The server is ready for a limited user trial only after startup, session authentication, WebUI, representative API transactions, backup/restore, and service restart pass on the target test machine. Keep the PR unmerged until the owner reviews the results. Hardware acceptance for Cashier/Vending (NFC, Wi-Fi recovery, physical dispensing, and power-loss recovery) remains a separate test.

@@ -6,11 +6,12 @@ import app.main as main
 from app.core.db import Database
 
 
+from tests.auth_helpers import login_admin
 def test_cashier_device_registration_and_heartbeat_gate():
     with TemporaryDirectory() as d:
         old = main.get_settings
         db_path = Path(d) / "m-group.db"
-        main.get_settings = lambda: type("S", (), {"db_path": db_path, "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": db_path,})()
         try:
             client = TestClient(main.create_app())
 
@@ -23,7 +24,7 @@ def test_cashier_device_registration_and_heartbeat_gate():
             provision = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert provision.status_code == 200
             data = provision.json()

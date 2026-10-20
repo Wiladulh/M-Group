@@ -6,12 +6,13 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from tests.auth_helpers import login_admin
 def test_cashier_replay_after_lost_response_is_idempotent():
     """Simulate server commit followed by a lost response during an offline period."""
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(d) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
@@ -34,11 +35,11 @@ def test_cashier_replay_after_lost_response_is_idempotent():
             provision = client.post(
                 "/api/v1/devices/cashier-01/provision",
                 json={"device_type": "esp32-cashier"},
-                headers={"X-M-Group-Admin-Token": "admin-secret"},
+                headers=login_admin(client),
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
-            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers={"X-M-Group-Admin-Token": "admin-secret"}).status_code == 200
+            assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
             assert client.post(
                 "/api/v1/devices/cashier-01/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},

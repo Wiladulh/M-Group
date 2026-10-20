@@ -4,15 +4,15 @@ from fastapi.testclient import TestClient
 import hashlib
 import app.main as main
 
+from tests.auth_helpers import login_admin
 def test_cashier_deposit_and_audit_are_separate_from_vending():
     with TemporaryDirectory() as d:
         old=main.get_settings
         main.get_settings=lambda: type("S",(),{
-            "db_path":Path(d)/"m-group.db","data_dir":Path(d),"admin_token":"admin-secret"
-        })()
+            "db_path":Path(d)/"m-group.db","data_dir":Path(d),})()
         try:
             client=TestClient(main.create_app())
-            assert client.post("/api/v1/cashier/operator-pin",json={"pin":"9992"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
+            assert client.post("/api/v1/cashier/operator-pin",json={"pin":"9992"},headers=login_admin(client)).status_code==200
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
@@ -22,13 +22,13 @@ def test_cashier_deposit_and_audit_are_separate_from_vending():
                 c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock) VALUES('p1','v1','P1',5000,1)")
                 c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('vend-01','esp32-s3-vending','active',?)",(hashlib.sha256(b'vend-key').hexdigest(),))
                 c.commit()
-            assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
+            assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers=login_admin(client)).status_code==200
             dep=client.post("/api/v1/cashier/deposits",
                 json={"credential_id":"cred1","amount":10500,"operator_pin":"9992","member_pin":"1234","idempotency_key":"dep-1"},
                 headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
             assert dep.status_code==200
             assert dep.json()["balance_after"]==10500
-            report=client.get("/api/v1/audit/report?source=CASHIER&period=day",headers={"X-M-Group-Admin-Token":"admin-secret"})
+            report=client.get("/api/v1/audit/report?source=CASHIER&period=day",headers=login_admin(client))
             assert report.status_code==200
             assert all(x["source"]=="CASHIER" for x in report.json()["transactions"])
             assert report.json()["transactions"][0]["amount"]==10500
@@ -39,11 +39,10 @@ def test_operator_pin_can_be_changed_by_admin():
     with TemporaryDirectory() as d:
         old=main.get_settings
         main.get_settings=lambda: type("S",(),{
-            "db_path":Path(d)/"m-group.db","data_dir":Path(d),"admin_token":"admin-secret"
-        })()
+            "db_path":Path(d)/"m-group.db","data_dir":Path(d),})()
         try:
             client=TestClient(main.create_app())
-            r=client.post("/api/v1/cashier/operator-pin",json={"pin":"4321"},headers={"X-M-Group-Admin-Token":"admin-secret"})
+            r=client.post("/api/v1/cashier/operator-pin",json={"pin":"4321"},headers=login_admin(client))
             assert r.status_code==200
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
@@ -51,7 +50,7 @@ def test_operator_pin_can_be_changed_by_admin():
                 c.execute("INSERT INTO identity_credentials(credential_id,member_id,credential_type,status,enabled) VALUES('cred1','m1','nfc','active',1)")
                 c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
                 c.commit()
-            assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers={"X-M-Group-Admin-Token":"admin-secret"}).status_code==200
+            assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers=login_admin(client)).status_code==200
             ok=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"4321","member_pin":"1234","idempotency_key":"dep-2"},headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
             assert ok.status_code==200
             bad=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"9992","member_pin":"1234","idempotency_key":"dep-3"},headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
@@ -66,8 +65,7 @@ def test_native_restore_replaces_database_atomically():
         old=main.get_settings
         root=Path(d)
         main.get_settings=lambda: type("S",(),{
-            "db_path":root/"m-group.db","data_dir":root,"admin_token":"admin-secret"
-        })()
+            "db_path":root/"m-group.db","data_dir":root,})()
         try:
             app=main.create_app()
             with app.state.db.connect() as db:
@@ -96,7 +94,6 @@ def test_native_restore_checkpoints_wal_before_swapping_database():
             "Settings", (), {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "admin-secret",
             }
         )()
         try:
@@ -150,7 +147,6 @@ def test_native_restore_failure_preserves_live_database():
             "Settings", (), {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "admin-secret",
             }
         )()
         try:
@@ -209,7 +205,6 @@ def test_native_restore_waits_for_inflight_database_users():
             "Settings", (), {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "admin-secret",
             }
         )()
         try:
@@ -289,7 +284,6 @@ def test_native_backup_restore_preserves_financial_ledger_and_balance():
             "Settings", (), {
                 "db_path": root / "m-group.db",
                 "data_dir": root,
-                "admin_token": "admin-secret",
             }
         )()
         try:

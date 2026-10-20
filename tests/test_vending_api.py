@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import hashlib
 import app.main as main
 
+from tests.auth_helpers import login_admin
 def seed(client):
     with client.app.state.db.connect() as c:
         c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
@@ -19,7 +20,7 @@ def seed(client):
 def test_vending_api_payment_and_dispense():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -45,7 +46,7 @@ def test_vending_api_payment_and_dispense():
             retry = client.post(f"/api/v1/vending/transactions/{tid}/dispense", json={"success":True}, headers={"X-M-Group-Device-Key":"vm-secret"})
             assert retry.status_code == 200
             assert retry.json()["status"] == "completed"
-            assert client.get("/api/v1/accounts/a1/balance", headers={"X-M-Group-Admin-Token":"admin-secret"}).json()["balance"] == 5000
+            assert client.get("/api/v1/accounts/a1/balance", headers=login_admin(client)).json()["balance"] == 5000
             assert client.get("/api/v1/vending/v1/products", headers={"X-M-Group-Device-Key":"vm-secret"}).json()["products"][0]["stock"] == 0
         finally:
             main.get_settings = old
@@ -53,7 +54,7 @@ def test_vending_api_payment_and_dispense():
 def test_vending_api_failed_dispense_refunds():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -66,7 +67,7 @@ def test_vending_api_failed_dispense_refunds():
             assert failed.status_code == 200
             assert failed.json()["status"] == "refunded"
             assert failed.json()["dispense_status"] == "failed"
-            assert client.get("/api/v1/accounts/a1/balance", headers={"X-M-Group-Admin-Token":"admin-secret"}).json()["balance"] == 10000
+            assert client.get("/api/v1/accounts/a1/balance", headers=login_admin(client)).json()["balance"] == 10000
             assert client.get("/api/v1/vending/v1/products", headers={"X-M-Group-Device-Key":"vm-secret"}).json()["products"][0]["stock"] == 1
         finally:
             main.get_settings = old
@@ -74,11 +75,11 @@ def test_vending_api_failed_dispense_refunds():
 def test_vending_credential_resolves_primary_savings_account():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             seed(client)
-            result = client.get("/api/v1/credentials/nfc1/account", headers={"X-M-Group-Admin-Token":"admin-secret"})
+            result = client.get("/api/v1/credentials/nfc1/account", headers=login_admin(client))
             assert result.status_code == 200
             assert result.json()["account_id"] == "a1"
             assert result.json()["member_id"] == "m1"
@@ -89,7 +90,7 @@ def test_vending_credential_resolves_primary_savings_account():
 def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal_state():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             seed(client)
@@ -116,7 +117,7 @@ def test_vending_status_reconciliation_requires_device_auth_and_returns_terminal
 def test_vending_idempotency_key_cannot_be_reused_for_different_product():
     with TemporaryDirectory() as d:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             seed(client)

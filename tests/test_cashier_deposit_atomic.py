@@ -7,15 +7,16 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from tests.auth_helpers import login_admin
 def test_cashier_deposit_is_atomic_and_idempotency_conflicts_are_rejected():
     with TemporaryDirectory() as directory:
         old_settings = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(directory) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(directory) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             device_key = "cashier-test-secret"
             with client.app.state.db.connect() as c:
                 c.execute(

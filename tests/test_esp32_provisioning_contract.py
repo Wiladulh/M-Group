@@ -4,14 +4,15 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+from tests.auth_helpers import login_admin
 def test_dashboard_provisioning_key_activates_firmware_heartbeat_for_both_device_types():
     with TemporaryDirectory() as tmp:
         old = main.get_settings
-        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db", "admin_token": "admin-secret"})()
+        main.get_settings = lambda: type("S", (), {"db_path": Path(tmp) / "m-group.db",})()
         try:
             client = TestClient(main.create_app())
             for device_id, device_type in (("cashier-mini-test", "esp32-cashier"), ("vending-mini-test", "esp32-s3-vending")):
-                provision = client.post(f"/api/v1/devices/{device_id}/provision", json={"device_type": device_type}, headers={"X-M-Group-Admin-Token": "admin-secret"})
+                provision = client.post(f"/api/v1/devices/{device_id}/provision", json={"device_type": device_type}, headers=login_admin(client))
                 assert provision.status_code == 200
                 key = provision.json()["device_key"]
                 assert key and len(key) >= 32

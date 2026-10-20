@@ -4,15 +4,16 @@ import app.main as main
 from fastapi.testclient import TestClient
 
 
+from tests.auth_helpers import login_admin
 def test_h_full_integration_one_by_one():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(d) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(d) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
 
             # H-01 Member/KTP
             member = client.post(
@@ -195,11 +196,12 @@ def test_h_full_integration_one_by_one():
             assert any(x["member_id"] == member_id for x in dashboard.json()["members"])
 
             # H-10 Error/authorization flow
+            client.cookies.clear()
             client.cookies.set("m_group_session", "invalid-session")
             assert client.get("/api/v1/members").status_code == 401
-            assert client.get(
-                "/api/v1/devices", headers={"X-M-Group-Admin-Token": "wrong"}
-            ).status_code == 401
+            assert client.get("/api/v1/devices").status_code == 401
+            client.cookies.clear()
+            admin = login_admin(client)
             assert client.get(
                 "/api/v1/cashier/cashier-h/nfc-registration",
                 headers={"X-M-Group-Device-Key": "wrong"},

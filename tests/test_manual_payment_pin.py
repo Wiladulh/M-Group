@@ -6,11 +6,12 @@ import app.main as main
 from app.identity.service import IdentityService
 
 
+from tests.auth_helpers import login_admin
 def test_manual_nfc_payment_requires_and_verifies_member_pin():
     with TemporaryDirectory() as directory:
         old = main.get_settings
         main.get_settings = lambda: type(
-            "S", (), {"db_path": Path(directory) / "m-group.db", "admin_token": "admin-secret"}
+            "S", (), {"db_path": Path(directory) / "m-group.db",}
         )()
         try:
             client = TestClient(main.create_app())
@@ -28,7 +29,7 @@ def test_manual_nfc_payment_requires_and_verifies_member_pin():
                 )
                 conn.commit()
             IdentityService(db).set_pin("member-1", "1234")
-            admin = {"X-M-Group-Admin-Token": "admin-secret"}
+            admin = login_admin(client)
             base = {
                 "credential_id": "credential-1", "account_id": "account-1",
                 "amount": 1000, "method": "NFC", "provider": "local",
