@@ -97,6 +97,23 @@ def test_vending_provision_creates_inventory_machine_with_location():
             listed=client.get("/api/v1/vending",headers=admin)
             assert listed.status_code == 200
             assert any(x["location"] == "Vending Lantai 1" for x in listed.json()["machines"])
+
+            registered=client.post(
+                "/api/v1/devices/register",
+                json={
+                    "device_type":"esp32-s3-vending",
+                    "mac_address":"AA:BB:CC:11:22:33",
+                    "device_key":provision.json()["device_key"],
+                },
+            )
+            assert registered.status_code == 200, registered.text
+            assert "device_id" not in registered.json()
+            self_catalog=client.get(
+                "/api/v1/vending/self/products",
+                headers={"X-M-Group-Device-Key":provision.json()["device_key"]},
+            )
+            assert self_catalog.status_code == 200, self_catalog.text
+            assert self_catalog.json()["machine"]["location"] == "Vending Lantai 1"
         finally:
             main.get_settings=old
 
