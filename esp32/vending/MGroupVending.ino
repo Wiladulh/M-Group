@@ -156,7 +156,7 @@ bool products(){
 }
 String beginTransaction(const String&product,const String&credential,const String&seq){
   createRequestRejected=false;
-  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+DEVICE_NONCE+":"+seq+"\"}";
+  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+pendingCreateIdempotencyKey+"\"}";
   String path="/api/v1/vending/self/transactions";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
