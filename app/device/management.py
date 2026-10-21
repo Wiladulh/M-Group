@@ -46,6 +46,15 @@ class DeviceManagementService:
                    WHERE device_id=?""",
                 (new_type, new_status, new_name, device_id),
             )
+            normalized_type = "esp32-s3-vending" if new_type == "esp32-vending" else new_type
+            if normalized_type in {"esp32-s3-vending", "vending"}:
+                machine_status = new_status if new_status in {"active", "disabled", "maintenance"} else "disabled"
+                c.execute(
+                    """UPDATE vending_machines
+                       SET name=?,location=?,status=?,updated_at=CURRENT_TIMESTAMP
+                       WHERE device_id=?""",
+                    (new_name, new_name, machine_status, device_id),
+                )
             c.commit()
         return self.get(device_id)
 
