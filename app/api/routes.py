@@ -1528,6 +1528,8 @@ def build_router(db, app_settings=None):
                         (financial_key,),
                     ).fetchone()
                     result = dict(old)
+                    # Never expose the internal registry foreign key in device-facing API responses.
+                    result.pop("device_id", None)
                     result["financial_transaction_id"] = fin["transaction_id"] if fin else None
                     return result
                 orphan = c.execute(
