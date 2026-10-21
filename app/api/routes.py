@@ -194,7 +194,7 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str
+    device_id: str | None = None
     card_uid: str
 
 class OperatorPinRequest(BaseModel):
@@ -862,6 +862,11 @@ def build_router(db, app_settings=None):
         return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
                 "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
 
+    @r.post("/devices/heartbeat")
+    def device_heartbeat_key_scoped(q: DeviceHeartbeatRequest, x_m_group_device_key: str | None = Header(default=None)):
+        device = resolve_device_key(x_m_group_device_key)
+        return device_heartbeat(device["device_id"], q, x_m_group_device_key)
+
     @r.post("/devices/{device_id}/heartbeat")
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
@@ -918,19 +923,16 @@ def build_router(db, app_settings=None):
     def device_member_balance(q: MemberBalanceLookupRequest,
                               x_m_group_device_key: str | None = Header(default=None)):
         """Read-only balance lookup for authenticated Cashier/Vending devices."""
-        device_id = q.device_id.strip()
+        authenticated_device = resolve_device_key(x_m_group_device_key)
+        device_id = authenticated_device["device_id"]
+        if q.device_id and q.device_id != device_id:
+            raise HTTPException(403, "device_identity_mismatch")
         card_uid = q.card_uid.strip()
-        if not device_id:
-            raise HTTPException(400, "device_id_required")
         if not card_uid:
             raise HTTPException(400, "card_uid_required")
-        require_device(device_id, x_m_group_device_key)
-        with db.connect() as c:
-            device = c.execute(
-                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
-            ).fetchone()
-            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
-                raise HTTPException(403, "device_type_not_allowed")
+        device_type = authenticated_device["device_type"]
+        if device_type not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
+            raise HTTPException(403, "device_type_not_allowed")
         # Suppress duplicate NFC reads from the same device/card for two seconds.
         uid_hash = hashlib.sha256(card_uid.casefold().encode("utf-8")).hexdigest()
         now = time.time()
@@ -1071,6 +1073,16 @@ def build_router(db, app_settings=None):
         require_admin(request)
         try:return vending.set_status(machine_id,"disabled")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
+
+    @r.get("/vending/self/products")
+    def vending_products_for_authenticated_device(request: Request, x_m_group_device_key: str | None = Header(default=None)):
+        machine = resolve_vending_machine_for_key(x_m_group_device_key)
+        return vending_products(request, machine["machine_id"], x_m_group_device_key)
+
+    @r.post("/vending/self/transactions")
+    def vending_begin_for_authenticated_device(q: VendingBeginRequest, x_m_group_device_key: str | None = Header(default=None)):
+        machine = resolve_vending_machine_for_key(x_m_group_device_key)
+        return vending_begin(machine["machine_id"], q, x_m_group_device_key)
 
     @r.get("/vending/{machine_id}/products")
     def vending_products(request: Request, machine_id, x_m_group_device_key: str | None = Header(default=None)):
@@ -1569,9 +1581,18 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if q.device_id is None:raise HTTPException(400,"device_id_required")
         try:
-            require_device(q.device_id,x_m_group_device_key)
+            if q.device_id:
+                require_device(q.device_id,x_m_group_device_key)
+                device_id = q.device_id
+            else:
+                authenticated_device = resolve_device_key(x_m_group_device_key)
+                device_id = authenticated_device["device_id"]
+                q.device_id = device_id
+            with db.connect() as c:
+                device_row = c.execute("SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)).fetchone()
+            if not device_row or device_row["device_type"] not in {"esp32-cashier", "cashier"}:
+                raise HTTPException(403, "device_type_not_allowed")
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
