@@ -866,7 +866,7 @@ def build_router(db, app_settings=None):
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
                       (device_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
             c.commit()
-        return {"device_id":device_id,"device_type":device_type,"status":"active"}
+        return {"device_type":device_type,"status":"active"}
 
     @r.post("/access/{credential_id}")
     def access(request: Request, credential_id):
@@ -1490,6 +1490,7 @@ def build_router(db, app_settings=None):
                     (financial_key,),
                 ).fetchone()
                 result = dict(old)
+                result.pop("device_id", None)
                 result["financial_transaction_id"] = fin["transaction_id"] if fin else None
                 return result
 
@@ -1562,6 +1563,7 @@ def build_router(db, app_settings=None):
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump(), device_id=device_id)
+            result.pop("device_id", None)
             with db.connect() as c:
                 c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
                 c.commit()
