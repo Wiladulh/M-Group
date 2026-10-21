@@ -462,18 +462,20 @@ def build_router(db, app_settings=None):
         result = device_register(q)
         return {**result, "handshake": "accepted"}
 
-    @r.get("/devices/{device_id}/events")
-    def device_events(request: Request, device_id,limit:int=100):
+    @r.get("/devices/by-key-hint/{key_hint}/events")
+    def device_events(request: Request, key_hint: str, limit: int = 100):
         require_admin(request)
-        limit=max(1,min(limit,500))
+        device = devices.get_by_key_hint(key_hint)
+        if device is None:
+            raise HTTPException(404, "device_not_found")
+        device_key = devices.internal_id_by_key_hint(key_hint)
+        limit = max(1, min(limit, 500))
         with db.connect() as c:
-            rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
-        events=[]
-        for row in rows:
-            item=dict(row)
-            item["device_ref"]=item.pop("device_id")
-            events.append(item)
-        return {"device_ref":device_id,"events":events}
+            rows = c.execute(
+                "SELECT id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",
+                (device_key, limit),
+            ).fetchall()
+        return {"events": [dict(row) for row in rows]}
 
     @r.get("/dashboard")
     def dashboard(request: Request, period: str = "1w"):
@@ -493,16 +495,18 @@ def build_router(db, app_settings=None):
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
                    FROM financial_accounts a JOIN identity_members m ON m.member_id=a.member_id ORDER BY a.created_at DESC""").fetchall()
-            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,final_amount,status,method,provider,device_id AS device_ref,transaction_source,created_at
-                   FROM payment_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
+            payments_rows=c.execute("""SELECT p.transaction_id,p.credential_id,p.account_id,p.amount,p.final_amount,p.status,p.method,p.provider,
+                          d.display_name AS device_location,p.transaction_source,p.created_at
+                   FROM payment_transactions p LEFT JOIN device_registry d ON d.device_id=p.device_id
+                   ORDER BY p.created_at DESC LIMIT 50""").fetchall()
             vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
                    FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
-            machines=c.execute("SELECT machine_id,name,status,location,device_id AS device_ref,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
+            machines=c.execute("SELECT machine_id,name,status,location,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
             products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
                    FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
-            devices=c.execute("SELECT device_id AS device_ref,device_type,display_name,status,last_seen FROM device_registry ORDER BY display_name,device_id").fetchall()
+            devices=c.execute("SELECT device_type,display_name,status,last_seen,auth_key_hint FROM device_registry WHERE deleted_at IS NULL ORDER BY display_name,device_type").fetchall()
             cashier_count=c.execute(
                 "SELECT COUNT(*) FROM payment_transactions WHERE transaction_source='CASHIER' AND status='completed'"
             ).fetchone()[0]
@@ -677,21 +681,22 @@ def build_router(db, app_settings=None):
         require_admin(request)
         return {"devices": devices.list(include_deleted)}
 
-    @r.get("/devices/{device_id}")
-    def device_get(request: Request, device_id):
+    @r.get("/devices/by-key-hint/{key_hint}")
+    def device_get_by_key_hint(request: Request, key_hint: str):
         require_admin(request)
-        result = devices.get(device_id)
+        result = devices.get_by_key_hint(key_hint)
         if result is None:
-            raise HTTPException(404,"device_not_found")
+            raise HTTPException(404, "device_not_found")
         return result
 
-    @r.patch("/devices/{device_id}")
-    def device_update(request: Request, device_id,q: DeviceHeartbeatRequest):
+    @r.patch("/devices/by-key-hint/{key_hint}")
+    def device_update_by_key_hint(request: Request, key_hint: str, q: DeviceHeartbeatRequest):
         require_admin(request)
         try:
-            return devices.update(device_id,q.device_type,q.status,q.display_name)
+            return devices.update_by_key_hint(key_hint, q.device_type, q.status, q.display_name)
         except ValueError as e:
-            raise HTTPException(400,str(e))
+            code = str(e)
+            raise HTTPException(409 if code == "device_key_hint_not_unique" else 400, code)
 
     @r.post("/devices/register")
     def device_register(q: DeviceRegisterRequest):
@@ -753,13 +758,14 @@ def build_router(db, app_settings=None):
             "registered": True,
         }
 
-    @r.delete("/devices/{device_id}")
-    def device_delete(request: Request, device_id):
+    @r.delete("/devices/by-key-hint/{key_hint}")
+    def device_delete_by_key_hint(request: Request, key_hint: str):
         require_admin(request)
         try:
-            return devices.soft_delete(device_id)
+            return devices.soft_delete_by_key_hint(key_hint)
         except ValueError as e:
-            raise HTTPException(404,str(e))
+            code = str(e)
+            raise HTTPException(409 if code == "device_key_hint_not_unique" else 404, code)
 
     @r.post("/devices/provision")
     def device_provision_auto(request: Request, q:DeviceProvisionRequest):
@@ -804,74 +810,30 @@ def build_router(db, app_settings=None):
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
-    @r.post("/devices/{device_id}/provision")
-    def device_provision_legacy(request: Request, device_id,q:DeviceProvisionRequest):
-        """Deprecated compatibility endpoint; new firmware must use key-only provisioning."""
-        require_admin(request)
-        legacy_id = device_id.strip()
+    @r.post("/devices/heartbeat")
+    def device_heartbeat(q: DeviceHeartbeatRequest, x_m_group_device_key: str | None = Header(default=None)):
+        device = resolve_device_key(x_m_group_device_key)
+        if not q.device_type.strip():
+            raise HTTPException(400, "device_type_required")
+        if q.status != "active":
+            raise HTTPException(400, "invalid_heartbeat_status")
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
-        if not legacy_id:
-            raise HTTPException(400, "device_id_required")
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400, "invalid_device_type")
-        key = secrets.token_urlsafe(32)
-        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        device_key = device["device_id"]
+        stored_type = "esp32-s3-vending" if device["device_type"] == "esp32-vending" else device["device_type"]
+        if stored_type != device_type:
+            raise HTTPException(409, "device_type_mismatch")
         with db.connect() as c:
-            existing = c.execute(
-                "SELECT device_id FROM device_registry WHERE device_id=?",
-                (legacy_id,),
-            ).fetchone()
-            if existing:
-                raise HTTPException(409, "legacy_device_id_already_exists_use_key_rotation_workflow")
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?", (device_key,))
             c.execute(
-                """INSERT INTO device_registry
-                   (device_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (legacy_id, device_type, digest, key[-6:]),
-            )
-            c.execute(
-                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device", "legacy_provisioned", legacy_id, f"type={device_type};deprecated=true"),
+                "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
+                (device_key, "heartbeat", q.model_copy(update={"device_type": device_type}).model_dump_json()),
             )
             c.commit()
-        return {"device_type": device_type, "device_key": key,
-                "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
-
-    @r.post("/devices/heartbeat")
-    def device_heartbeat_key_scoped(q: DeviceHeartbeatRequest, x_m_group_device_key: str | None = Header(default=None)):
-        device = resolve_device_key(x_m_group_device_key)
-        return device_heartbeat(device["device_id"], q, x_m_group_device_key)
-
-    @r.post("/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if not device_id.strip(): raise HTTPException(400,"device_id_required")
-        if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
-        # Heartbeat is telemetry, not an administrative status mutation. Only an
-        # admin may disable/maintain a device; accepting status from firmware lets
-        # a device accidentally lock itself out or write arbitrary registry states.
-        if q.status != "active":
-            raise HTTPException(400,"invalid_heartbeat_status")
-        device_type = q.device_type.strip().lower()
-        if device_type == "esp32-vending":
-            device_type = "esp32-s3-vending"
-        if device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400,"invalid_device_type")
-        require_device(device_id,x_m_group_device_key)
-        with db.connect() as c:
-            row = c.execute(
-                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
-            ).fetchone()
-            stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
-            if not row or stored_type != device_type:
-                raise HTTPException(409,"device_type_mismatch")
-            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
-                      (device_id,))
-            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                      (device_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
-            c.commit()
-        return {"device_type":device_type,"status":"active"}
+        return {"device_type": device_type, "status": "active"}
 
     @r.post("/access/{credential_id}")
     def access(request: Request, credential_id):
@@ -1587,17 +1549,18 @@ def build_router(db, app_settings=None):
             start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
         queries=[]
         if source in {"ALL","CASHIER"}:
-            queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id AS device_ref,member_id,account_id,
-                              'DEPOSIT' transaction_type,amount,status,'NFC' payment_method,'local' payment_provider
-                              FROM cashier_deposits""")
-            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id AS device_ref,a.member_id,p.account_id,
+            queries.append("""SELECT cd.transaction_id,cd.created_at,'CASHIER' source,d.display_name AS device_location,cd.member_id,cd.account_id,
+                              'DEPOSIT' transaction_type,cd.amount,cd.status,'NFC' payment_method,'local' payment_provider
+                              FROM cashier_deposits cd LEFT JOIN device_registry d ON d.device_id=cd.device_id""")
+            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,d.display_name AS device_location,a.member_id,p.account_id,
                               'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status,
                               COALESCE(p.method,'NFC') payment_method,COALESCE(p.provider,'local') payment_provider
                               FROM payment_transactions p
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
+                              LEFT JOIN device_registry d ON d.device_id=p.device_id
                               WHERE p.transaction_source='CASHIER'""")
         if source in {"ALL","VENDING"}:
-            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id AS device_ref,a.member_id,
+            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.location AS device_location,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
                               COALESCE(v.payment_method,'NFC') payment_method,COALESCE(v.payment_provider,'local') payment_provider
                               FROM vending_transactions v
