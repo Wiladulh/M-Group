@@ -52,6 +52,23 @@ def test_device_authentication_and_provisioning():
         finally:
             main.get_settings=old
 
+def test_auto_provision_requires_device_location():
+    with TemporaryDirectory() as d:
+        old=main.get_settings
+        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
+        try:
+            client=TestClient(main.create_app())
+            response=client.post(
+                "/api/v1/devices/provision",
+                json={"device_type":"esp32-cashier"},
+                headers=login_admin(client),
+            )
+            assert response.status_code == 400
+            assert response.json()["detail"] == "device_location_required"
+        finally:
+            main.get_settings=old
+
+
 def test_vending_requires_device_key():
     with TemporaryDirectory() as d:
         old=main.get_settings
