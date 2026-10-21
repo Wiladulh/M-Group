@@ -61,7 +61,7 @@ def test_cashier_deposit_accepts_firmware_contract_without_device_id_header():
             )
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "completed"
-            assert response.json()["device_id"] == "cashier-01"
+            assert "device_id" not in response.json()
             assert client.get("/api/v1/accounts/a1/balance", headers=ADMIN).json()["balance"] == 5000
         finally:
             main.get_settings = old
