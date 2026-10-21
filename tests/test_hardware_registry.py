@@ -69,7 +69,7 @@ def test_server_key_registers_device_without_exposing_internal_reference():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["auth_key_hint"] == key[-10:])
+            item = next(x for x in listed.json()["devices"] if x["device_key_hint"] == __import__("hashlib").sha256(key.encode()).hexdigest()[:12])
             assert "device_id" not in item
             assert "device_ref" not in item
             assert client.get(f"/api/v1/devices/{provisioned_id}", headers=headers).status_code == 404
