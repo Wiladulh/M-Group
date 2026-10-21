@@ -181,13 +181,19 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             assert heartbeat.status_code == 200, heartbeat.text
 
             with client.app.state.db.connect() as conn:
-                conn.execute(
-                    "INSERT INTO vending_machines(machine_id,name,device_id) VALUES(?,?,?)",
-                    ("machine-image", "Image test", "vending-image"),
-                )
-                conn.commit()
+                device_row = conn.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(key.encode("utf-8")).hexdigest(),),
+                ).fetchone()
+                assert device_row is not None
+                machine_row = conn.execute(
+                    "SELECT machine_id FROM vending_machines WHERE device_id=?",
+                    (device_row["device_id"],),
+                ).fetchone()
+                assert machine_row is not None
+                machine_id = machine_row["machine_id"]
             product = client.put(
-                "/api/v1/vending/machine-image/products/1",
+                `/api/v1/vending/${machine_id}/products/1`,
                 headers=admin,
                 json={
                     "product_id": "1", "name": "Water", "price": 5000,
@@ -200,18 +206,32 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             Image.new("RGB", (2, 2), (20, 80, 120)).save(buffer, format="JPEG")
             image_bytes = buffer.getvalue()
             uploaded = client.put(
-                "/api/v1/vending/machine-image/products/1/image",
+                `/api/v1/vending/${machine_id}/products/1/image`,
                 headers=admin,
                 files={"image": ("water.jpg", image_bytes, "image/jpeg")},
             )
             assert uploaded.status_code == 200, uploaded.text
 
             device_headers = {"X-M-Group-Device-Key": key}
-            catalog = client.get("/api/v1/vending/machine-image/products", headers=device_headers)
+            catalog = client.get(`/api/v1/vending/${machine_id}/products`, headers=device_headers)
             assert catalog.status_code == 200, catalog.text
             image = client.get(catalog.json()["products"][0]["image_url"], headers=device_headers)
             assert image.status_code == 200
             assert image.headers["content-type"].startswith("image/jpeg")
             assert image.content == image_bytes
+
+            other = client.post(
+                "/api/v1/devices/provision",
+                headers=admin,
+                json={"device_type": "esp32-s3-vending", "display_name": "Other Vending"},
+            )
+            assert other.status_code == 200, other.text
+            other_headers = {"X-M-Group-Device-Key": other.json()["device_key"]}
+            assert client.get(
+                f"/api/v1/vending/{machine_id}/products", headers=other_headers
+            ).status_code == 403
+            assert client.get(
+                f"/api/v1/vending/{machine_id}/products/1/image", headers=other_headers
+            ).status_code == 403
         finally:
             main.get_settings = old
