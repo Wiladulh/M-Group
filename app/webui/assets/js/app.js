@@ -385,10 +385,13 @@ async function loadVendingMachines(){
 }
 $('loadVendingMachines').onclick=loadVendingMachines;
 $('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+let productImageObjectUrl=null;
 function renderProductImage(item){
+  if(productImageObjectUrl){URL.revokeObjectURL(productImageObjectUrl);productImageObjectUrl=null}
   const file=$('productImage').files?.[0];
   if(file){
-    $('productImagePreview').innerHTML='<img alt="Pratinjau gambar produk" src="'+URL.createObjectURL(file)+'" style="max-width:180px;max-height:180px;object-fit:contain">';
+    productImageObjectUrl=URL.createObjectURL(file);
+    $('productImagePreview').innerHTML='<img alt="Pratinjau gambar produk" src="'+productImageObjectUrl+'" style="max-width:180px;max-height:180px;object-fit:contain">';
   }else if(item?.image_url){
     $('productImagePreview').innerHTML='<img alt="Gambar produk saat ini" src="'+esc(item.image_url)+'" style="max-width:180px;max-height:180px;object-fit:contain">';
   }else{
