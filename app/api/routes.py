@@ -533,7 +533,7 @@ def build_router(db, app_settings=None):
             machines=c.execute("SELECT machine_id,name,status,location,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
             products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
                    FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
-            devices=c.execute("SELECT device_type,display_name,status,last_seen,auth_key_hint FROM device_registry WHERE deleted_at IS NULL ORDER BY display_name,device_type").fetchall()
+            devices=c.execute("SELECT device_type,display_name,status,last_seen,substr(auth_key_hash,1,12) AS device_key_hint FROM device_registry WHERE deleted_at IS NULL ORDER BY display_name,device_type").fetchall()
             cashier_count=c.execute(
                 "SELECT COUNT(*) FROM payment_transactions WHERE transaction_source='CASHIER' AND status='completed'"
             ).fetchone()[0]
@@ -718,7 +718,7 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code == "device_key_hint_not_unique" else 404, code)
         new_key = secrets.token_urlsafe(32)
         digest = hashlib.sha256(new_key.encode("utf-8")).hexdigest()
-        new_hint = new_key[-10:]
+        new_hint = digest[:12]
         with db.connect() as c:
             row = c.execute(
                 "SELECT display_name,device_type,status FROM device_registry WHERE device_id=? AND deleted_at IS NULL",
@@ -729,7 +729,7 @@ def build_router(db, app_settings=None):
             c.execute(
                 """UPDATE device_registry SET auth_key_hash=?,auth_key_hint=?,updated_at=CURRENT_TIMESTAMP
                    WHERE device_id=?""",
-                (digest, new_hint, device_id),
+                (digest, new_key[-6:], device_id),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
@@ -855,7 +855,7 @@ def build_router(db, app_settings=None):
                    (device_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
                    VALUES(?, ?, NULL, ?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,device_type,display_name,digest,key[-10:]),
+                (device_id,device_type,display_name,digest,key[-6:]),
             )
             # A registered Vending device must immediately appear in the inventory
             # selector. The machine identifier is a separate internal machine key;
