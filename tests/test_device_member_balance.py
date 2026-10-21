@@ -46,7 +46,7 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
         try:
             response = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "cash-secret"},
             )
             assert response.status_code == 200
@@ -58,7 +58,7 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
             }
             duplicate = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "cash-secret"},
             )
             assert duplicate.status_code == 429
@@ -75,12 +75,12 @@ def test_device_member_balance_requires_valid_device_authentication():
         try:
             response = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"card_uid": "04A1B2C3"},
             )
             assert response.status_code == 401
             bad_key = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "wrong-key"},
             )
             assert bad_key.status_code == 403
@@ -95,7 +95,7 @@ def test_device_member_balance_rejects_unknown_or_revoked_cards():
             headers = {"X-M-Group-Device-Key": "cash-secret"}
             unknown = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "NO-SUCH-CARD"},
+                json={"card_uid": "NO-SUCH-CARD"},
                 headers=headers,
             )
             assert unknown.status_code == 404
@@ -104,7 +104,7 @@ def test_device_member_balance_rejects_unknown_or_revoked_cards():
                 c.commit()
             revoked = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"card_uid": "04A1B2C3"},
                 headers=headers,
             )
             assert revoked.status_code == 404
@@ -138,16 +138,16 @@ def test_device_provisioning_validates_type_and_returns_one_time_key():
         try:
             headers = login_admin(client)
             invalid = client.post(
-                "/api/v1/devices/vending-02/provision",
-                json={"device_type": "unknown-device"},
+                "/api/v1/devices/provision",
+                json={"device_type": "unknown-device", "display_name": "Vending 02"},
                 headers=headers,
             )
             assert invalid.status_code == 400
             assert invalid.json()["detail"] == "invalid_device_type"
 
             created = client.post(
-                "/api/v1/devices/vending-02/provision",
-                json={"device_type": "esp32-vending"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-vending", "display_name": "Vending 02"},
                 headers=headers,
             )
             assert created.status_code == 200
@@ -155,7 +155,8 @@ def test_device_provisioning_validates_type_and_returns_one_time_key():
             assert len(key) >= 32
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT auth_key_hash,auth_key_hint FROM device_registry WHERE device_id='vending-02'"
+                    "SELECT auth_key_hash,auth_key_hint FROM device_registry WHERE auth_key_hash=?",
+                    (hashlib.sha256(key.encode()).hexdigest(),),
                 ).fetchone()
                 assert row["auth_key_hash"] != key
                 assert row["auth_key_hint"] == key[-6:]
