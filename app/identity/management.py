@@ -79,6 +79,12 @@ class MemberManagementService:
                     """,
                     (member_id, name, "active", nik, address, birth_place, birth_date, sex, rt, rw, village, district, city_regency, province, religion, marital_status, occupation, citizenship, phone, email, registration_date),
                 )
+                # Every new Nasabah receives one active savings account so the
+                # finance UI and device payment flows share the same canonical identity.
+                c.execute(
+                    "INSERT INTO financial_accounts(account_id,member_id,account_type,status) VALUES(?,?,?,?)",
+                    ("acct-" + uuid4().hex, member_id, "savings", "active"),
+                )
                 c.commit()
             except Exception as exc:
                 c.rollback()
