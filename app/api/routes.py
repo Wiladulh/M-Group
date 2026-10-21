@@ -771,9 +771,9 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             c.execute(
                 """INSERT INTO device_registry
-                   (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
+                   (device_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                   VALUES(?, ?, NULL, ?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
                 (device_id,device_type,display_name,digest,key[-6:]),
             )
             # A registered Vending device must immediately appear in the inventory
