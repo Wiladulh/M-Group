@@ -365,9 +365,9 @@ $('paymentForm').onsubmit=async e=>{
 };
 let vendingCatalog=[];
 function renderVendingCatalog(){
-  $('products').innerHTML='<table><thead><tr><th>Slot</th><th>Image</th><th>Nama Produk</th><th>Harga (Rp)</th><th>Stok</th><th>Promo NFC</th><th>Promo QRIS</th><th>Status</th></tr></thead><tbody>'+vendingCatalog.map(x=>{
+  $('products').innerHTML='<table><thead><tr><th>Slot</th><th>Image</th><th>Nama Produk</th><th>Harga (Rp)</th><th>Stok</th><th>Kapasitas</th><th>Promo NFC</th><th>Promo QRIS</th><th>Status</th></tr></thead><tbody>'+vendingCatalog.map(x=>{
     const pid=esc(x.product_id),name=esc(x.name||''),image=x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+name+'" style="display:block;width:64px;height:64px;object-fit:contain;margin-bottom:6px">':'<div class="hint" style="margin-bottom:6px">Belum ada gambar</div>';
-    return '<tr data-product-row="'+pid+'"><td>'+pid+'</td><td>'+image+'<input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="'+pid+'" style="display:none"><button type="button" data-upload-image="'+pid+'">Upload gambar</button><div class="hint" data-image-status="'+pid+'">Maks. 2 MB</div></td><td><input data-product-field="name" data-product-id="'+pid+'" value="'+name+'" maxlength="120" placeholder="Nama produk" style="min-width:130px"></td><td><input data-product-field="price" data-product-id="'+pid+'" type="number" min="1" step="1" value="'+(x.price??'')+'" style="width:110px"></td><td><input data-product-field="stock" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.stock??0)+'" style="width:80px"></td><td><input value="0%" aria-label="Promo NFC belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><input value="0%" aria-label="Promo QRIS belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><span data-product-save-status="'+pid+'">'+(x.enabled?'Aktif':'Nonaktif')+'</span><br><button type="button" data-save-product="'+pid+'">Simpan</button></td></tr>';
+    return '<tr data-product-row="'+pid+'"><td>'+pid+'</td><td>'+image+'<input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="'+pid+'" style="display:none"><button type="button" data-upload-image="'+pid+'">Upload gambar</button><div class="hint" data-image-status="'+pid+'">Maks. 2 MB</div></td><td><input data-product-field="name" data-product-id="'+pid+'" value="'+name+'" maxlength="120" placeholder="Nama produk" style="min-width:130px"></td><td><input data-product-field="price" data-product-id="'+pid+'" type="number" min="1" step="1" value="'+(x.price??'')+'" style="width:110px"></td><td><input data-product-field="stock" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.stock??0)+'" style="width:80px"></td><td><input data-product-field="capacity" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.capacity??0)+'" style="width:90px"></td><td><input value="0%" aria-label="Promo NFC belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><input value="0%" aria-label="Promo QRIS belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><span data-product-save-status="'+pid+'">'+(x.enabled?'Aktif':'Nonaktif')+'</span><br><button type="button" data-save-product="'+pid+'">Simpan</button></td></tr>';
   }).join('')+'</tbody></table><p class="hint">Nama, harga, dan stok dapat diedit langsung pada baris produk. Promo NFC dan QRIS ditampilkan 0% dan belum diterapkan.</p>';
 }
 async function loadVendingCatalog(machineId){
@@ -438,12 +438,14 @@ async function saveInlineVendingProduct(pid){
   const name=row.querySelector('[data-product-field="name"]').value.trim();
   const price=Number(row.querySelector('[data-product-field="price"]').value);
   const stock=Number(row.querySelector('[data-product-field="stock"]').value);
+  const capacity=Number(row.querySelector('[data-product-field="capacity"]').value);
   if(!name){status.textContent='Nama wajib diisi';return}
   if(!Number.isSafeInteger(price)||price<=0){status.textContent='Harga tidak valid';return}
   if(!Number.isSafeInteger(stock)||stock<0){status.textContent='Stok tidak valid';return}
-  if(stock>Number(current?.capacity??0)){status.textContent='Stok melebihi kapasitas';return}
+  if(!Number.isSafeInteger(capacity)||capacity<0){status.textContent='Kapasitas tidak valid';return}
+  if(stock>capacity){status.textContent='Stok melebihi kapasitas';return}
   status.textContent='Menyimpan…';
-  const q={product_id:pid,name,price,stock,enabled:current?!!current.enabled:true,capacity:Number(current?.capacity??Math.max(stock,0))};
+  const q={product_id:pid,name,price,stock,enabled:current?!!current.enabled:true,capacity};
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
   if(!r.ok){status.textContent=d.detail||'Gagal menyimpan';return}
   status.textContent='Tersimpan';
