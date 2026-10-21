@@ -16,6 +16,12 @@ def test_dashboard_provisioning_key_activates_firmware_heartbeat_for_both_device
                 assert provision.status_code == 200
                 key = provision.json()["device_key"]
                 assert key and len(key) >= 32
+                mac = "AA:BB:CC:00:10:01" if device_type == "esp32-cashier" else "AA:BB:CC:00:48:01"
+                registration = client.post("/api/v1/devices/register", json={
+                    "device_type": device_type, "mac_address": mac, "device_key": key
+                })
+                assert registration.status_code == 200, registration.text
+                assert "device_id" not in registration.json()
                 assert client.post("/api/v1/devices/heartbeat", json={"device_type": device_type}).status_code == 401
                 heartbeat = client.post("/api/v1/devices/heartbeat", json={"device_type": device_type, "status": "active"}, headers={"X-M-Group-Device-Key": key})
                 assert heartbeat.status_code == 200
