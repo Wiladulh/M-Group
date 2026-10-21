@@ -154,6 +154,13 @@ class Database:
                     )
                     continue
 
+                if path.name == "021_remove_device_hardware_id.sql":
+                    c.execute("DROP INDEX IF EXISTS ux_device_hardware_id")
+                    device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
+                    if "hardware_id" in device_columns:
+                        c.execute("ALTER TABLE device_registry DROP COLUMN hardware_id")
+                    continue
+
                 if path.name == "017_member_ktp.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(identity_members)")}
                     additions = {
@@ -173,7 +180,6 @@ class Database:
                 if path.name == "016_hardware_registry.sql":
                     device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
                     additions = {
-                        "hardware_id": "TEXT",
                         "mac_address": "TEXT",
                         "display_name": "TEXT",
                         "created_at": "TEXT",
@@ -182,10 +188,6 @@ class Database:
                     for name, definition in additions.items():
                         if name not in device_columns:
                             c.execute(f"ALTER TABLE device_registry ADD COLUMN {name} {definition}")
-                    c.execute(
-                        "UPDATE device_registry SET hardware_id=device_id "
-                        "WHERE hardware_id IS NULL OR hardware_id=''"
-                    )
                     c.execute(
                         "UPDATE device_registry SET display_name=device_id "
                         "WHERE display_name IS NULL OR display_name=''"
