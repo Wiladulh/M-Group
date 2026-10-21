@@ -693,6 +693,43 @@ def build_router(db, app_settings=None):
         require_admin(request)
         return {"devices": devices.list(include_deleted)}
 
+    @r.post("/devices/by-key-hint/{key_hint}/rotate-key")
+    def device_rotate_key(request: Request, key_hint: str):
+        require_admin(request)
+        try:
+            device_id = devices.internal_id_by_key_hint(key_hint)
+        except ValueError as exc:
+            code = str(exc)
+            raise HTTPException(409 if code == "device_key_hint_not_unique" else 404, code)
+        new_key = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(new_key.encode("utf-8")).hexdigest()
+        new_hint = new_key[-10:]
+        with db.connect() as c:
+            row = c.execute(
+                "SELECT display_name,device_type,status FROM device_registry WHERE device_id=? AND deleted_at IS NULL",
+                (device_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "device_not_found")
+            c.execute(
+                """UPDATE device_registry SET auth_key_hash=?,auth_key_hint=?,updated_at=CURRENT_TIMESTAMP
+                   WHERE device_id=?""",
+                (digest, new_hint, device_id),
+            )
+            c.execute(
+                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                ("device_key_rotated", "device", device_id, f"location={row['display_name']};status={row['status']}"),
+            )
+            c.commit()
+        return {
+            "device_key": new_key,
+            "device_key_hint": new_hint,
+            "display_name": row["display_name"],
+            "device_type": row["device_type"],
+            "status": row["status"],
+            "key_shown_once": True,
+        }
+
     @r.get("/devices/by-key-hint/{key_hint}")
     def device_get_by_key_hint(request: Request, key_hint: str):
         require_admin(request)
@@ -803,7 +840,7 @@ def build_router(db, app_settings=None):
                    (device_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
                    VALUES(?, ?, NULL, ?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,device_type,display_name,digest,key[-6:]),
+                (device_id,device_type,display_name,digest,key[-10:]),
             )
             # A registered Vending device must immediately appear in the inventory
             # selector. The machine identifier is a separate internal machine key;
