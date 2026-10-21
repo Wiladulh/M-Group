@@ -757,18 +757,7 @@ def build_router(db, app_settings=None):
                 (registered_device_id, "registration", q.model_dump_json(exclude={"device_key"})),
             )
             c.commit()
-        # New firmware receives no device identifier. The legacy response shape is
-        # retained only for old clients that still submit hardware_id.
-        if hardware_id:
-            return {
-                "device_id": registered_device_id,
-                "hardware_id": hardware_id,
-                "device_type": device_type,
-                "mac_address": mac_address,
-                "display_name": row["display_name"],
-                "status": "active",
-                "registered": True,
-            }
+        # Device identifiers and MAC-derived hardware IDs are internal-only.
         return {
             "device_type": device_type,
             "display_name": row["display_name"],
