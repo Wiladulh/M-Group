@@ -149,6 +149,27 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
             assert updated.json()["display_name"] == "Cashier Lobby"
             assert "device_id" not in updated.json()
 
+            rotated = client.post(
+                f"/api/v1/devices/by-key-hint/{hint}/rotate-key",
+                headers=admin,
+            )
+            assert rotated.status_code == 200, rotated.text
+            new_key = rotated.json()["device_key"]
+            new_hint = rotated.json()["device_key_hint"]
+            assert new_key and new_hint != hint
+            assert "device_id" not in rotated.json()
+            assert client.post(
+                "/api/v1/devices/heartbeat",
+                headers={"X-M-Group-Device-Key": key},
+                json={"device_type": "esp32-cashier", "status": "active"},
+            ).status_code == 403
+            assert client.post(
+                "/api/v1/devices/heartbeat",
+                headers={"X-M-Group-Device-Key": new_key},
+                json={"device_type": "esp32-cashier", "status": "active"},
+            ).status_code == 200
+            assert client.get(f"/api/v1/devices/by-key-hint/{hint}", headers=admin).status_code == 404
+
             dashboard = client.get("/api/v1/dashboard", headers=admin)
             assert dashboard.status_code == 200, dashboard.text
             for item in dashboard.json()["devices"] + dashboard.json()["payments"] + dashboard.json()["machines"]:
