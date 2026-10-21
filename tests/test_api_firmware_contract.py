@@ -18,13 +18,14 @@ def configured_client(directory):
     return old, client
 
 
-def provision(client, device_id, device_type):
+def provision(client, location, device_type):
     response = client.post(
-        f"/api/v1/devices/{device_id}/provision",
-        json={"device_type": device_type},
+        "/api/v1/devices/provision",
+        json={"device_type": device_type, "display_name": location},
         headers=ADMIN,
     )
     assert response.status_code == 200, response.text
+    assert "device_id" not in response.json()
     return response.json()["device_key"]
 
 
@@ -76,11 +77,22 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
                 c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
-                c.execute("INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES('machine-front','Front Machine','active','vm-01')")
+                c.execute("INSERT INTO vending_machines(machine_id,name,status) VALUES('vm-01','Front Machine','active')")
                 c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel) VALUES('water','machine-front','Water',5000,1,1,1,1,1)")
                 c.commit()
 
-            key = provision(client, "vm-01", "esp32-s3-vending")
+            key = provision(client, "Vending front", "esp32-s3-vending")
+            key_hash = __import__("hashlib").sha256(key.encode()).hexdigest()
+            with client.app.state.db.connect() as c:
+                internal_device = c.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?", (key_hash,)
+                ).fetchone()
+                assert internal_device is not None
+                c.execute(
+                    "UPDATE vending_machines SET device_id=? WHERE machine_id='vm-01'",
+                    (internal_device["device_id"],),
+                )
+                c.commit()
             headers = {"X-M-Group-Device-Key": key}
 
             products = client.get("/api/v1/vending/vm-01/products", headers=headers)
