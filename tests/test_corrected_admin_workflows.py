@@ -58,7 +58,6 @@ def test_generated_device_key_registration_keeps_internal_reference_private():
                 "/api/v1/devices/register",
                 json={
                     "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier_aabbccddeeff",
                     "mac_address": "AA:BB:CC:DD:EE:FF",
                     "device_key": key,
                 },
@@ -72,7 +71,7 @@ def test_generated_device_key_registration_keeps_internal_reference_private():
                     "SELECT device_id,hardware_id,status FROM device_registry"
                 ).fetchone()
                 assert row["device_id"] == provisioned_id
-                assert row["hardware_id"] == "cashier_aabbccddeeff"
+                assert row["hardware_id"] is None
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
         finally:
