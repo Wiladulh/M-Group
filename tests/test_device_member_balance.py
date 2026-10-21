@@ -122,6 +122,13 @@ def test_member_registration_generates_sequential_demo_format_id():
             )
             assert response.status_code == 200
             assert response.json()["member_id"] == "ID-A002"
+            with client.app.state.db.connect() as c:
+                account = c.execute(
+                    "SELECT member_id,account_type,status FROM financial_accounts WHERE member_id='ID-A002'"
+                ).fetchone()
+                assert account is not None
+                assert account["account_type"] == "savings"
+                assert account["status"] == "active"
         finally:
             main.get_settings = old
 
