@@ -69,6 +69,36 @@ def test_auto_provision_requires_device_location():
             main.get_settings=old
 
 
+
+def test_vending_provision_creates_inventory_machine_with_location():
+    with TemporaryDirectory() as d:
+        old=main.get_settings
+        main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
+        try:
+            client=TestClient(main.create_app())
+            admin=login_admin(client)
+            provision=client.post(
+                "/api/v1/devices/provision",
+                json={"device_type":"esp32-s3-vending","display_name":"Vending Lantai 1"},
+                headers=admin,
+            )
+            assert provision.status_code == 200, provision.text
+            with client.app.state.db.connect() as c:
+                machine=c.execute(
+                    "SELECT machine_id,name,location,device_id,status FROM vending_machines WHERE device_id=?",
+                    (provision.json()["device_id"],),
+                ).fetchone()
+                assert machine is not None
+                assert machine["name"] == "Vending Lantai 1"
+                assert machine["location"] == "Vending Lantai 1"
+                assert machine["status"] == "active"
+            listed=client.get("/api/v1/vending",headers=admin)
+            assert listed.status_code == 200
+            assert any(x["location"] == "Vending Lantai 1" for x in listed.json()["machines"])
+        finally:
+            main.get_settings=old
+
+
 def test_vending_requires_device_key():
     with TemporaryDirectory() as d:
         old=main.get_settings
