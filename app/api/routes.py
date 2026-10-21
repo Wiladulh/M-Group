@@ -1373,6 +1373,20 @@ def build_router(db, app_settings=None):
         if not row: raise HTTPException(404,"registration_session_not_found")
         return dict(row)
 
+    @r.get("/cashier/self/nfc-registration")
+    def cashier_nfc_registration_self(x_m_group_device_key: str | None = Header(default=None)):
+        device = resolve_device_key(x_m_group_device_key)
+        if device["device_type"] not in {"esp32-cashier", "cashier"}:
+            raise HTTPException(403, "device_type_not_allowed")
+        return cashier_nfc_registration(device["device_id"], x_m_group_device_key)
+
+    @r.post("/cashier/self/nfc-registration/complete")
+    def cashier_nfc_registration_complete_self(q: NfcRegistrationCompleteRequest, x_m_group_device_key: str | None = Header(default=None)):
+        device = resolve_device_key(x_m_group_device_key)
+        if device["device_type"] not in {"esp32-cashier", "cashier"}:
+            raise HTTPException(403, "device_type_not_allowed")
+        return cashier_nfc_registration_complete(device["device_id"], q, x_m_group_device_key)
+
     @r.get("/cashier/{device_id}/nfc-registration")
     def cashier_nfc_registration(device_id,x_m_group_device_key: str | None = Header(default=None)):
         require_device(device_id,x_m_group_device_key)
