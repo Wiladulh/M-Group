@@ -130,7 +130,6 @@ class DeviceHeartbeatRequest(BaseModel):
 
 class DeviceRegisterRequest(BaseModel):
     device_type: str
-    hardware_id: str | None = None
     mac_address: str
     device_key: str
 
@@ -689,13 +688,12 @@ def build_router(db, app_settings=None):
 
     @r.post("/devices/register")
     def device_register(q: DeviceRegisterRequest):
-        """Bind a provisioned key to a device; hardware_id is legacy-only and never authenticates."""
+        """Bind a provisioned Device Key to the physical device without a public ID."""
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
         mac_address = q.mac_address.strip().upper()
         device_key = q.device_key.strip()
-        hardware_id = (q.hardware_id or "").strip().lower()
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400, "invalid_device_type")
         if not mac_address:
@@ -704,18 +702,11 @@ def build_router(db, app_settings=None):
             raise HTTPException(400, "device_key_required")
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", mac_address):
             raise HTTPException(400, "invalid_mac_address")
-        # Compatibility validation for older firmware only. The server no longer
-        # derives or requires a public Device ID from the MAC address.
-        if hardware_id:
-            mac_hex = mac_address.replace(":", "").lower()
-            prefix = "cashier" if device_type == "esp32-cashier" else "vending"
-            if hardware_id != f"{prefix}_{mac_hex}":
-                raise HTTPException(400, "hardware_id_mac_mismatch")
 
         digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             row = c.execute(
-                """SELECT device_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                """SELECT device_id,device_type,mac_address,display_name,status,auth_key_hash
                    FROM device_registry WHERE auth_key_hash=? ORDER BY created_at DESC LIMIT 1""",
                 (digest,),
             ).fetchone()
@@ -736,28 +727,18 @@ def build_router(db, app_settings=None):
             ).fetchone()
             if mac_collision:
                 raise HTTPException(409, "device_mac_already_registered")
-            if hardware_id:
-                id_collision = c.execute(
-                    "SELECT device_id FROM device_registry WHERE hardware_id=? AND device_id<>?",
-                    (hardware_id, row["device_id"]),
-                ).fetchone()
-                if id_collision:
-                    raise HTTPException(409, "legacy_hardware_identity_already_registered")
             c.execute(
                 """UPDATE device_registry
-                   SET hardware_id=CASE WHEN ?<>'' THEN ? ELSE hardware_id END,
-                       device_type=?,mac_address=?,
+                   SET device_type=?,mac_address=?,
                        status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                    WHERE device_id=?""",
-                (hardware_id, hardware_id, device_type, mac_address, row["device_id"]),
+                (device_type, mac_address, row["device_id"]),
             )
-            registered_device_id = row["device_id"]
             c.execute(
                 "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                (registered_device_id, "registration", q.model_dump_json(exclude={"device_key"})),
+                (row["device_id"], "registration", q.model_dump_json(exclude={"device_key"})),
             )
             c.commit()
-        # Device identifiers and MAC-derived hardware IDs are internal-only.
         return {
             "device_type": device_type,
             "display_name": row["display_name"],
