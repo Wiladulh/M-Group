@@ -70,7 +70,7 @@ Libraries: LiquidCrystal_I2C, Keypad, Adafruit PN532, MFRC522.
 
 ## Server configuration
 
-Set Wi-Fi/server defaults and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino` only for development fallback; production configuration should be entered through the mini WebUI. Device ID is generated at runtime.
+Set Wi-Fi/server defaults and `M_GROUP_DEVICE_KEY` in `esp32/cashier/MGroupCashier.ino` only for development fallback; production configuration should be entered through the mini WebUI. Device identity is resolved from the provisioned Device Key; no Device ID is configured.
 
 - `M_GROUP_BASE_URL` must be the M-Group server's reachable LAN address, for example `http://192.168.1.10:8011`; replace the example IP and do not add a trailing slash.
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
