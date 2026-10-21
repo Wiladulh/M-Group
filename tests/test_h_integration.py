@@ -160,7 +160,7 @@ def test_h_full_integration_one_by_one():
                 ).fetchone()
                 assert vending_internal is not None
                 c.execute(
-                    "INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES(?,?,?,?)",
+                    "UPDATE vending_machines SET machine_id=?,name=?,status=? WHERE device_id=?",
                     ("machine-h", "H Vending", "active", vending_internal["device_id"]),
                 )
                 c.execute(
