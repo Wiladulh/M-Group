@@ -88,10 +88,8 @@ String postJson(const String& path,const String& body,int& code){
 
 bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
-  String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
-  compact.toLowerCase();
-  DEVICE_ID="Cashier_"+compact;
-  String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  String mac=WiFi.macAddress();
+  String body="{\\"device_type\\":\\"esp32-cashier\\",\\"mac_address\\":\\""+mac+"\\",\\"device_key\\":\\""+M_GROUP_DEVICE_KEY+"\\"}";
   int code=0; String reply=postJson("/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
   deviceRegistered=code>=200&&code<300;
@@ -102,9 +100,9 @@ void heartbeat(){
   if(!deviceRegistered){Serial.println("HEARTBEAT skipped: device not registered");return;}
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
-  String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
+  String body="{\\"device_type\\":\\"esp32-cashier\\",\\"status\\":\\"active\\"}";
   String reply=postJson("/api/v1/devices/heartbeat",body,code);
-  Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
+  Serial.printf("HEARTBEAT %d %s\\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
 }
 
