@@ -38,14 +38,14 @@ def test_cashier_device_registration_and_heartbeat_gate():
             assert data["device_type"] == "esp32-cashier"
 
             invalid_key = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": "invalid-key"},
             )
             assert invalid_key.status_code == 403
 
             heartbeat = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": device_key},
             )
