@@ -29,7 +29,7 @@ def test_cashier_device_registration_and_heartbeat_gate():
             assert provision.status_code == 200
             data = provision.json()
             device_key = data["device_key"]
-            assert data["device_id"] == "cashier-01"
+            assert "device_id" not in data
             assert data["device_type"] == "esp32-cashier"
 
             invalid_key = client.post(
