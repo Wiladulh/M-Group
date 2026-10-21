@@ -11,42 +11,45 @@ def test_device_authentication_and_provisioning():
         main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
         try:
             client=TestClient(main.create_app())
-            p=client.post("/api/v1/devices/cashier-01/provision",
-                          json={"device_type":"esp32-cashier","display_name":"Cashier Utama"},
-                          headers=login_admin(client))
-            assert p.status_code==200
-            key=p.json()["device_key"]
-            denied=client.post("/api/v1/devices/cashier-01/heartbeat",
-                               json={"device_type":"esp32-cashier"})
+            admin=login_admin(client)
+            provision=client.post(
+                "/api/v1/devices/provision",
+                json={"device_type":"esp32-cashier","display_name":"Cashier Utama"},
+                headers=admin,
+            )
+            assert provision.status_code==200, provision.text
+            key=provision.json()["device_key"]
+            denied=client.post("/api/v1/devices/heartbeat",json={"device_type":"esp32-cashier"})
             assert denied.status_code==401
-            ok=client.post("/api/v1/devices/cashier-01/heartbeat",
-                           json={"device_type":"esp32-cashier"},
+            ok=client.post("/api/v1/devices/heartbeat",
+                           json={"device_type":"esp32-cashier","status":"active"},
                            headers={"X-M-Group-Device-Key":key})
             assert ok.status_code==200
             assert ok.json()["status"] == "active"
 
-            # A device heartbeat must not be able to change its own registry status.
             status_change=client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type":"esp32-cashier","status":"disabled"},
                 headers={"X-M-Group-Device-Key":key},
             )
             assert status_change.status_code == 400
             type_change=client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
-                json={"device_type":"esp32-s3-vending"},
+                "/api/v1/devices/heartbeat",
+                json={"device_type":"esp32-s3-vending","status":"active"},
                 headers={"X-M-Group-Device-Key":key},
             )
             assert type_change.status_code == 409
+            key_hash=hashlib.sha256(key.encode()).hexdigest()
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT status,device_type FROM device_registry WHERE device_id='cashier-01'"
+                    "SELECT status,device_type FROM device_registry WHERE auth_key_hash=?",
+                    (key_hash,),
                 ).fetchone()
                 assert row["status"] == "active"
                 assert row["device_type"] == "esp32-cashier"
 
-            bad=client.post("/api/v1/devices/cashier-01/heartbeat",
-                            json={"device_type":"esp32-cashier"},
+            bad=client.post("/api/v1/devices/heartbeat",
+                            json={"device_type":"esp32-cashier","status":"active"},
                             headers={"X-M-Group-Device-Key":"wrong"})
             assert bad.status_code==403
         finally:
