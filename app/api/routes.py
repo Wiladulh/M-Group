@@ -493,13 +493,13 @@ def build_router(db, app_settings=None):
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
                    FROM financial_accounts a JOIN identity_members m ON m.member_id=a.member_id ORDER BY a.created_at DESC""").fetchall()
-            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,final_amount,status,method,provider,device_id,transaction_source,created_at
+            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,final_amount,status,method,provider,device_id AS device_ref,transaction_source,created_at
                    FROM payment_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
                    FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
-            machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
+            machines=c.execute("SELECT machine_id,name,status,location,device_id AS device_ref,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
             products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
                    FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
             devices=c.execute("SELECT device_id AS device_ref,device_type,display_name,status,last_seen FROM device_registry ORDER BY display_name,device_id").fetchall()
@@ -1602,17 +1602,17 @@ def build_router(db, app_settings=None):
             start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
         queries=[]
         if source in {"ALL","CASHIER"}:
-            queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id,member_id,account_id,
+            queries.append("""SELECT transaction_id,created_at,'CASHIER' source,device_id AS device_ref,member_id,account_id,
                               'DEPOSIT' transaction_type,amount,status,'NFC' payment_method,'local' payment_provider
                               FROM cashier_deposits""")
-            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id,a.member_id,p.account_id,
+            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.device_id AS device_ref,a.member_id,p.account_id,
                               'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status,
                               COALESCE(p.method,'NFC') payment_method,COALESCE(p.provider,'local') payment_provider
                               FROM payment_transactions p
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
                               WHERE p.transaction_source='CASHIER'""")
         if source in {"ALL","VENDING"}:
-            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id,a.member_id,
+            queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.device_id AS device_ref,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
                               COALESCE(v.payment_method,'NFC') payment_method,COALESCE(v.payment_provider,'local') payment_provider
                               FROM vending_transactions v
