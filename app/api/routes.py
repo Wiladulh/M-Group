@@ -823,7 +823,7 @@ def build_router(db, app_settings=None):
                 ("device","provisioned",device_id,f"type={device_type};location={display_name}"),
             )
             c.commit()
-        return {"device_id":device_id,"display_name":display_name,
+        return {"display_name":display_name,
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
