@@ -33,7 +33,6 @@ class PaymentRequest(BaseModel):
     method: str = "NFC"
     provider: str = "local"
     idempotency_key: str | None = None
-    device_id: str | None = None
     pin: str | None = None
     original_amount: int | None = None
     discount_amount: int = 0
@@ -146,13 +145,11 @@ class VendingRegisterRequest(BaseModel):
     machine_id: str
     name: str
     location: str = ""
-    device_id: str | None = None
     status: str = "active"
 
 class VendingUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
-    device_id: str | None = None
     status: str | None = None
 
 class VendingProductRequest(BaseModel):
@@ -193,7 +190,6 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str | None = None
     card_uid: str
 
 class OperatorPinRequest(BaseModel):
@@ -901,8 +897,6 @@ def build_router(db, app_settings=None):
         """Read-only balance lookup for authenticated Cashier/Vending devices."""
         authenticated_device = resolve_device_key(x_m_group_device_key)
         device_id = authenticated_device["device_id"]
-        if q.device_id and q.device_id != device_id:
-            raise HTTPException(403, "device_identity_mismatch")
         card_uid = q.card_uid.strip()
         if not card_uid:
             raise HTTPException(400, "card_uid_required")
@@ -1023,7 +1017,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
-        try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.register(q.machine_id,q.name,q.location,None,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
@@ -1472,22 +1466,11 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
-        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_m_group_device_id
-        if not device_id:
-            if not x_m_group_device_key:
-                raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
-            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
-            if not matches:
-                raise HTTPException(403, "invalid_device_key")
-            if matches[0]["status"] != "active":
-                raise HTTPException(403, "device_not_active")
-            device_id = matches[0]["device_id"]
-        require_device(device_id,x_m_group_device_key)
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
+        authenticated_device = resolve_device_key(x_m_group_device_key)
+        device_id = authenticated_device["device_id"]
+        if authenticated_device["device_type"] not in {"esp32-cashier", "cashier"}:
+            raise HTTPException(403, "device_type_not_allowed")
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1567,25 +1550,18 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             code = str(e)
             raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
-        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
-            if q.device_id:
-                require_device(q.device_id,x_m_group_device_key)
-                device_id = q.device_id
-            else:
-                authenticated_device = resolve_device_key(x_m_group_device_key)
-                device_id = authenticated_device["device_id"]
-                q.device_id = device_id
-            with db.connect() as c:
-                device_row = c.execute("SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)).fetchone()
-            if not device_row or device_row["device_type"] not in {"esp32-cashier", "cashier"}:
+            authenticated_device = resolve_device_key(x_m_group_device_key)
+            device_id = authenticated_device["device_id"]
+            if authenticated_device["device_type"] not in {"esp32-cashier", "cashier"}:
                 raise HTTPException(403, "device_type_not_allowed")
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
-            result=payments.pay(**q.model_dump())
+            result=payments.pay(**q.model_dump(), device_id=device_id)
             with db.connect() as c:
                 c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
                 c.commit()
