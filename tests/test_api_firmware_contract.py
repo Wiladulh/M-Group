@@ -77,32 +77,45 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
                 c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
-                c.execute("INSERT INTO vending_machines(machine_id,name,status) VALUES('vm-01','Front Machine','active')")
-                c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel) VALUES('water','machine-front','Water',5000,1,1,1,1,1)")
+                c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
+                c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
+                c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
+                c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
                 c.commit()
 
             key = provision(client, "Vending front", "esp32-s3-vending")
             key_hash = __import__("hashlib").sha256(key.encode()).hexdigest()
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-s3-vending", "mac_address": "AA:BB:CC:00:48:44", "device_key": key},
+            )
+            assert registration.status_code == 200, registration.text
             with client.app.state.db.connect() as c:
                 internal_device = c.execute(
                     "SELECT device_id FROM device_registry WHERE auth_key_hash=?", (key_hash,)
                 ).fetchone()
                 assert internal_device is not None
-                c.execute(
-                    "UPDATE vending_machines SET device_id=? WHERE machine_id='vm-01'",
+                machine = c.execute(
+                    "SELECT machine_id FROM vending_machines WHERE device_id=?",
                     (internal_device["device_id"],),
+                ).fetchone()
+                assert machine is not None
+                machine_id = machine["machine_id"]
+                c.execute(
+                    "INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel) VALUES('water',?,'Water',5000,1,1,1,1,1)",
+                    (machine_id,),
                 )
                 c.commit()
             headers = {"X-M-Group-Device-Key": key}
 
-            products = client.get("/api/v1/vending/vm-01/products", headers=headers)
+            products = client.get(f"/api/v1/vending/{machine_id}/products", headers=headers)
             assert products.status_code == 200, products.text
-            assert products.json()["machine"]["machine_id"] == "machine-front"
+            assert products.json()["machine"]["machine_id"] == machine_id
             assert products.json()["products"][0]["product_id"] == "1"
 
             begun = client.post(
-                "/api/v1/vending/vm-01/transactions",
-                json={"product_id": "1", "credential_id": "nfc-a1b2", "idempotency_key": "vm-01:contract-1"},
+                f"/api/v1/vending/{machine_id}/transactions",
+                json={"product_id": "1", "credential_id": "nfc-a1b2", "idempotency_key": f"{machine_id}:contract-1"},
                 headers=headers,
             )
             assert begun.status_code == 200, begun.text
