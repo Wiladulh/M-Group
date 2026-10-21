@@ -238,6 +238,39 @@ def build_router(db, app_settings=None):
             raise HTTPException(403,"invalid_device_key")
         return True
 
+    def resolve_device_key(device_key: str | None):
+        """Resolve the authenticated device from its secret key, never from a public ID."""
+        if not device_key:
+            raise HTTPException(401, "device_auth_required")
+        digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
+        with db.connect() as c:
+            row = c.execute(
+                """SELECT device_id,device_type,status,auth_key_hash,display_name
+                   FROM device_registry WHERE auth_key_hash=? ORDER BY created_at DESC LIMIT 1""",
+                (digest,),
+            ).fetchone()
+        if not row or not row["auth_key_hash"] or not secrets.compare_digest(digest, row["auth_key_hash"]):
+            raise HTTPException(403, "invalid_device_key")
+        if row["status"] != "active":
+            raise HTTPException(403, "device_not_active")
+        return dict(row)
+
+    def resolve_vending_machine_for_key(device_key: str | None):
+        device = resolve_device_key(device_key)
+        device_type = "esp32-s3-vending" if device["device_type"] == "esp32-vending" else device["device_type"]
+        if device_type not in {"esp32-s3-vending", "vending"}:
+            raise HTTPException(403, "device_type_not_allowed")
+        with db.connect() as c:
+            row = c.execute(
+                "SELECT machine_id FROM vending_machines WHERE device_id=? LIMIT 1",
+                (device["device_id"],),
+            ).fetchone()
+        if not row:
+            raise HTTPException(404, "vending_machine_not_configured")
+        try:
+            return vending.machine(row["machine_id"])
+        except ValueError as e:
+            raise HTTPException(404, str(e))
 
     def resolve_vending_machine(identifier: str):
         """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
