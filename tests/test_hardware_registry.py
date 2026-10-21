@@ -36,7 +36,6 @@ def test_server_key_registers_device_without_exposing_internal_reference():
 
             registration = {
                 "device_type": "esp32-cashier",
-                "hardware_id": "Cashier_aabbccddee01",
                 "mac_address": "AA:BB:CC:DD:EE:01",
                 "device_key": key,
             }
@@ -56,9 +55,9 @@ def test_server_key_registers_device_without_exposing_internal_reference():
             bad = client.post("/api/v1/devices/register", json=wrong_key)
             assert bad.status_code == 403
 
-            wrong_mac_identity = {**registration, "hardware_id": "Cashier_wrong"}
+            wrong_mac_identity = {**registration, "mac_address": "AA:BB:CC:DD:EE:02"}
             mismatch = client.post("/api/v1/devices/register", json=wrong_mac_identity)
-            assert mismatch.status_code == 400
+            assert mismatch.status_code == 409
             malformed_mac = {**registration, "mac_address": "AA:BB:CC:DD:EE:0Z"}
             assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
@@ -72,7 +71,7 @@ def test_server_key_registers_device_without_exposing_internal_reference():
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
             item = next(x for x in listed.json()["devices"] if x["device_id"] == provisioned_id)
-            assert item["hardware_id"] == "cashier_aabbccddee01"
+            assert "hardware_id" not in item
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
         finally:
