@@ -103,3 +103,74 @@ def test_unprovisioned_key_cannot_create_device():
             assert response.json()["detail"] == "device_not_provisioned"
         finally:
             main.get_settings = old
+
+
+
+def test_device_management_and_dashboard_never_expose_internal_device_ids():
+    with TemporaryDirectory() as directory:
+        old = main.get_settings
+        main.get_settings = lambda: type("S", (), {"db_path": Path(directory) / "m-group.db"})()
+        try:
+            client = TestClient(main.create_app())
+            admin = login_admin(client)
+            provision = client.post(
+                "/api/v1/devices/provision",
+                headers=admin,
+                json={"device_type": "esp32-cashier", "display_name": "Cashier Utama"},
+            )
+            assert provision.status_code == 200, provision.text
+            key = provision.json()["device_key"]
+            hint = key[-6:]
+            with client.app.state.db.connect() as conn:
+                internal = conn.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(key.encode()).hexdigest(),),
+                ).fetchone()
+                assert internal is not None
+                internal_id = internal["device_id"]
+
+            listed = client.get("/api/v1/devices", headers=admin)
+            assert listed.status_code == 200, listed.text
+            row = next(item for item in listed.json()["devices"] if item["auth_key_hint"] == hint)
+            assert "device_id" not in row
+            assert "device_ref" not in row
+
+            fetched = client.get(f"/api/v1/devices/by-key-hint/{hint}", headers=admin)
+            assert fetched.status_code == 200, fetched.text
+            assert "device_id" not in fetched.json()
+            assert "device_ref" not in fetched.json()
+
+            updated = client.patch(
+                f"/api/v1/devices/by-key-hint/{hint}",
+                headers=admin,
+                json={"device_type": "esp32-cashier", "status": "active", "display_name": "Cashier Lobby"},
+            )
+            assert updated.status_code == 200, updated.text
+            assert updated.json()["display_name"] == "Cashier Lobby"
+            assert "device_id" not in updated.json()
+
+            dashboard = client.get("/api/v1/dashboard", headers=admin)
+            assert dashboard.status_code == 200, dashboard.text
+            for item in dashboard.json()["devices"] + dashboard.json()["payments"] + dashboard.json()["machines"]:
+                assert "device_id" not in item
+                assert "device_ref" not in item
+
+            assert client.get(f"/api/v1/devices/{internal_id}", headers=admin).status_code == 404
+            assert client.patch(
+                f"/api/v1/devices/{internal_id}",
+                headers=admin,
+                json={"device_type": "esp32-cashier", "status": "active"},
+            ).status_code == 404
+            assert client.delete(f"/api/v1/devices/{internal_id}", headers=admin).status_code == 404
+            assert client.post(
+                f"/api/v1/devices/{internal_id}/provision",
+                headers=admin,
+                json={"device_type": "esp32-cashier", "display_name": "Legacy"},
+            ).status_code == 404
+            assert client.post(
+                f"/api/v1/devices/{internal_id}/heartbeat",
+                headers={"X-M-Group-Device-Key": key},
+                json={"device_type": "esp32-cashier", "status": "active"},
+            ).status_code == 404
+        finally:
+            main.get_settings = old
