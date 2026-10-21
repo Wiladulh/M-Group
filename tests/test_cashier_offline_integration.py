@@ -88,7 +88,7 @@ def test_cashier_firmware_keeps_ambiguous_payment_pending_offline():
     assert 'if(code<=0 || code>=500)' in source
     assert 'lcdShow("HASIL BELUM ADA","Ulangi PIN")' in source
     assert 'savePendingPayment(credential,amount,seq)' in source
-    assert 'String(DEVICE_ID)+":"+seq' in source
+    assert 'DEVICE_NONCE+":"+seq' in source
     assert 'if(pendingPayment)' in source
     assert 'cashierPrefs.putString("pay_seq",seq)' in source
     assert 'cashierPrefs.putString("pay_pin"' not in source
