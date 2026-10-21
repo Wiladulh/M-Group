@@ -5,6 +5,12 @@ class DeviceManagementService:
     def __init__(self, db):
         self.db = db
 
+    @staticmethod
+    def _public_ref(row):
+        item = dict(row)
+        item["device_ref"] = item.pop("device_id")
+        return item
+
     def list(self, include_deleted=False):
         where = "" if include_deleted else "WHERE deleted_at IS NULL"
         with self.db.connect() as c:
@@ -14,7 +20,7 @@ class DeviceManagementService:
                     FROM device_registry {where}
                     ORDER BY device_id"""
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._public_ref(r) for r in rows]
 
     def get(self, device_id):
         with self.db.connect() as c:
@@ -24,7 +30,7 @@ class DeviceManagementService:
                    FROM device_registry WHERE device_id=?""",
                 (device_id,),
             ).fetchone()
-            return dict(row) if row else None
+            return self._public_ref(row) if row else None
 
     def update(self, device_id, device_type=None, status=None, display_name=None):
         current = self.get(device_id)
