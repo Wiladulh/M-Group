@@ -65,6 +65,6 @@ def test_cashier_payment_requires_active_registered_device():
             )
             assert payment.status_code == 200
             assert payment.json()["status"] == "completed"
-            assert payment.json()["device_id"] == "cashier-01"
+            assert "device_id" not in payment.json()
         finally:
             main.get_settings = old
