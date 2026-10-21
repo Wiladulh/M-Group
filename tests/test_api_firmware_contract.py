@@ -77,10 +77,6 @@ def test_vending_firmware_device_id_resolves_distinct_machine_id_end_to_end():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
                 c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
-                c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
-                c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
-                c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
-                c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
                 c.commit()
 
             key = provision(client, "Vending front", "esp32-s3-vending")
