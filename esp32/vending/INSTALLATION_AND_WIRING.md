@@ -107,9 +107,8 @@ Sebelum menguji servo, pastikan sensor tidak melaporkan beam terhalang saat jalu
 5. Atur variabel di bagian atas `MGroupVending.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
    - `M_GROUP_BASE_URL`, misalnya `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di LAN; tanpa slash akhir)
-   - `DEVICE_ID`, ID perangkat vending yang terdaftar
    - `M_GROUP_DEVICE_KEY`, key aktif dari registri perangkat
-6. Provision perangkat bertipe `esp32-s3-vending` di server. Pastikan ID dan key sama dengan firmware. Daftarkan mesin vending di M-Group dengan `device_id` yang menunjuk ke ID perangkat ini; ID mesin vending dapat berbeda dari ID perangkat.
+6. Generate key untuk perangkat bertipe `esp32-s3-vending` dari Dashboard M-Group, lalu masukkan Device Key ke mini WebUI. Saat key dibuat, server otomatis menambahkan unit Vending dengan Device Location yang dipilih ke daftar inventori. Firmware mengakses katalog melalui endpoint key-scoped; tidak perlu Device ID.
 7. Pastikan server dapat dijangkau dari LAN. Bind default `127.0.0.1` hanya menerima koneksi lokal; gunakan bind LAN yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
 8. Flash firmware dan buka Serial Monitor pada **115200 baud**.
 
@@ -119,7 +118,7 @@ Jangan commit SSID, password Wi-Fi, atau device key ke repository publik.
 
 - Tambahkan/atur produk di WebUI/server, termasuk harga, stok, status aktif, dan `servo_channel` 1–5.
 - Cocokkan setiap `servo_channel` dengan tabel GPIO di atas. Jangan gunakan channel di luar 1–5.
-- Firmware mengambil katalog dari `/api/v1/vending/{DEVICE_ID}/products`; server tetap menjadi sumber kebenaran harga, stok, saldo, transaksi, dan refund.
+- Firmware mengambil katalog dari `/api/v1/vending/self/products` menggunakan Device Key; server tetap menjadi sumber kebenaran harga, stok, saldo, transaksi, dan refund.
 - Produk melewati satu corong, sehingga sensor IR harus dipasang di jalur bersama yang dilalui semua produk.
 
 ## 9. Uji awal berurutan
@@ -139,7 +138,7 @@ Jangan commit SSID, password Wi-Fi, atau device key ke repository publik.
 - [ ] Servo diuji tanpa beban sebelum terhubung ke mekanik.
 - [ ] Sensor IR mengonfirmasi blocked-then-clear pada produk sebenarnya.
 - [ ] Setiap produk memakai servo channel yang benar.
-- [ ] Device ID/key cocok dengan registri server dan mesin vending terhubung ke device ID tersebut.
+- [ ] Device Key aktif, unit Vending otomatis muncul di inventori, dan katalog dapat diambil melalui endpoint key-scoped.
 - [ ] Pembelian sukses, kartu tidak dikenal, stok habis, produk tidak jatuh, dan pemulihan jaringan diuji dengan akun uji.
 
 **Status:** CI build memastikan firmware dapat dikompilasi, bukan memastikan pin cocok dengan semua varian ESP32-S3 atau bahwa mekanik/sensor sudah teruji. Tandai hardware PASS hanya setelah tes fisik selesai.

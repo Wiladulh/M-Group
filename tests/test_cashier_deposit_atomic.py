@@ -47,11 +47,13 @@ def test_cashier_deposit_is_atomic_and_idempotency_conflicts_are_rejected():
             }
             first = client.post("/api/v1/cashier/deposits", headers=headers, json=request)
             assert first.status_code == 200, first.text
+            assert "device_id" not in first.json()
             assert first.json()["balance_before"] == 50000
             assert first.json()["balance_after"] == 60000
 
             replay = client.post("/api/v1/cashier/deposits", headers=headers, json=request)
             assert replay.status_code == 200, replay.text
+            assert "device_id" not in replay.json()
             assert replay.json()["transaction_id"] == first.json()["transaction_id"]
             assert replay.json()["financial_transaction_id"] == first.json()["financial_transaction_id"]
 

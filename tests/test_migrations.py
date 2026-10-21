@@ -236,10 +236,11 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
             ).fetchone()
             assert product[:] == (7, 1250)
             device = c.execute(
-                "SELECT device_type,status,last_seen,hardware_id FROM device_registry "
+                "SELECT device_type,status,last_seen FROM device_registry "
                 "WHERE device_id='device-legacy'"
             ).fetchone()
-            assert device[:] == ("cashier", "active", "2025-01-02 03:04:05", "device-legacy")
+            assert device[:] == ("cashier", "active", "2025-01-02 03:04:05")
+            assert "hardware_id" not in {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
 
         # A second upgrade must be idempotent and must not duplicate or drop rows.
         db.migrate()

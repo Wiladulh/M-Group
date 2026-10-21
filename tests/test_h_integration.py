@@ -21,7 +21,7 @@ def test_h_full_integration_one_by_one():
                 headers=admin,
                 json={
                     "name": "H Test Member",
-                    "nik": "3273010101010001",
+                    "nik": "TEST-NIK-001",
                     "birth_place": "Lamongan",
                     "birth_date": "1990-01-01",
                     "sex": "Laki-laki",
@@ -31,19 +31,25 @@ def test_h_full_integration_one_by_one():
             )
             assert member.status_code == 200
             member_id = member.json()["member_id"]
-            assert member.json()["nik"] == "3273010101010001"
+            assert member.json()["nik"] == "TEST-NIK-001"
 
             # H-02 Member -> Cashier
             provision = client.post(
-                "/api/v1/devices/cashier-h/provision",
+                "/api/v1/devices/provision",
                 headers=admin,
-                json={"device_type": "esp32-cashier"},
+                json={"device_type": "esp32-cashier", "display_name": "Cashier H"},
             )
             assert provision.status_code == 200
             cashier_key = provision.json()["device_key"]
+            cashier_registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:91", "device_key": cashier_key},
+            )
+            assert cashier_registration.status_code == 200, cashier_registration.text
+            cashier_hint = __import__("hashlib").sha256(cashier_key.encode()).hexdigest()[:12]
 
             heartbeat = client.post(
-                "/api/v1/devices/cashier-h/heartbeat",
+                "/api/v1/devices/heartbeat",
                 headers={"X-M-Group-Device-Key": cashier_key},
                 json={"device_type": "esp32-cashier", "status": "active"},
             )
@@ -53,7 +59,7 @@ def test_h_full_integration_one_by_one():
             session = client.post(
                 f"/api/v1/members/{member_id}/nfc-registration/start",
                 headers=admin,
-                json={"cashier_device_id": "cashier-h"},
+                json={"cashier_key_hint": cashier_hint},
             )
             assert session.status_code == 200
             session_id = session.json()["session_id"]
@@ -66,29 +72,32 @@ def test_h_full_integration_one_by_one():
             assert pending.json()["status"] == "scan_pending"
 
             cashier_pending = client.get(
-                "/api/v1/cashier/cashier-h/nfc-registration",
+                "/api/v1/cashier/self/nfc-registration",
                 headers={"X-M-Group-Device-Key": cashier_key},
             )
             assert cashier_pending.status_code == 200
             assert cashier_pending.json()["session_id"] == session_id
 
             complete = client.post(
-                "/api/v1/cashier/cashier-h/nfc-registration/complete",
+                "/api/v1/cashier/self/nfc-registration/complete",
                 headers={"X-M-Group-Device-Key": cashier_key},
                 json={"session_id": session_id, "card_uid": "04:A1:B2:C3:D4", "pin": "1234"},
             )
             assert complete.status_code == 200
             credential_id = complete.json()["credential_id"]
 
-            # Create the member's savings account and seed balance.
+            # Member creation now creates a savings account automatically.
+            # Seed that canonical account rather than inserting a duplicate savings account.
             with client.app.state.db.connect() as c:
-                c.execute(
-                    "INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES(?,?,?)",
-                    ("acct-h", member_id, "savings"),
-                )
+                account = c.execute(
+                    "SELECT account_id FROM financial_accounts WHERE member_id=? AND account_type='savings' AND status='active' ORDER BY created_at LIMIT 1",
+                    (member_id,),
+                ).fetchone()
+                assert account is not None
+                account_id = account["account_id"]
                 c.execute(
                     "INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES(?,?,?,?)",
-                    ("acct-h", "credit", 20000, "h-seed"),
+                    (account_id, "credit", 20000, "h-seed"),
                 )
                 c.commit()
 
@@ -98,7 +107,7 @@ def test_h_full_integration_one_by_one():
                 headers=admin,
                 json={
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "amount": 5000,
                     "method": "NFC",
                     "provider": "local",
@@ -110,7 +119,7 @@ def test_h_full_integration_one_by_one():
             assert payment.json()["final_amount"] == 5000
 
             # H-05 Ledger/saldo
-            balance = client.get("/api/v1/accounts/acct-h/balance", headers=admin)
+            balance = client.get(f"/api/v1/accounts/{account_id}/balance", headers=admin)
             assert balance.status_code == 200
             assert balance.json()["balance"] == 15000
 
@@ -119,9 +128,8 @@ def test_h_full_integration_one_by_one():
                 "/api/v1/cashier/payments",
                 headers={"X-M-Group-Device-Key": cashier_key},
                 json={
-                    "device_id": "cashier-h",
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "amount": 2000,
                     "method": "NFC",
                     "provider": "local",
@@ -130,21 +138,30 @@ def test_h_full_integration_one_by_one():
                 },
             )
             assert cashier_payment.status_code == 200
-            assert cashier_payment.json()["device_id"] == "cashier-h"
+            assert "device_id" not in cashier_payment.json()
 
             # H-07 Vending
             vending = client.post(
-                "/api/v1/devices/vending-h/provision",
+                "/api/v1/devices/provision",
                 headers=admin,
-                json={"device_type": "esp32-s3-vending"},
+                json={"device_type": "esp32-s3-vending", "display_name": "Vending H"},
             )
             assert vending.status_code == 200
             vending_key = vending.json()["device_key"]
-
+            vending_registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-s3-vending", "mac_address": "AA:BB:CC:00:48:91", "device_key": vending_key},
+            )
+            assert vending_registration.status_code == 200, vending_registration.text
             with client.app.state.db.connect() as c:
+                vending_internal = c.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(vending_key.encode()).hexdigest(),),
+                ).fetchone()
+                assert vending_internal is not None
                 c.execute(
-                    "INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES(?,?,?,?)",
-                    ("machine-h", "H Vending", "active", "vending-h"),
+                    "UPDATE vending_machines SET machine_id=?,name=?,status=? WHERE device_id=?",
+                    ("machine-h", "H Vending", "active", vending_internal["device_id"]),
                 )
                 c.execute(
                     "INSERT INTO vending_products(product_id,machine_id,name,price,stock,slot,capacity,servo_channel) "
@@ -159,7 +176,7 @@ def test_h_full_integration_one_by_one():
                 json={
                     "product_id": "1",
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "idempotency_key": "h-vending-1",
                 },
             )
@@ -184,8 +201,8 @@ def test_h_full_integration_one_by_one():
             # H-08 Devices
             devices = client.get("/api/v1/devices", headers=admin)
             assert devices.status_code == 200
-            ids = {x["device_id"] for x in devices.json()["devices"]}
-            assert {"cashier-h", "vending-h"} <= ids
+            labels = {x["display_name"] for x in devices.json()["devices"]}
+            assert {"Cashier H", "Vending H"} <= labels
 
             # H-09 WebUI
             root = client.get("/")
@@ -203,7 +220,7 @@ def test_h_full_integration_one_by_one():
             client.cookies.clear()
             admin = login_admin(client)
             assert client.get(
-                "/api/v1/cashier/cashier-h/nfc-registration",
+                "/api/v1/cashier/self/nfc-registration",
                 headers={"X-M-Group-Device-Key": "wrong"},
             ).status_code == 403
             assert client.post(
@@ -216,6 +233,6 @@ def test_h_full_integration_one_by_one():
             ).status_code == 401
 
             # Final ledger invariant after all successful debits: 20,000 - 5,000 - 2,000 - 3,000.
-            assert client.get("/api/v1/accounts/acct-h/balance", headers=admin).json()["balance"] == 10000
+            assert client.get(f"/api/v1/accounts/{account_id}/balance", headers=admin).json()["balance"] == 10000
         finally:
             main.get_settings = old

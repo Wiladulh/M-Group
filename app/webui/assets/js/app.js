@@ -24,7 +24,7 @@ function switchTab(tabName) {
 }
 
 let selectedAnalyticsPeriod='1w';
-let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[];
+let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[],deviceDisplayNames={};
 function renderAnalytics(d){
   const rows=d.analytics||[];
   const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
@@ -42,10 +42,11 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
+  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.device_key_hint,x.display_name||x.device_type||'Perangkat']));
   const stats=d.stats||{};
   const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
   $('summary').innerHTML=[
-    ['Anggota',d.members.length],['Rekening',d.accounts.length],['Saldo member',money(totalBalance)],
+    ['Nasabah',d.members.length],['Rekening',d.accounts.length],['Saldo Nasabah',money(totalBalance)],
     ['Pembayaran terbaru',d.payments.length],['Pinjaman',d.loans.length],['Mesin vending',d.machines.length],
     ['Perangkat',d.devices.length],['Cashier masuk hari ini',money(stats.cashier_money_in_today)],
     ['Cashier keluar hari ini',money(stats.cashier_money_out_today)],['Vending masuk hari ini',money(stats.vending_money_in_today)]
@@ -56,14 +57,15 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
   $('recentTransactions').innerHTML=table(recent.map(x=>({
     created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
-    device_id:x.device_id||x.machine_id,account_id:x.account_id,
+    Perangkat:x.device_location||x.machine_name||'Vending',account_id:x.account_id,
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
-  })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
+  })),['created_at','source','transaction_id','Perangkat','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
   dashboardMembers=d.members;
+  dashboardAccounts=d.accounts;
   const memberSelect=$('payMember'),currentMember=memberSelect.value;
   const activeMembers=dashboardMembers.filter(x=>x.status==='active');
-  memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+  memberSelect.innerHTML='<option value="">Pilih Nasabah</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
   if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
   else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
   await loadPaymentMemberData(memberSelect.value);
@@ -72,7 +74,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   dashboardAccounts=d.accounts;
   const accountSelect=$('account'),currentAccount=accountSelect.value;
-  accountSelect.innerHTML='<option value="">Pilih member</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
+  accountSelect.innerHTML='<option value="">Pilih Nasabah</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
   if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
   else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
   await loadFinancialLedger();
@@ -80,7 +82,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
-  $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
+  $('devices').innerHTML=table(d.devices.map(x=>({location:x.display_name||'—',device_type:x.device_type,status:x.status,last_seen:x.last_seen})),['location','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
 async function load(){
@@ -107,9 +109,9 @@ async function loadMembers(){
     const id=$('memberId').value.trim();
     const url=id?'/api/v1/members/'+encodeURIComponent(id):'/api/v1/members';
     const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
-    if(!r.ok)throw new Error(d.detail||'Gagal menyimpan member');
+    if(!r.ok)throw new Error(d.detail||'Gagal menyimpan Nasabah');
     if(!id&&d.member_id)$('memberId').value=d.member_id;
-    $('memberAuthResult').textContent='Member '+(d.member_id||id)+' berhasil disimpan.';
+    $('memberAuthResult').textContent='Nasabah '+(d.member_id||id)+' berhasil disimpan.';
     await loadMemberList();
   }catch(e){$('memberAuthResult').textContent=e.message}
 }
@@ -118,7 +120,7 @@ function renderMemberRows(){
   const search=($('memberSearch')?.value||'').trim().toLowerCase();
   const status=$('memberStatusFilter')?.value||'ALL';
   const rows=memberListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.member_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
+  $('members').innerHTML=rows.length?'<table><thead><tr><th>ID Nasabah</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada Nasabah terdaftar.</p>';
 }
 $('memberSearch').oninput=renderMemberRows;
 $('memberStatusFilter').onchange=renderMemberRows;
@@ -138,7 +140,7 @@ $('members').addEventListener('click',async e=>{
   try{
     if(action==='edit'){
       const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
-      if(!r.ok)throw new Error(d.detail||'Gagal membaca anggota');
+      if(!r.ok)throw new Error(d.detail||'Gagal membaca Nasabah');
       const m=d;$('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
       $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
       $('memberSex').value=m.sex||'';$('memberRt').value=m.rt||'';$('memberRw').value=m.rw||'';$('memberVillage').value=m.village||'';
@@ -146,11 +148,11 @@ $('members').addEventListener('click',async e=>{
       $('memberReligion').value=m.religion||'';$('memberMarital').value=m.marital_status||'';$('memberOccupation').value=m.occupation||'';
       $('memberCitizenship').value=m.citizenship||'WNI';$('memberPhone').value=m.phone||'';$('memberEmail').value=m.email||'';
       $('memberRegistrationDate').value=m.registration_date||'';$('memberStatus').value=m.status||'active';
-      $('memberAuthResult').textContent='Mode edit: '+memberId+'. Simpan perubahan melalui tombol Simpan Member.';
+      $('memberAuthResult').textContent='Mode edit: '+memberId+'. Simpan perubahan melalui tombol Simpan Nasabah.';
       $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='pin'){
       const operator_id=prompt('ID petugas yang melakukan reset PIN:');if(!operator_id)return;
-      if(!confirm('Pastikan identitas anggota sudah diverifikasi sesuai prosedur M-Group. Lanjut reset PIN?'))return;
+      if(!confirm('Pastikan identitas Nasabah sudah diverifikasi sesuai prosedur M-Group. Lanjut reset PIN?'))return;
       const pin=prompt('Masukkan PIN transaksi baru (4–6 digit):');if(!pin)return;
       const reason=prompt('Alasan reset PIN:');if(!reason)return;
       const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
@@ -158,7 +160,7 @@ $('members').addEventListener('click',async e=>{
       $('memberAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
     }else if(action==='nfc'){
       const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
-      if(!r.ok)throw new Error(d.detail||'Gagal membaca member');
+      if(!r.ok)throw new Error(d.detail||'Gagal membaca Nasabah');
       const m=d;
       $('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
       $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
@@ -167,7 +169,7 @@ $('members').addEventListener('click',async e=>{
       $('memberReligion').value=m.religion||'';$('memberMarital').value=m.marital_status||'';$('memberOccupation').value=m.occupation||'';
       $('memberCitizenship').value=m.citizenship||'WNI';$('memberPhone').value=m.phone||'';$('memberEmail').value=m.email||'';
       $('memberRegistrationDate').value=m.registration_date||'';$('memberStatus').value=m.status||'active';
-      $('nfcRegistrationResult').textContent='Member terpilih. Pilih Cashier, lalu tekan “Scan / Ganti Kartu NFC”.';
+      $('nfcRegistrationResult').textContent='Nasabah terpilih. Pilih Cashier, lalu tekan “Scan / Ganti Kartu NFC”.';
       $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='correction'){
       const operator_id=prompt('ID petugas yang melakukan koreksi:');if(!operator_id)return;
@@ -191,14 +193,14 @@ async function loadNfcCashiers(){
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
+  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_key_hint)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
-    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
+    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier terpilih: silakan scan kartu NFC, lalu Nasabah memasukkan PIN transaksi 4 digit. Menunggu hasil...';
     else if(d.status==='completed'){
       $('nfcRegistrationResult').textContent='Registrasi NFC berhasil. UID kartu dan verifikasi PIN telah diproses server.';
       clearInterval(nfcPollTimer);
@@ -213,23 +215,23 @@ async function pollNfcRegistration(memberId,sessionId){
 }
 $('nfcStart').onclick=async()=>{
   try{
-  const memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
-    if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
-    if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
+  const memberId=$('memberId').value.trim(),cashierKeyHint=$('nfcCashierDevice').value.trim();
+    if(!memberId)throw new Error('Simpan atau pilih Nasabah terlebih dahulu');
+    if(!cashierKeyHint)throw new Error('Pilih Cashier aktif terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
-    if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
+    if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Nasabah belum tersimpan di server');
     const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
-    let body={cashier_device_id:deviceId};
+    let body={cashier_key_hint:cashierKeyHint};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={cashier_device_id:deviceId,operator_id};
+      body={cashier_key_hint:cashierKeyHint,operator_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
-    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier terpilih akan meminta member scan kartu dan memasukkan PIN 4 digit.';
+    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier terpilih akan meminta Nasabah scan kartu dan memasukkan PIN 4 digit.';
     await pollNfcRegistration(memberId,d.session_id);
   }catch(e){$('nfcRegistrationResult').textContent=e.message}
 };
@@ -243,13 +245,27 @@ async function loadDevices(){
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>'<tr>'+
-        '<td><input data-device-name="'+esc(x.device_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+        '<td><input data-device-name="'+esc(x.device_key_hint)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(x.device_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td><select data-device-status="'+esc(x.device_key_hint)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.device_id)+'">Simpan</button></td>'+
+        '<td><button type="button" data-device-save="'+esc(x.device_key_hint)+'">Simpan</button> <button type="button" data-device-rotate="'+esc(x.device_key_hint)+'">Rotasi Key</button></td>'+
       '</tr>').join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
+    document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
+  }catch(e){$('deviceAuthResult').textContent=e.message}
+}
+async function rotateDeviceKey(keyHint){
+  if(!keyHint)return;
+  if(!confirm('Rotasi Device Key untuk perangkat ini? Key lama akan langsung tidak berlaku dan perangkat harus dikonfigurasi memakai key baru.'))return;
+  try{
+    const {r,d}=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(keyHint)+'/rotate-key',{method:'POST'});
+    if(!r.ok)throw new Error(d.detail||'Gagal merotasi Device Key');
+    $('provisionedDeviceKey').value=d.device_key;
+    $('provisionedDeviceKey').type='password';
+    $('deviceProvisionResult').textContent='Key baru untuk '+(d.display_name||'perangkat')+' hanya ditampilkan sekali. Perbarui konfigurasi perangkat sekarang; key lama sudah dicabut.';
+    $('deviceAuthResult').textContent='Device Key berhasil dirotasi.';
+    await loadDevices();
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 async function saveDevice(deviceId){
@@ -257,10 +273,10 @@ async function saveDevice(deviceId){
   const status=document.querySelector('[data-device-status="'+CSS.escape(deviceId)+'"]').value;
   if(!name){$('deviceAuthResult').textContent='Nama perangkat wajib diisi';return}
   try{
-    const current=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{});
+    const current=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(deviceId),{});
     if(!current.r.ok)throw new Error(current.d.detail||'Gagal membaca perangkat');
     const q={device_type:current.d.device_type,status:status,display_name:name};
-    const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
+    const {r,d}=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan perangkat');
     $('deviceAuthResult').textContent='Perangkat berhasil diperbarui.';
     await loadDevices();
@@ -271,16 +287,18 @@ $('deviceProvisionForm').onsubmit=async e=>{
   e.preventDefault();
   const deviceType=$('provisionDeviceType').value;
   const result=$('deviceProvisionResult');
-  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
+  const displayName=$('provisionDeviceLocation').value.trim();
+  if(!displayName){result.textContent='Device Location wajib diisi sebelum membuat key.';return}
+  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+' di lokasi "'+displayName+'"?'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({device_type:deviceType})
+    body:JSON.stringify({device_type:deviceType,display_name:displayName})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Key autentikasi dibuat. Salin key ke WebUI perangkat; Device ID dibuat otomatis dari MAC address saat registrasi pertama.';
+  result.textContent='Key autentikasi dibuat untuk lokasi '+displayName+'. Salin key ke WebUI perangkat; key hanya ditampilkan satu kali.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
@@ -310,10 +328,10 @@ $('financialForm').onsubmit=async e=>{
   if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
   if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
   const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
-  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
   const selectedAccount=dashboardAccounts.find(x=>x.account_id===accountId);
   const memberLabel=selectedAccount?.member_name||accountId;
+  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
   const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
@@ -323,7 +341,7 @@ $('financialForm').onsubmit=async e=>{
 };
 async function loadPaymentMemberData(memberId){
   const credentialSelect=$('credential'),accountSelect=$('payaccount');
-  if(!memberId){credentialSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih member terlebih dahulu</option>';return}
+  if(!memberId){credentialSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';return}
   const accounts=dashboardAccounts.filter(x=>x.member_id===memberId&&x.status==='active');
   const currentAccount=accountSelect.value;
   accountSelect.innerHTML=accounts.length?accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.account_id)+' · '+money(x.balance)+'</option>').join(''):'<option value="">Tidak ada rekening aktif</option>';
@@ -338,8 +356,8 @@ function renderPaymentTransactions(){
   if(!$('payments'))return;
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
   const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
-  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_location,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:x.device_location||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
 }
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
@@ -347,9 +365,9 @@ $('paymentStatusFilter').onchange=renderPaymentTransactions;
 $('paymentForm').onsubmit=async e=>{
   e.preventDefault();
   const method=$('method').value,pin=$('paypin').value;
-  if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}
+  if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN Nasabah wajib diisi untuk pembayaran NFC';return}
   const accountId=$('payaccount').value,credentialId=$('credential').value,amount=Number($('payamount').value);
-  if(!accountId||!credentialId){$('paymentResult').textContent='Pilih member, kartu NFC aktif, dan rekening.';return}
+  if(!accountId||!credentialId){$('paymentResult').textContent='Pilih Nasabah, kartu NFC aktif, dan rekening.';return}
   if(!Number.isSafeInteger(amount)||amount<=0){$('paymentResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
   if(!confirm('Konfirmasi pembayaran '+money(amount)+' dari rekening '+accountId+' melalui '+method+'?'))return;
   let idem=$('idem').value.trim();
@@ -360,12 +378,18 @@ $('paymentForm').onsubmit=async e=>{
   if(r.ok){$('paypin').value='';$('idem').value='';await load()}
 };
 let vendingCatalog=[];
+function renderVendingCatalog(){
+  $('products').innerHTML='<table><thead><tr><th>Slot</th><th>Image</th><th>Nama Produk</th><th>Harga (Rp)</th><th>Stok</th><th>Kapasitas</th><th>Promo NFC</th><th>Promo QRIS</th><th>Status</th></tr></thead><tbody>'+vendingCatalog.map(x=>{
+    const pid=esc(x.product_id),name=esc(x.name||''),image=x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+name+'" style="display:block;width:64px;height:64px;object-fit:contain;margin-bottom:6px">':'<div class="hint" style="margin-bottom:6px">Belum ada gambar</div>';
+    return '<tr data-product-row="'+pid+'"><td>'+pid+'</td><td>'+image+'<input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="'+pid+'" style="display:none"><button type="button" data-upload-image="'+pid+'">Upload gambar</button><div class="hint" data-image-status="'+pid+'">Maks. 2 MB</div></td><td><input data-product-field="name" data-product-id="'+pid+'" value="'+name+'" maxlength="120" placeholder="Nama produk" style="min-width:130px"></td><td><input data-product-field="price" data-product-id="'+pid+'" type="number" min="1" step="1" value="'+(x.price??'')+'" style="width:110px"></td><td><input data-product-field="stock" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.stock??0)+'" style="width:80px"></td><td><input data-product-field="capacity" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.capacity??0)+'" style="width:90px"></td><td><input value="0%" aria-label="Promo NFC belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><input value="0%" aria-label="Promo QRIS belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><span data-product-save-status="'+pid+'">'+(x.enabled?'Aktif':'Nonaktif')+'</span><br><button type="button" data-save-product="'+pid+'">Simpan</button></td></tr>';
+  }).join('')+'</tbody></table><p class="hint">Nama, harga, dan stok dapat diedit langsung pada baris produk. Promo NFC dan QRIS ditampilkan 0% dan belum diterapkan.</p>';
+}
 async function loadVendingCatalog(machineId){
   if(!machineId)return;
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
   vendingCatalog=d.products||[];
-  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','enabled']);
+  renderVendingCatalog();
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
@@ -373,7 +397,7 @@ async function loadVendingMachines(){
     const {r,d}=await json('/api/v1/vending',{});
     if(!r.ok)throw new Error(d.detail||'Gagal memuat daftar mesin');
     const rows=d.machines||[],sel=$('machineId'),current=sel.value;
-    sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
+    sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.location||x.name||'Lokasi belum ditentukan')+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
     if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
@@ -382,6 +406,19 @@ async function loadVendingMachines(){
 }
 $('loadVendingMachines').onclick=loadVendingMachines;
 $('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+let productImageObjectUrl=null;
+function renderProductImage(item){
+  if(productImageObjectUrl){URL.revokeObjectURL(productImageObjectUrl);productImageObjectUrl=null}
+  const file=$('productImage').files?.[0];
+  if(file){
+    productImageObjectUrl=URL.createObjectURL(file);
+    $('productImagePreview').innerHTML='<img alt="Pratinjau gambar produk" src="'+productImageObjectUrl+'" style="max-width:180px;max-height:180px;object-fit:contain">';
+  }else if(item?.image_url){
+    $('productImagePreview').innerHTML='<img alt="Gambar produk saat ini" src="'+esc(item.image_url)+'" style="max-width:180px;max-height:180px;object-fit:contain">';
+  }else{
+    $('productImagePreview').textContent='Belum ada gambar produk.';
+  }
+}
 $('productId').onchange=()=>{
   const item=vendingCatalog.find(x=>String(x.product_id)===$('productId').value);
   $('productName').value=item?.name||'';
@@ -389,15 +426,95 @@ $('productId').onchange=()=>{
   $('productStock').value=item?.stock??0;
   $('productCapacity').value=item?.capacity??0;
   $('productEnabled').checked=item?!!item.enabled:true;
+  $('productImage').value='';
+  renderProductImage(item);
 };
+$('productImage').onchange=()=>{
+  const file=$('productImage').files?.[0];
+  if(file && file.size>2*1024*1024){$('productImage').value='';$('productResult').textContent='Ukuran gambar maksimum 2 MB.';}
+  renderProductImage(vendingCatalog.find(x=>String(x.product_id)===$('productId').value));
+};
+$('removeProductImage').onclick=async()=>{
+  const mid=$('machineId').value.trim(),pid=$('productId').value.trim();
+  if(!mid||!pid){$('productResult').textContent='Pilih mesin dan produk terlebih dahulu.';return}
+  const item=vendingCatalog.find(x=>String(x.product_id)===pid);
+  if(!item?.image_url){$('productImage').value='';renderProductImage(item);$('productResult').textContent='Produk ini belum memiliki gambar.';return}
+  if(!confirm('Hapus gambar produk ini?'))return;
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'DELETE'});
+  $('productResult').textContent=r.ok?'Gambar produk dihapus.':(d.detail||'Gagal menghapus gambar.');
+  if(r.ok)await loadVendingCatalog(mid);
+};
+async function saveInlineVendingProduct(pid){
+  const mid=$('machineId').value.trim(),row=document.querySelector('[data-product-row="'+CSS.escape(pid)+'"]');
+  if(!mid||!row)return;
+  const status=row.querySelector('[data-product-save-status]');
+  const current=vendingCatalog.find(x=>String(x.product_id)===pid);
+  const name=row.querySelector('[data-product-field="name"]').value.trim();
+  const price=Number(row.querySelector('[data-product-field="price"]').value);
+  const stock=Number(row.querySelector('[data-product-field="stock"]').value);
+  const capacity=Number(row.querySelector('[data-product-field="capacity"]').value);
+  if(!name){status.textContent='Nama wajib diisi';return}
+  if(!Number.isSafeInteger(price)||price<=0){status.textContent='Harga tidak valid';return}
+  if(!Number.isSafeInteger(stock)||stock<0){status.textContent='Stok tidak valid';return}
+  if(!Number.isSafeInteger(capacity)||capacity<0){status.textContent='Kapasitas tidak valid';return}
+  if(stock>capacity){status.textContent='Stok melebihi kapasitas';return}
+  status.textContent='Menyimpan…';
+  const q={product_id:pid,name,price,stock,enabled:current?!!current.enabled:true,capacity};
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
+  if(!r.ok){status.textContent=d.detail||'Gagal menyimpan';return}
+  status.textContent='Tersimpan';
+  const savedName=name;
+  await loadVendingCatalog(mid);
+  const updated=vendingCatalog.find(x=>String(x.product_id)===pid);
+  if(updated&&updated.name===savedName){
+    const nextRow=document.querySelector('[data-product-row="'+CSS.escape(pid)+'"]');
+    if(nextRow)nextRow.querySelector('[data-product-save-status]').textContent='Tersimpan';
+  }
+}
+$('products').addEventListener('change',async e=>{
+  const fileInput=e.target.closest('input[data-product-image]');
+  if(fileInput){
+    const pid=fileInput.dataset.productImage,file=fileInput.files?.[0],mid=$('machineId').value.trim();
+    if(!file)return;
+    const status=document.querySelector('[data-image-status="'+CSS.escape(pid)+'"]');
+    if(file.size>2*1024*1024){fileInput.value='';status.textContent='Maksimum 2 MB';return}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){fileInput.value='';status.textContent='Gunakan JPEG, PNG, atau WebP';return}
+    const product=vendingCatalog.find(x=>String(x.product_id)===pid);
+    if(!product?.name||!product?.price){status.textContent='Isi nama dan harga lalu Simpan sebelum upload';fileInput.value='';return}
+    status.textContent='Mengunggah…';
+    const form=new FormData();form.append('image',file);
+    const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'PUT',body:form});
+    if(!r.ok){status.textContent=d.detail||'Upload gagal';return}
+    status.textContent='Gambar tersimpan';
+    await loadVendingCatalog(mid);
+    return;
+  }
+  const field=e.target.closest('input[data-product-field]');
+  if(field)await saveInlineVendingProduct(field.dataset.productId);
+});
+$('products').addEventListener('click',e=>{
+  const upload=e.target.closest('button[data-upload-image]');
+  if(upload){const input=document.querySelector('input[data-product-image="'+CSS.escape(upload.dataset.uploadImage)+'"]');input?.click();return}
+  const save=e.target.closest('button[data-save-product]');
+  if(save)saveInlineVendingProduct(save.dataset.saveProduct).catch(err=>{const status=document.querySelector('[data-product-save-status="'+CSS.escape(save.dataset.saveProduct)+'"]');if(status)status.textContent=err.message||'Gagal menyimpan'});
+});
 $('productForm').onsubmit=async e=>{
   e.preventDefault();
   const mid=$('machineId').value.trim(),pid=$('productId').value.trim();
   if(!mid||!pid){$('productResult').textContent='Muat daftar mesin lalu pilih mesin dan Product ID';return}
   const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
-  $('productResult').textContent=JSON.stringify(d,null,2);
-  if(r.ok){await loadVendingCatalog(mid);await load()}
+  if(!r.ok){$('productResult').textContent=d.detail||'Gagal menyimpan produk';return}
+  const file=$('productImage').files?.[0];
+  if(file){
+    if(file.size>2*1024*1024){$('productResult').textContent='Ukuran gambar maksimum 2 MB.';return}
+    const form=new FormData();form.append('image',file);
+    const upload=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'PUT',body:form});
+    if(!upload.r.ok){$('productResult').textContent='Data produk tersimpan, tetapi gambar gagal diunggah: '+(upload.d.detail||'kesalahan upload');return}
+  }
+  $('productImage').value='';
+  $('productResult').textContent=file?'Produk dan gambar berhasil disimpan.':'Produk berhasil disimpan.';
+  await loadVendingCatalog(mid);await load();
 };
 let vendingTransactions=[];
 async function loadVendingTransactions(machineId){
@@ -427,17 +544,17 @@ async function loadCashierTransactions(){
   const deviceSelect=$('cashierDevice');
   if(deviceSelect){
     const current=deviceSelect.value;
-    const devices=[...new Set(rows.map(x=>x.device_id).filter(Boolean))].sort();
+    const devices=[...new Set(rows.map(x=>x.device_location).filter(Boolean))].sort();
     deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
     if(devices.includes(current))deviceSelect.value=current;
   }
   const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
-  const filtered=rows.filter(x=>(device==='ALL'||x.device_id===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
+  const filtered=rows.filter(x=>(device==='ALL'||x.device_location===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
   const completed=filtered.filter(x=>String(x.status).toLowerCase()==='completed');
   const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
   const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
   $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
-  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','member_id','account_id','transaction_type','amount','status']);
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,perangkat:x.device_location||'Cashier',amount:money(x.amount)})),['created_at','transaction_id','perangkat','member_id','account_id','transaction_type','amount','status']);
   $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
 }
 $('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
@@ -475,7 +592,7 @@ async function loadAudit(){
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const {r,d}=await json('/api/v1/audit/report'+q,{});
-    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
+    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
 }
 $('auditForm').onsubmit=async e=>{e.preventDefault();await loadAudit()};

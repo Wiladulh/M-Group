@@ -27,7 +27,7 @@ def test_dashboard_and_admin_routes_require_valid_session_cookie():
             client.cookies.clear()
             for path in (
                 "/api/v1/audit",
-                "/api/v1/devices/private-device/events",
+                "/api/v1/devices/by-key-hint/private-hint/events",
                 "/api/v1/accounts/a1/balance",
                 "/api/v1/accounts/a1/ledger",
                 "/api/v1/credentials/private-credential/account",

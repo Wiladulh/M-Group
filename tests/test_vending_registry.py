@@ -51,12 +51,14 @@ def test_vending_registry_api():
             client=TestClient(main.create_app())
             admin=login_admin(client)
             created=client.post("/api/v1/vending",headers=admin,json={
-                "machine_id":"api-v1","name":"API Vending","location":"Lobby","device_id":"api-esp32"
+                "machine_id":"api-v1","name":"API Vending","location":"Lobby"
             })
             assert created.status_code==200
             assert created.json()["status"]=="active"
+            assert "device_id" not in created.json()
             detail=client.get("/api/v1/vending/api-v1",headers=admin)
             assert detail.status_code==200
+            assert "device_id" not in detail.json()["machine"]
             assert len(detail.json()["slots"])==5
             product = client.put("/api/v1/vending/api-v1/products/1", headers=admin, json={
                 "product_id":"1","name":"Water","price":1000,"stock":2,"capacity":5

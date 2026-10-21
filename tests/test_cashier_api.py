@@ -19,29 +19,34 @@ def test_cashier_heartbeat_and_nfc_payment():
                 c.commit()
 
             provision = client.post(
-                "/api/v1/devices/cashier-01/provision",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier", "display_name": "Cashier 01"},
                 headers=login_admin(client),
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:81", "device_key": device_key},
+            )
+            assert registration.status_code == 200, registration.text
 
             assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
             h = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": device_key},
             )
             assert h.status_code == 200
 
             q = {
-                "device_id": "cashier-01", "credential_id": "cred1", "account_id": "a1",
+                "credential_id": "cred1", "account_id": "a1",
                 "amount": 10000, "method": "NFC", "provider": "local",
                 "idempotency_key": "cashier-01:1", "pin": "1234"
             }
             p = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert p.status_code == 200
-            assert p.json()["device_id"] == "cashier-01"
+            assert "device_id" not in p.json()
 
             again = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert again.status_code == 200
@@ -49,6 +54,6 @@ def test_cashier_heartbeat_and_nfc_payment():
 
             with client.app.state.db.connect() as c:
                 assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 1
-                assert c.execute("SELECT device_id FROM payment_transactions").fetchone()[0] == "cashier-01"
+                assert c.execute("SELECT device_id FROM payment_transactions").fetchone()[0] is not None
         finally:
             main.get_settings = old

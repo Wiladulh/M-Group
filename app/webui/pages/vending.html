@@ -15,6 +15,10 @@
       <input id="productPrice" type="number" min="1" placeholder="Harga" required>
       <input id="productStock" type="number" min="0" placeholder="Stok saat ini" required>
       <input id="productCapacity" type="number" min="0" placeholder="Kapasitas slot" required>
+      <label for="productImage">Gambar produk (JPEG, PNG, WebP; maksimum 2 MB)</label>
+      <input id="productImage" type="file" accept="image/jpeg,image/png,image/webp">
+      <div id="productImagePreview" class="hint">Belum ada gambar produk.</div>
+      <button id="removeProductImage" type="button">Hapus gambar produk</button>
       <label class="check">
         <input id="productEnabled" type="checkbox" checked> Aktif
       </label>

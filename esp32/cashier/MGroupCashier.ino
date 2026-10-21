@@ -11,7 +11,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="Cashier_";
+String DEVICE_NONCE="";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
@@ -33,29 +33,37 @@ bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
 bool pendingPayment=false,pendingDeposit=false;
-String pendingCredential="",pendingSeq="";
+String pendingCredential="",pendingSeq="",pendingPaymentKey="",pendingDepositKey="";
 long pendingAmount=0;
 String pendingDepositCredential="",pendingDepositSeq="";
 long pendingDepositAmount=0;
 void savePendingPayment(const String& credential,long amount,const String& seq){
+  if(!pendingPaymentKey.length() || pendingSeq!=seq){
+    pendingPaymentKey=DEVICE_NONCE+":"+seq;
+    cashierPrefs.putString("pay_key",pendingPaymentKey);
+  }
   cashierPrefs.putBool("pay_pending",true); cashierPrefs.putString("pay_cred",credential);
   cashierPrefs.putLong("pay_amount",amount); cashierPrefs.putString("pay_seq",seq);
   pendingPayment=true; pendingCredential=credential; pendingAmount=amount; pendingSeq=seq;
 }
 void clearPendingPayment(){
   cashierPrefs.putBool("pay_pending",false); cashierPrefs.remove("pay_cred");
-  cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq");
-  pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq="";
+  cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq"); cashierPrefs.remove("pay_key");
+  pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq=""; pendingPaymentKey="";
 }
 void savePendingDeposit(const String& credential,long amount,const String& seq){
+  if(!pendingDepositKey.length() || pendingDepositSeq!=seq){
+    pendingDepositKey=DEVICE_NONCE+":deposit:"+seq;
+    cashierPrefs.putString("dep_key",pendingDepositKey);
+  }
   cashierPrefs.putBool("dep_pending",true); cashierPrefs.putString("dep_cred",credential);
   cashierPrefs.putLong("dep_amount",amount); cashierPrefs.putString("dep_seq",seq);
   pendingDeposit=true; pendingDepositCredential=credential; pendingDepositAmount=amount; pendingDepositSeq=seq;
 }
 void clearPendingDeposit(){
   cashierPrefs.putBool("dep_pending",false); cashierPrefs.remove("dep_cred");
-  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq");
-  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
+  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq"); cashierPrefs.remove("dep_key");
+  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq=""; pendingDepositKey="";
 }
 
 void lcdShow(String a,String b="");
@@ -88,10 +96,8 @@ String postJson(const String& path,const String& body,int& code){
 
 bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
-  String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
-  compact.toLowerCase();
-  DEVICE_ID="Cashier_"+compact;
-  String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  String mac=WiFi.macAddress();
+  String body="{\"device_type\":\"esp32-cashier\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=postJson("/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
   deviceRegistered=code>=200&&code<300;
@@ -103,8 +109,8 @@ void heartbeat(){
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
   String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
-  String reply=postJson(String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
-  Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
+  String reply=postJson("/api/v1/devices/heartbeat",body,code);
+  Serial.printf("HEARTBEAT %d %s\\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
 }
 
@@ -134,10 +140,10 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
   savePendingPayment(credential,amount,seq);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"credential_id\":\""+credential+
+  String body="{\"credential_id\":\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
-              String(DEVICE_ID)+":"+seq+"\",\"pin\":\""+pin+"\"}";
+              pendingPaymentKey+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;delay(250);continue;}
@@ -150,7 +156,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   if(code<=0 || code>=500){
     lcdShow("HASIL BELUM ADA","Ulangi PIN");
     Serial.printf("PAYMENT PENDING key=%s; same transaction must be retried\\n",
-                  (String(DEVICE_ID)+":"+seq).c_str());
+                  (DEVICE_NONCE+":"+seq).c_str());
     return; // NVS pending record blocks new payments until reconciled.
   }
   clearPendingPayment();
@@ -181,7 +187,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
   savePendingDeposit(credential,amount,seq);
   String body="{\"credential_id\":\""+credential+"\",\"amount\":"+String(amount)+
               ",\"operator_pin\":\""+operatorPin+"\",\"member_pin\":\""+memberPin+
-              "\",\"idempotency_key\":\""+String(DEVICE_ID)+":deposit:"+seq+"\"}";
+              "\",\"idempotency_key\":\""+pendingDepositKey+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;continue;}
@@ -234,14 +240,14 @@ void checkMemberBalance(){
   }
   String credential=uidToCredential(uid,len);
   String cardUid=credential.substring(4);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"card_uid\":\""+cardUid+"\"}";
+  String body="{\"card_uid\":\""+cardUid+"\"}";
   int code=0;
   String reply=postJson("/api/v1/devices/member-balance",body,code);
   Serial.printf("MEMBER BALANCE %d %s\\n",code,reply.c_str());
   if(code==200){
     long balance=jsonNumber(reply,"balance");
     String member=jsonField(reply,"member_name");
-    lcdShow(member.length()?member:"Saldo Member","Rp."+String(balance<0?0:balance));
+    lcdShow(member.length()?member:"Saldo Nasabah","Rp."+String(balance<0?0:balance));
     delay(3500);
   }else if(code==401 || code==403){
     lcdShow("Cek saldo gagal","Device/akses");
@@ -266,7 +272,7 @@ void registrationScan(const String& session){
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
-  int code=0; String reply=postJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration/complete",body,code);
+  int code=0; String reply=postJson("/api/v1/cashier/self/nfc-registration/complete",body,code);
   Serial.printf("NFC REG %d %s\n",code,reply.c_str());
   if(code==200) lcdShow("REGISTRASI","BERHASIL");
   else lcdShow("REGISTRASI","GAGAL");
@@ -274,7 +280,7 @@ void registrationScan(const String& session){
 }
 
 void pollRegistration(){
-  int code=0; String reply=getJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration",code);
+  int code=0; String reply=getJson("/api/v1/cashier/self/nfc-registration",code);
   if(code!=200)return;
   String status=jsonField(reply,"status");
   if(status=="scan_pending"){
@@ -336,9 +342,14 @@ long readCashierAmount(){
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("M_GROUP-cashier",false);
+  DEVICE_NONCE=cashierPrefs.getString("instance_nonce","");
+  if(!DEVICE_NONCE.length()){
+    char nonce[17];snprintf(nonce,sizeof(nonce),"%08lX%08lX",(unsigned long)esp_random(),(unsigned long)esp_random());
+    DEVICE_NONCE=String(nonce);cashierPrefs.putString("instance_nonce",DEVICE_NONCE);
+  }
   bool forceConfigPortal=false; const unsigned long configCheckStarted=millis();
   while(millis()-configCheckStarted<900UL){char setupKey=M_GROUPKeypad.getKey();if(setupKey==68)forceConfigPortal=true;delay(5);}
-  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,DEVICE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
@@ -347,6 +358,13 @@ void setup(){
     pendingDepositCredential=cashierPrefs.getString("dep_cred","");
     pendingDepositAmount=cashierPrefs.getLong("dep_amount",0);
     pendingDepositSeq=cashierPrefs.getString("dep_seq","");
+    pendingDepositKey=cashierPrefs.getString("dep_key","");
+    if(!pendingDepositKey.length() && pendingDepositSeq.length()){
+      // Preserve idempotency for a deposit persisted by older firmware.
+      String legacyMac=WiFi.macAddress();legacyMac.replace(":","");legacyMac.toLowerCase();
+      pendingDepositKey="Cashier_"+legacyMac+":deposit:"+pendingDepositSeq;
+      cashierPrefs.putString("dep_key",pendingDepositKey);
+    }
     if(!pendingDepositCredential.length() || pendingDepositAmount<=0 || !pendingDepositSeq.length()){
       Serial.println("FATAL: pending deposit metadata invalid; inspect device before new deposits");
       while(true) delay(1000);
@@ -356,6 +374,13 @@ void setup(){
     pendingCredential=cashierPrefs.getString("pay_cred","");
     pendingAmount=cashierPrefs.getLong("pay_amount",0);
     pendingSeq=cashierPrefs.getString("pay_seq","");
+    pendingPaymentKey=cashierPrefs.getString("pay_key","");
+    if(!pendingPaymentKey.length() && pendingSeq.length()){
+      // Preserve idempotency for a transaction persisted by older firmware.
+      String legacyMac=WiFi.macAddress();legacyMac.replace(":","");legacyMac.toLowerCase();
+      pendingPaymentKey="Cashier_"+legacyMac+":"+pendingSeq;
+      cashierPrefs.putString("pay_key",pendingPaymentKey);
+    }
     if(!pendingCredential.length() || pendingAmount<=0 || !pendingSeq.length()){
       Serial.println("FATAL: pending payment metadata invalid; inspect device before new payments");
       while(true) delay(1000);

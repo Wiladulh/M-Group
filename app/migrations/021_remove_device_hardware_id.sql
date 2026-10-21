@@ -1,0 +1,2 @@
+-- The MAC-derived hardware ID was a public Device ID alias and is no longer used.
+-- app.core.db applies the idempotent column removal for databases that contain it.
