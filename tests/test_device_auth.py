@@ -19,6 +19,11 @@ def test_device_authentication_and_provisioning():
             )
             assert provision.status_code==200, provision.text
             key=provision.json()["device_key"]
+            registration=client.post(
+                "/api/v1/devices/register",
+                json={"device_type":"esp32-cashier","mac_address":"AA:BB:CC:00:10:70","device_key":key},
+            )
+            assert registration.status_code==200, registration.text
             denied=client.post("/api/v1/devices/heartbeat",json={"device_type":"esp32-cashier"})
             assert denied.status_code==401
             ok=client.post("/api/v1/devices/heartbeat",
