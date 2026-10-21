@@ -1069,6 +1069,11 @@ def build_router(db, app_settings=None):
                 item["discount_amount"] = discount
                 item["effective_price"] = item["price"] - discount
                 item["promo_id"] = promo["promo_id"]
+        for item in catalog:
+            item["image_url"] = (
+                f"/api/v1/vending/{machine['machine_id']}/products/{item['product_id']}/image"
+                if item.get("has_image") else None
+            )
         return {"machine": machine, "products": catalog}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
@@ -1087,6 +1092,82 @@ def build_router(db, app_settings=None):
             result["product_id"] = str(result["slot"])
             return result
         except ValueError as e:raise HTTPException(409 if "slot" in str(e) or str(e)=="no_free_slot" else 400,str(e))
+
+    @r.put("/vending/{machine_id}/products/{product_id}/image")
+    async def vending_product_image_upload(
+        request: Request, machine_id: str, product_id: str, image: UploadFile = File(...)
+    ):
+        require_admin(request)
+        if product_id not in VendingService.PRODUCT_IDS:
+            raise HTTPException(400, "product_id_must_be_1_to_5")
+        try:
+            vending.get_product(machine_id, product_id)
+        except ValueError as e:
+            raise HTTPException(404 if str(e) in {"machine_not_found", "product_not_found"} else 400, str(e))
+        data = await image.read(2 * 1024 * 1024 + 1)
+        if not data:
+            raise HTTPException(400, "product_image_empty")
+        if len(data) > 2 * 1024 * 1024:
+            raise HTTPException(413, "product_image_too_large_max_2mb")
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            mime = "image/png"
+        elif data.startswith(b"\xff\xd8\xff"):
+            mime = "image/jpeg"
+        elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            mime = "image/webp"
+        else:
+            raise HTTPException(415, "unsupported_product_image_format")
+        with db.connect() as c:
+            cur = c.execute(
+                "UPDATE vending_products SET image_data=?,image_mime=? WHERE machine_id=? AND slot=?",
+                (data, mime, machine_id, int(product_id)),
+            )
+            if cur.rowcount != 1:
+                raise HTTPException(404, "product_not_found")
+            c.commit()
+        return {"status": "saved", "product_id": product_id, "size_bytes": len(data), "mime_type": mime}
+
+    @r.delete("/vending/{machine_id}/products/{product_id}/image")
+    def vending_product_image_delete(request: Request, machine_id: str, product_id: str):
+        require_admin(request)
+        if product_id not in VendingService.PRODUCT_IDS:
+            raise HTTPException(400, "product_id_must_be_1_to_5")
+        with db.connect() as c:
+            cur = c.execute(
+                "UPDATE vending_products SET image_data=NULL,image_mime=NULL WHERE machine_id=? AND slot=?",
+                (machine_id, int(product_id)),
+            )
+            if cur.rowcount != 1:
+                raise HTTPException(404, "product_not_found")
+            c.commit()
+        return {"status": "deleted", "product_id": product_id}
+
+    @r.get("/vending/{machine_id}/products/{product_id}/image")
+    def vending_product_image_get(
+        request: Request, machine_id: str, product_id: str,
+        x_m_group_device_key: str | None = Header(default=None)
+    ):
+        if product_id not in VendingService.PRODUCT_IDS:
+            raise HTTPException(404, "product_not_found")
+        machine = resolve_vending_machine(machine_id)
+        if x_m_group_device_key:
+            if not machine.get("device_id"):
+                raise HTTPException(403, "machine_device_not_configured")
+            require_device(machine["device_id"], x_m_group_device_key)
+        else:
+            require_admin(request)
+        with db.connect() as c:
+            row = c.execute(
+                "SELECT image_data,image_mime FROM vending_products WHERE machine_id=? AND slot=?",
+                (machine["machine_id"], int(product_id)),
+            ).fetchone()
+        if not row or row["image_data"] is None or not row["image_mime"]:
+            raise HTTPException(404, "product_image_not_found")
+        return Response(
+            content=bytes(row["image_data"]),
+            media_type=row["image_mime"],
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
 
     @r.get("/vending/{machine_id}/transactions")
     def vending_machine_transactions(request: Request, machine_id: str, limit: int = 100):
