@@ -249,9 +249,23 @@ async function loadDevices(){
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
         '<td><select data-device-status="'+esc(x.auth_key_hint)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.auth_key_hint)+'">Simpan</button></td>'+
+        '<td><button type="button" data-device-save="'+esc(x.auth_key_hint)+'">Simpan</button> <button type="button" data-device-rotate="'+esc(x.auth_key_hint)+'">Rotasi Key</button></td>'+
       '</tr>').join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
+    document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
+  }catch(e){$('deviceAuthResult').textContent=e.message}
+}
+async function rotateDeviceKey(keyHint){
+  if(!keyHint)return;
+  if(!confirm('Rotasi Device Key untuk perangkat ini? Key lama akan langsung tidak berlaku dan perangkat harus dikonfigurasi memakai key baru.'))return;
+  try{
+    const {r,d}=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(keyHint)+'/rotate-key',{method:'POST'});
+    if(!r.ok)throw new Error(d.detail||'Gagal merotasi Device Key');
+    $('provisionedDeviceKey').value=d.device_key;
+    $('provisionedDeviceKey').type='password';
+    $('deviceProvisionResult').textContent='Key baru untuk '+(d.display_name||'perangkat')+' hanya ditampilkan sekali. Perbarui konfigurasi perangkat sekarang; key lama sudah dicabut.';
+    $('deviceAuthResult').textContent='Device Key berhasil dirotasi.';
+    await loadDevices();
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 async function saveDevice(deviceId){
