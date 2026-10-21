@@ -61,16 +61,23 @@ def test_server_key_registers_device_without_exposing_internal_reference():
             assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
-                f"/api/v1/devices/{provisioned_id}/heartbeat",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/heartbeat",
+                json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": key},
             )
             assert heartbeat.status_code == 200
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_ref"] == provisioned_id)
-            assert "hardware_id" not in item
+            item = next(x for x in listed.json()["devices"] if x["auth_key_hint"] == key[-6:])
+            assert "device_id" not in item
+            assert "device_ref" not in item
+            assert client.get(f"/api/v1/devices/{provisioned_id}", headers=headers).status_code == 404
+            assert client.post(
+                f"/api/v1/devices/{provisioned_id}/heartbeat",
+                json={"device_type": "esp32-cashier"},
+                headers={"X-M-Group-Device-Key": key},
+            ).status_code == 404
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
         finally:
