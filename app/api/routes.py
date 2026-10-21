@@ -460,7 +460,22 @@ def build_router(db, app_settings=None):
                        FROM audit_events e
                        LEFT JOIN device_registry d ON d.device_id=e.entity_id
                        ORDER BY e.id DESC LIMIT ?""",(limit,)).fetchall()
-        return {"events":[dict(x) for x in rows]}
+            device_labels = c.execute(
+                "SELECT device_id,COALESCE(display_name,'Perangkat') AS display_name FROM device_registry"
+            ).fetchall()
+        events = []
+        for row in rows:
+            item = dict(row)
+            detail = item.get("detail")
+            if detail:
+                for device in device_labels:
+                    internal_key = str(device["device_id"])
+                    label = str(device["display_name"])
+                    for prefix in ("device=", "device_id=", "cashier_device_id="):
+                        detail = detail.replace(prefix + internal_key, prefix + label)
+                item["detail"] = detail
+            events.append(item)
+        return {"events": events}
 
     @r.post("/devices/handshake")
     def device_handshake(q: DeviceRegisterRequest):
