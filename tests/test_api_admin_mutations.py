@@ -167,14 +167,14 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             client = TestClient(main.create_app())
             admin = login_admin(client)
             provision = client.post(
-                "/api/v1/devices/vending-image/provision",
+                "/api/v1/devices/provision",
                 headers=admin,
                 json={"device_type": "esp32-s3-vending", "display_name": "Vending image test"},
             )
             assert provision.status_code == 200, provision.text
             key = provision.json()["device_key"]
             heartbeat = client.post(
-                "/api/v1/devices/vending-image/heartbeat",
+                "/api/v1/devices/heartbeat",
                 headers={"X-M-Group-Device-Key": key},
                 json={"device_type": "esp32-s3-vending", "status": "active"},
             )
