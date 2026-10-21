@@ -230,18 +230,12 @@ class VendingService:
             if not p: raise ValueError("product_not_found")
             if not p["enabled"]: raise ValueError("product_disabled")
             if p["stock"]<=0: raise ValueError("out_of_stock")
-            promo_product_id = str(p["slot"]) if product_id in self.PRODUCT_IDS else product_id
-            promo=self.promos.resolve(machine_id,promo_product_id,payment_method,payment_provider)
-            if not promo and product_id in self.PRODUCT_IDS:
-                # Preserve legacy product-scoped promotions whose key was the
-                # pre-contract internal product ID rather than the public slot ID.
-                promo=self.promos.resolve(machine_id,p["product_id"],payment_method,payment_provider)
+            # Promotions are intentionally not applied yet. Keep the transaction
+            # contract ready for NFC/QRIS promotions, but always charge the
+            # configured base price until the promotion feature is explicitly enabled.
             discount=0
             promo_id=None
-            if promo:
-                discount,_=self.promos.calculate(p["price"],promo["discount_percent"])
-                promo_id=promo["promo_id"]
-            final_amount=p["price"]-discount
+            final_amount=p["price"]
             tx="vend-"+uuid4().hex
             c.execute("""INSERT INTO vending_transactions
                 (transaction_id,machine_id,product_id,credential_id,account_id,base_amount,discount_amount,amount,
