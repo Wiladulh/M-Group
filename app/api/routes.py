@@ -1069,9 +1069,13 @@ def build_router(db, app_settings=None):
         else:
             require_admin(request)
         catalog = vending.products(machine["machine_id"])
-        # Preserve base price while exposing the exact NFC/local amount shown
-        # by the current firmware. QRIS remains a separately configured,
-        # inactive payment path.
+        # Promotions are intentionally inactive in this release. The UI and
+        # firmware must both see the configured base price with 0% discount.
+        for item in catalog:
+            item["base_price"] = item["price"]
+            item["effective_price"] = item["price"]
+            item["discount_amount"] = 0
+            item["promo_id"] = None
         for item in catalog:
             item["base_price"] = item["price"]
             item["effective_price"] = item["price"]
