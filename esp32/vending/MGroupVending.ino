@@ -51,7 +51,7 @@ int pendingServoChannel=0;
 // Persist the complete create request before sending it. If the HTTP response is lost,
 // retry the identical idempotency key instead of starting a new vend.
 bool pendingCreateRequest=false;
-String pendingCreateProduct="",pendingCreateCredential="";
+String pendingCreateProduct="",pendingCreateCredential="",pendingCreateIdempotencyKey="";
 unsigned long pendingCreateSequence=0;
 int pendingCreateServo=0;
 bool createRequestRejected=false;
@@ -280,6 +280,13 @@ void setup(){
     pendingCreateCredential=vendingPrefs.getString("create_credential","");
     pendingCreateSequence=vendingPrefs.getULong("create_seq",0);
     pendingCreateServo=vendingPrefs.getInt("create_servo",0);
+    pendingCreateIdempotencyKey=vendingPrefs.getString("create_key","");
+    if(!pendingCreateIdempotencyKey.length() && pendingCreateSequence>0){
+      // Keep the original idempotency key for an unresolved pre-upgrade purchase.
+      String legacyMac=WiFi.macAddress();legacyMac.replace(":","");legacyMac.toLowerCase();
+      pendingCreateIdempotencyKey="Vending_"+legacyMac+":"+String(pendingCreateSequence);
+      vendingPrefs.putString("create_key",pendingCreateIdempotencyKey);
+    }
     if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
   }
   pendingDispenseReport=vendingPrefs.getBool("disp_pending",false);
