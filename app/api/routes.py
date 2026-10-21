@@ -471,10 +471,14 @@ def build_router(db, app_settings=None):
     @r.get("/devices/by-key-hint/{key_hint}/events")
     def device_events(request: Request, key_hint: str, limit: int = 100):
         require_admin(request)
-        device = devices.get_by_key_hint(key_hint)
+        try:
+            device = devices.get_by_key_hint(key_hint)
+            device_key = devices.internal_id_by_key_hint(key_hint)
+        except ValueError as exc:
+            code = str(exc)
+            raise HTTPException(409 if code == "device_key_hint_not_unique" else 404, code)
         if device is None:
             raise HTTPException(404, "device_not_found")
-        device_key = devices.internal_id_by_key_hint(key_hint)
         limit = max(1, min(limit, 500))
         with db.connect() as c:
             rows = c.execute(
@@ -692,7 +696,11 @@ def build_router(db, app_settings=None):
     @r.get("/devices/by-key-hint/{key_hint}")
     def device_get_by_key_hint(request: Request, key_hint: str):
         require_admin(request)
-        result = devices.get_by_key_hint(key_hint)
+        try:
+            result = devices.get_by_key_hint(key_hint)
+        except ValueError as exc:
+            code = str(exc)
+            raise HTTPException(409 if code == "device_key_hint_not_unique" else 404, code)
         if result is None:
             raise HTTPException(404, "device_not_found")
         return result
