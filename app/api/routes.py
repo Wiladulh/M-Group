@@ -135,6 +135,7 @@ class DeviceRegisterRequest(BaseModel):
 
 class DeviceProvisionRequest(BaseModel):
     device_type: str
+    display_name: str
 
 class FinancialRequest(BaseModel):
     amount: int
@@ -720,7 +721,8 @@ def build_router(db, app_settings=None):
                         raise HTTPException(409,"device_identity_already_registered")
                     c.execute(
                         """UPDATE device_registry
-                           SET hardware_id=?,device_type=?,mac_address=?,display_name=?,
+                           SET hardware_id=?,device_type=?,mac_address=?,
+                               display_name=CASE WHEN COALESCE(display_name,'')='' OR display_name='Lokasi belum ditentukan' THEN ? ELSE display_name END,
                                status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                            WHERE device_id=?""",
                         (hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
@@ -767,6 +769,9 @@ def build_router(db, app_settings=None):
             device_type = "esp32-s3-vending"
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
+        display_name = q.display_name.strip()
+        if not display_name or len(display_name) > 100:
+            raise HTTPException(400,"device_location_required")
         device_id="pending-"+uuid4().hex[:12]
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -775,15 +780,15 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,device_type,digest,key[-6:]),
+                   VALUES(?,NULL,?,NULL,?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (device_id,device_type,display_name,digest,key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device","provisioned",device_id,f"type={device_type};location=unassigned"),
+                ("device","provisioned",device_id,f"type={device_type};location={display_name}"),
             )
             c.commit()
-        return {"device_id":device_id,"display_name":"Lokasi belum ditentukan",
+        return {"device_id":device_id,"display_name":display_name,
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
