@@ -49,15 +49,15 @@ def test_device_heartbeat_and_vending_product_sync():
                     (__import__("hashlib").sha256(vending_key.encode()).hexdigest(),),
                 ).fetchone()
                 assert vending_internal is not None
-                c.execute(
-                    "INSERT INTO vending_machines(machine_id,name,status,device_id) "
-                    "VALUES('vm-01','Vending 01','active',?)",
+                machine = c.execute(
+                    "SELECT machine_id FROM vending_machines WHERE device_id=?",
                     (vending_internal["device_id"],),
-                )
-                c.commit()
+                ).fetchone()
+                assert machine is not None
+                machine_id = machine["machine_id"]
 
             product = client.put(
-                "/api/v1/vending/vm-01/products/1",
+                f"/api/v1/vending/{machine_id}/products/1",
                 headers=login_admin(client),
                 json={
                     "product_id": "1",
@@ -70,9 +70,9 @@ def test_device_heartbeat_and_vending_product_sync():
             assert product.status_code == 200
             assert product.json()["stock"] == 12
 
-            sync = client.get("/api/v1/vending/vm-01/products", headers={"X-M-Group-Device-Key": vending_key})
+            sync = client.get(f"/api/v1/vending/{machine_id}/products", headers={"X-M-Group-Device-Key": vending_key})
             assert sync.status_code == 200
-            assert sync.json()["machine"]["machine_id"] == "vm-01"
+            assert sync.json()["machine"]["machine_id"] == machine_id
             assert sync.json()["products"][0]["product_id"] == "1"
 
             dashboard = client.get("/api/v1/dashboard", headers=login_admin(client))
