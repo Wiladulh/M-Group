@@ -173,6 +173,15 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             )
             assert provision.status_code == 200, provision.text
             key = provision.json()["device_key"]
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={
+                    "device_type": "esp32-s3-vending",
+                    "mac_address": "AA:BB:CC:00:48:02",
+                    "device_key": key,
+                },
+            )
+            assert registration.status_code == 200, registration.text
             heartbeat = client.post(
                 "/api/v1/devices/heartbeat",
                 headers={"X-M-Group-Device-Key": key},
