@@ -1119,7 +1119,7 @@ def build_router(db, app_settings=None):
                 decoded.verify()
         except HTTPException:
             raise
-        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        except (UnidentifiedImageError, OSError, ValueError, SyntaxError, EOFError, Image.DecompressionBombError):
             raise HTTPException(415, "unsupported_or_invalid_product_image")
         mime_by_format = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
         mime = mime_by_format.get(image_format)
