@@ -5,7 +5,7 @@ import app.main as main
 
 
 from tests.auth_helpers import login_admin
-def test_server_key_provisions_mac_derived_device_identity():
+def test_server_key_registers_device_without_exposing_internal_reference():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
@@ -20,15 +20,18 @@ def test_server_key_provisions_mac_derived_device_identity():
             )
             assert provision.status_code == 200
             payload = provision.json()
-            assert payload["device_id"].startswith("pending-")
-            provisioned_id = payload["device_id"]
+            assert "device_id" not in payload
+            assert "hardware_id" not in payload
             key = payload["device_key"]
+            key_hash = __import__("hashlib").sha256(key.encode()).hexdigest()
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT device_id,hardware_id,auth_key_hash FROM device_registry"
+                    "SELECT device_id,hardware_id,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                    (key_hash,),
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
+                provisioned_id = row["device_id"]
                 assert row["hardware_id"] is None
 
             registration = {
