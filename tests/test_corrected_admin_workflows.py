@@ -34,7 +34,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
             headers = login_admin(client)
             created = client.post(
                 "/api/v1/devices/provision",
-                json={"device_type": "esp32-cashier"},
+                json={"device_type": "esp32-cashier", "display_name": "Loket depan"},
                 headers=headers,
             )
             assert created.status_code == 200
@@ -49,7 +49,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
                 assert row["hardware_id"] is None
-                assert row["display_name"] == "Lokasi belum ditentukan"
+                assert row["display_name"] == "Loket depan"
                 assert row["auth_key_hash"] == hashlib.sha256(key.encode()).hexdigest()
 
             registered = client.post(
