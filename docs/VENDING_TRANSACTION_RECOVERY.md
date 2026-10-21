@@ -25,7 +25,7 @@ The product API keeps `price` / `base_price` as the configured base price and ex
 
 ## Device enrollment
 
-The administrator generates a one-time Device Key from the authenticated dashboard. The ESP32 mini WebUI accepts Wi-Fi SSID/password, server URL, and that key only; it does not ask for a Device ID. Firmware derives `Cashier_<last-six-MAC-hex>` or `Vending_<last-six-MAC-hex>` from its Wi-Fi MAC and sends a first-registration request with the key. The server verifies that the key was provisioned for the selected device type, validates that the ID matches the MAC address, then records the MAC-derived ID. This registration request is authenticated enrollment; arbitrary unprovisioned keys are rejected.
+The administrator generates a one-time Device Key from the authenticated dashboard. The ESP32 mini WebUI accepts Wi-Fi SSID/password, server URL, and that key only. Firmware enrolls with its device type, MAC address, and Device Key; it does not generate or transmit a Device ID. The server binds the MAC address to the provisioned key, checks the device type, and rejects keys that were not issued by the server.
 
 ## Verification levels
 
