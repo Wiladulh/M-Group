@@ -11,7 +11,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="Cashier_";
+String DEVICE_NONCE="";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
@@ -103,7 +103,7 @@ void heartbeat(){
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
   String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
-  String reply=postJson(String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
+  String reply=postJson("/api/v1/devices/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
 }
@@ -137,7 +137,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"credential_id\":\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
-              String(DEVICE_ID)+":"+seq+"\",\"pin\":\""+pin+"\"}";
+              DEVICE_NONCE+":"+seq+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;delay(250);continue;}
@@ -150,7 +150,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   if(code<=0 || code>=500){
     lcdShow("HASIL BELUM ADA","Ulangi PIN");
     Serial.printf("PAYMENT PENDING key=%s; same transaction must be retried\\n",
-                  (String(DEVICE_ID)+":"+seq).c_str());
+                  (DEVICE_NONCE+":"+seq).c_str());
     return; // NVS pending record blocks new payments until reconciled.
   }
   clearPendingPayment();
@@ -181,7 +181,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
   savePendingDeposit(credential,amount,seq);
   String body="{\"credential_id\":\""+credential+"\",\"amount\":"+String(amount)+
               ",\"operator_pin\":\""+operatorPin+"\",\"member_pin\":\""+memberPin+
-              "\",\"idempotency_key\":\""+String(DEVICE_ID)+":deposit:"+seq+"\"}";
+              "\",\"idempotency_key\":\""+DEVICE_NONCE+":deposit:"+seq+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;continue;}
@@ -266,7 +266,7 @@ void registrationScan(const String& session){
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
-  int code=0; String reply=postJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration/complete",body,code);
+  int code=0; String reply=postJson("/api/v1/cashier/self/nfc-registration/complete",body,code);
   Serial.printf("NFC REG %d %s\n",code,reply.c_str());
   if(code==200) lcdShow("REGISTRASI","BERHASIL");
   else lcdShow("REGISTRASI","GAGAL");
@@ -274,7 +274,7 @@ void registrationScan(const String& session){
 }
 
 void pollRegistration(){
-  int code=0; String reply=getJson(String("/api/v1/cashier/")+DEVICE_ID+"/nfc-registration",code);
+  int code=0; String reply=getJson("/api/v1/cashier/self/nfc-registration",code);
   if(code!=200)return;
   String status=jsonField(reply,"status");
   if(status=="scan_pending"){
@@ -336,9 +336,14 @@ long readCashierAmount(){
 void setup(){
   Serial.begin(115200); delay(300);
   cashierPrefs.begin("M_GROUP-cashier",false);
+  DEVICE_NONCE=cashierPrefs.getString("instance_nonce","");
+  if(!DEVICE_NONCE.length()){
+    char nonce[17];snprintf(nonce,sizeof(nonce),"%08lX%08lX",(unsigned long)esp_random(),(unsigned long)esp_random());
+    DEVICE_NONCE=String(nonce);cashierPrefs.putString("instance_nonce",DEVICE_NONCE);
+  }
   bool forceConfigPortal=false; const unsigned long configCheckStarted=millis();
   while(millis()-configCheckStarted<900UL){char setupKey=M_GROUPKeypad.getKey();if(setupKey==68)forceConfigPortal=true;delay(5);}
-  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,DEVICE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
