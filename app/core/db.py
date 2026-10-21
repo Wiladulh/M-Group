@@ -383,6 +383,8 @@ class Database:
                         "slot": "INTEGER",
                         "capacity": "INTEGER NOT NULL DEFAULT 0",
                         "servo_channel": "INTEGER",
+                        "image_data": "BLOB",
+                        "image_mime": "TEXT",
                         "created_at": "TEXT",
                     }
                     for name, definition in product_additions.items():
