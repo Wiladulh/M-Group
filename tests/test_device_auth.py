@@ -12,7 +12,7 @@ def test_device_authentication_and_provisioning():
         try:
             client=TestClient(main.create_app())
             p=client.post("/api/v1/devices/cashier-01/provision",
-                          json={"device_type":"esp32-cashier"},
+                          json={"device_type":"esp32-cashier","display_name":"Cashier Utama"},
                           headers=login_admin(client))
             assert p.status_code==200
             key=p.json()["device_key"]
@@ -88,13 +88,14 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
             client=TestClient(main.create_app())
             provision=client.post(
                 "/api/v1/devices/provision",
-                json={"device_type":"esp32-cashier"},
+                json={"device_type":"esp32-cashier","display_name":"Cashier Kantin"},
                 headers=login_admin(client),
             )
             assert provision.status_code == 200
             payload=provision.json()
             assert payload["device_id"].startswith("pending-")
             assert payload["status"] == "awaiting_device_registration"
+            assert payload["display_name"] == "Cashier Kantin"
             key=payload["device_key"]
 
             with client.app.state.db.connect() as c:
@@ -118,6 +119,7 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
             assert body["hardware_id"] == "cashier_aabbcc112233"
             assert body["device_id"] == payload["device_id"]
             assert body["status"] == "active"
+            assert body["display_name"] == "Cashier Kantin"
 
             with client.app.state.db.connect() as c:
                 after=c.execute(
