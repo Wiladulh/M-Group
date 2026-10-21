@@ -33,21 +33,25 @@ def test_cashier_replay_after_lost_response_is_idempotent():
                 c.commit()
 
             provision = client.post(
-                "/api/v1/devices/cashier-01/provision",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier", "display_name": "Cashier Offline"},
                 headers=login_admin(client),
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:84", "device_key": device_key},
+            )
+            assert registration.status_code == 200, registration.text
             assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
             assert client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": device_key},
             ).status_code == 200
 
             payload = {
-                "device_id": "cashier-01",
                 "credential_id": "cred1",
                 "account_id": "a1",
                 "amount": 10000,
