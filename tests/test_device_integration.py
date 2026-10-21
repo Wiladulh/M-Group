@@ -20,6 +20,11 @@ def test_device_heartbeat_and_vending_product_sync():
             )
             assert cashier.status_code == 200
             cashier_key = cashier.json()["device_key"]
+            cashier_registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:61", "device_key": cashier_key},
+            )
+            assert cashier_registration.status_code == 200, cashier_registration.text
 
             vending = client.post(
                 "/api/v1/devices/provision",
@@ -28,6 +33,11 @@ def test_device_heartbeat_and_vending_product_sync():
             )
             assert vending.status_code == 200
             vending_key = vending.json()["device_key"]
+            vending_registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-s3-vending", "mac_address": "AA:BB:CC:00:48:61", "device_key": vending_key},
+            )
+            assert vending_registration.status_code == 200, vending_registration.text
 
             hb = client.post(
                 "/api/v1/devices/heartbeat",
