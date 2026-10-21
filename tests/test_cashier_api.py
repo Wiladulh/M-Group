@@ -41,7 +41,7 @@ def test_cashier_heartbeat_and_nfc_payment():
             }
             p = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert p.status_code == 200
-            assert p.json()["device_id"] == "cashier-01"
+            assert "device_id" not in p.json()
 
             again = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert again.status_code == 200
