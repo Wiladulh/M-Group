@@ -836,7 +836,7 @@ def build_router(db, app_settings=None):
                 ("device", "legacy_provisioned", legacy_id, f"type={device_type};deprecated=true"),
             )
             c.commit()
-        return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
+        return {"device_type": device_type, "device_key": key,
                 "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
 
     @r.post("/devices/heartbeat")
