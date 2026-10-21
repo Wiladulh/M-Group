@@ -221,10 +221,23 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             )
             assert uploaded.status_code == 200, uploaded.text
 
+            with client.app.state.db.connect() as conn:
+                conn.execute(
+                    """INSERT INTO vending_promo_rules
+                       (promo_id,machine_id,product_id,payment_method,payment_provider,discount_percent)
+                       VALUES(?,?,?,?,?,?)""",
+                    ("inactive-promo", machine_id, "1", "NFC", "local", 25),
+                )
+                conn.commit()
             device_headers = {"X-M-Group-Device-Key": key}
             catalog = client.get(f"/api/v1/vending/{machine_id}/products", headers=device_headers)
             assert catalog.status_code == 200, catalog.text
-            image = client.get(catalog.json()["products"][0]["image_url"], headers=device_headers)
+            catalog_product = catalog.json()["products"][0]
+            assert catalog_product["price"] == 5000
+            assert catalog_product["effective_price"] == 5000
+            assert catalog_product["discount_amount"] == 0
+            assert catalog_product["promo_id"] is None
+            image = client.get(catalog_product["image_url"], headers=device_headers)
             assert image.status_code == 200
             assert image.headers["content-type"].startswith("image/jpeg")
             assert image.content == image_bytes
