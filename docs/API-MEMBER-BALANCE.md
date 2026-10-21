@@ -14,7 +14,6 @@ JSON body:
 
 ```json
 {
-  "device_id": "cashier-01",
   "card_uid": "04A1B2C3"
 }
 ```
