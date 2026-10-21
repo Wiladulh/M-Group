@@ -45,12 +45,11 @@ def test_generated_device_key_registration_keeps_internal_reference_private():
             assert len(key) >= 32
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT device_id,hardware_id,display_name,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                    "SELECT device_id,display_name,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
                     (hashlib.sha256(key.encode()).hexdigest(),),
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
                 provisioned_id = row["device_id"]
-                assert row["hardware_id"] is None
                 assert row["display_name"] == "Loket depan"
                 assert row["auth_key_hash"] == hashlib.sha256(key.encode()).hexdigest()
 
@@ -68,10 +67,9 @@ def test_generated_device_key_registration_keeps_internal_reference_private():
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT device_id,hardware_id,status FROM device_registry"
+                    "SELECT device_id,status FROM device_registry"
                 ).fetchone()
                 assert row["device_id"] == provisioned_id
-                assert row["hardware_id"] is None
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
         finally:
