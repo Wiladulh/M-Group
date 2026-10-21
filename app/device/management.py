@@ -17,7 +17,7 @@ class DeviceManagementService:
             raise ValueError("device_not_found")
         with self.db.connect() as c:
             rows = c.execute(
-                "SELECT device_id FROM device_registry WHERE auth_key_hint=? AND deleted_at IS NULL",
+                "SELECT device_id FROM device_registry WHERE COALESCE(auth_key_hint,substr(auth_key_hash,-10))=? AND deleted_at IS NULL",
                 (str(key_hint).strip(),),
             ).fetchall()
         if not rows:
@@ -48,7 +48,7 @@ class DeviceManagementService:
         with self.db.connect() as c:
             rows = c.execute(
                 f"""SELECT device_id,device_type,mac_address,display_name,
-                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
+                           status,last_seen,COALESCE(auth_key_hint,substr(auth_key_hash,-10)) AS auth_key_hint,created_at,updated_at,deleted_at
                     FROM device_registry {where}
                     ORDER BY device_id"""
             ).fetchall()
@@ -58,7 +58,7 @@ class DeviceManagementService:
         with self.db.connect() as c:
             row = c.execute(
                 """SELECT device_id,device_type,mac_address,display_name,
-                          status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
+                          status,last_seen,COALESCE(auth_key_hint,substr(auth_key_hash,-10)) AS auth_key_hint,created_at,updated_at,deleted_at
                    FROM device_registry WHERE device_id=?""",
                 (device_id,),
             ).fetchone()
