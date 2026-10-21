@@ -8,8 +8,40 @@ class DeviceManagementService:
     @staticmethod
     def _public_ref(row):
         item = dict(row)
-        item["device_ref"] = item.pop("device_id")
+        item.pop("device_id", None)
         return item
+
+    def internal_id_by_key_hint(self, key_hint):
+        """Resolve the admin-only, non-secret key hint without exposing the DB key."""
+        if not key_hint or not str(key_hint).strip():
+            raise ValueError("device_not_found")
+        with self.db.connect() as c:
+            rows = c.execute(
+                "SELECT device_id FROM device_registry WHERE auth_key_hint=? AND deleted_at IS NULL",
+                (str(key_hint).strip(),),
+            ).fetchall()
+        if not rows:
+            raise ValueError("device_not_found")
+        if len(rows) != 1:
+            raise ValueError("device_key_hint_not_unique")
+        return rows[0]["device_id"]
+
+    def get_by_key_hint(self, key_hint):
+        try:
+            device_id = self.internal_id_by_key_hint(key_hint)
+        except ValueError as exc:
+            if str(exc) == "device_not_found":
+                return None
+            raise
+        return self.get(device_id)
+
+    def update_by_key_hint(self, key_hint, device_type=None, status=None, display_name=None):
+        device_id = self.internal_id_by_key_hint(key_hint)
+        return self.update(device_id, device_type, status, display_name)
+
+    def soft_delete_by_key_hint(self, key_hint):
+        device_id = self.internal_id_by_key_hint(key_hint)
+        return self.soft_delete(device_id)
 
     def list(self, include_deleted=False):
         where = "" if include_deleted else "WHERE deleted_at IS NULL"
