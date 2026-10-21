@@ -120,7 +120,7 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
             )
             assert provision.status_code == 200, provision.text
             key = provision.json()["device_key"]
-            hint = key[-10:]
+            hint = __import__("hashlib").sha256(key.encode()).hexdigest()[:12]
             with client.app.state.db.connect() as conn:
                 internal = conn.execute(
                     "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
@@ -131,7 +131,7 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
 
             listed = client.get("/api/v1/devices", headers=admin)
             assert listed.status_code == 200, listed.text
-            row = next(item for item in listed.json()["devices"] if item["auth_key_hint"] == hint)
+            row = next(item for item in listed.json()["devices"] if item["device_key_hint"] == hint)
             assert "device_id" not in row
             assert "device_ref" not in row
 
