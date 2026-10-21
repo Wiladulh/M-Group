@@ -15,6 +15,7 @@ from app.financial.service import FinancialService
 from app.vending.service import VendingService
 from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
 from pathlib import Path
+from PIL import Image, UnidentifiedImageError
 from uuid import uuid4
 import time
 from urllib.parse import urlsplit
@@ -1109,13 +1110,20 @@ def build_router(db, app_settings=None):
             raise HTTPException(400, "product_image_empty")
         if len(data) > 2 * 1024 * 1024:
             raise HTTPException(413, "product_image_too_large_max_2mb")
-        if data.startswith(b"\x89PNG\r\n\x1a\n"):
-            mime = "image/png"
-        elif data.startswith(b"\xff\xd8\xff"):
-            mime = "image/jpeg"
-        elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-            mime = "image/webp"
-        else:
+        try:
+            with Image.open(io.BytesIO(data)) as decoded:
+                image_format = decoded.format
+                width, height = decoded.size
+                if width < 1 or height < 1 or width > 4096 or height > 4096:
+                    raise HTTPException(400, "product_image_dimensions_invalid")
+                decoded.verify()
+        except HTTPException:
+            raise
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+            raise HTTPException(415, "unsupported_or_invalid_product_image")
+        mime_by_format = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+        mime = mime_by_format.get(image_format)
+        if not mime:
             raise HTTPException(415, "unsupported_product_image_format")
         with db.connect() as c:
             cur = c.execute(
