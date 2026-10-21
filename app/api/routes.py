@@ -1012,36 +1012,36 @@ def build_router(db, app_settings=None):
     @r.get("/vending")
     def vending_list(request: Request):
         require_admin(request)
-        return {"machines": vending.machines()}
+        return {"machines": [public_vending_machine(x) for x in vending.machines()]}
 
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
-        try:return vending.register(q.machine_id,q.name,q.location,None,q.status)
+        try:return public_vending_machine(vending.register(q.machine_id,q.name,q.location,None,q.status))
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
     def vending_detail(request: Request, machine_id):
         require_admin(request)
-        try:return {"machine":vending.machine(machine_id),"slots":vending.slots(machine_id)}
+        try:return {"machine":public_vending_machine(vending.machine(machine_id)),"slots":vending.slots(machine_id)}
         except ValueError as e:raise HTTPException(404,str(e))
 
     @r.patch("/vending/{machine_id}")
     def vending_update(request: Request, machine_id,q:VendingUpdateRequest):
         require_admin(request)
-        try:return vending.update_machine(machine_id,q.name,q.location,q.device_id,q.status)
+        try:return public_vending_machine(vending.update_machine(machine_id,q.name,q.location,None,q.status))
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
     def vending_enable(request: Request, machine_id):
         require_admin(request)
-        try:return vending.set_status(machine_id,"active")
+        try:return public_vending_machine(vending.set_status(machine_id,"active"))
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.post("/vending/{machine_id}/disable")
     def vending_disable(request: Request, machine_id):
         require_admin(request)
-        try:return vending.set_status(machine_id,"disabled")
+        try:return public_vending_machine(vending.set_status(machine_id,"disabled"))
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.get("/vending/self/products")
