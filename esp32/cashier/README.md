@@ -18,9 +18,9 @@
 
 ## Member balance lookup (read-only)
 
-- At the main keypad menu, press `3` for **Cek Saldo Member** (`1` remains payment, `2` remains top-up).
+- At the main keypad menu, press `3` for **Cek Saldo Nasabah** (`1` remains payment, `2` remains top-up).
 - Tap the Nasabah's NFC card. The cashier sends only the raw card UID to `POST /api/v1/devices/member-balance`; the server identifies the device from its key.
-- The LCD displays the member name and the ledger-backed balance. An unknown/revoked card or device/API error is shown as a failure.
+- The LCD displays the Nasabah name and the ledger-backed balance. An unknown/revoked card or device/API error is shown as a failure.
 - This action does not request the member PIN and must not create a payment, deposit, debit, or ledger entry.
 - This endpoint is shared with Vending firmware; no second balance API is needed. An NFC UID alone is not payment authorization.
 
