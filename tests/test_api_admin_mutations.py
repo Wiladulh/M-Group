@@ -222,11 +222,16 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             assert uploaded.status_code == 200, uploaded.text
 
             with client.app.state.db.connect() as conn:
+                stored_product = conn.execute(
+                    "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=1",
+                    (machine_id,),
+                ).fetchone()
+                assert stored_product is not None
                 conn.execute(
                     """INSERT INTO vending_promo_rules
                        (promo_id,machine_id,product_id,payment_method,payment_provider,discount_percent)
                        VALUES(?,?,?,?,?,?)""",
-                    ("inactive-promo", machine_id, "1", "NFC", "local", 25),
+                    ("inactive-promo", machine_id, stored_product["product_id"], "NFC", "local", 25),
                 )
                 conn.commit()
             device_headers = {"X-M-Group-Device-Key": key}
