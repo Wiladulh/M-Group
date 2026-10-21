@@ -193,7 +193,7 @@ def test_vending_product_image_can_be_fetched_with_device_key():
                 assert machine_row is not None
                 machine_id = machine_row["machine_id"]
             product = client.put(
-                `/api/v1/vending/${machine_id}/products/1`,
+                f"/api/v1/vending/{machine_id}/products/1",
                 headers=admin,
                 json={
                     "product_id": "1", "name": "Water", "price": 5000,
@@ -206,14 +206,14 @@ def test_vending_product_image_can_be_fetched_with_device_key():
             Image.new("RGB", (2, 2), (20, 80, 120)).save(buffer, format="JPEG")
             image_bytes = buffer.getvalue()
             uploaded = client.put(
-                `/api/v1/vending/${machine_id}/products/1/image`,
+                f"/api/v1/vending/{machine_id}/products/1/image",
                 headers=admin,
                 files={"image": ("water.jpg", image_bytes, "image/jpeg")},
             )
             assert uploaded.status_code == 200, uploaded.text
 
             device_headers = {"X-M-Group-Device-Key": key}
-            catalog = client.get(`/api/v1/vending/${machine_id}/products`, headers=device_headers)
+            catalog = client.get(f"/api/v1/vending/{machine_id}/products", headers=device_headers)
             assert catalog.status_code == 200, catalog.text
             image = client.get(catalog.json()["products"][0]["image_url"], headers=device_headers)
             assert image.status_code == 200
