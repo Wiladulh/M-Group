@@ -813,8 +813,8 @@ def build_router(db, app_settings=None):
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             existing = c.execute(
-                "SELECT device_id FROM device_registry WHERE device_id=? OR hardware_id=?",
-                (legacy_id, legacy_id),
+                "SELECT device_id FROM device_registry WHERE device_id=?",
+                (legacy_id,),
             ).fetchone()
             if existing:
                 raise HTTPException(409, "legacy_device_id_already_exists_use_key_rotation_workflow")
