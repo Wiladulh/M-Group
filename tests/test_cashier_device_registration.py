@@ -46,7 +46,7 @@ def test_cashier_device_registration_and_heartbeat_gate():
             )
             assert heartbeat.status_code == 200
             hb = heartbeat.json()
-            assert hb["device_id"] == "cashier-01"
+            assert "device_id" not in hb
             assert hb["device_type"] == "esp32-cashier"
 
             with Database(db_path).connect() as c:
