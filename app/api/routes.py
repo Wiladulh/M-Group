@@ -1326,7 +1326,7 @@ def build_router(db, app_settings=None):
         require_admin(request)
         with db.connect() as c:
             row=c.execute(
-                "SELECT session_id,member_id,device_id,status,card_uid,credential_id,created_at,completed_at "
+                "SELECT session_id,member_id,status,card_uid,credential_id,created_at,completed_at "
                 "FROM nfc_registration_sessions WHERE session_id=? AND member_id=?",
                 (session_id,member_id)
             ).fetchone()
@@ -1338,17 +1338,16 @@ def build_router(db, app_settings=None):
         device = resolve_device_key(x_m_group_device_key)
         if device["device_type"] not in {"esp32-cashier", "cashier"}:
             raise HTTPException(403, "device_type_not_allowed")
-        return cashier_nfc_registration(device["device_id"], x_m_group_device_key)
+        return _cashier_nfc_registration(device["device_id"], x_m_group_device_key)
 
     @r.post("/cashier/self/nfc-registration/complete")
     def cashier_nfc_registration_complete_self(q: NfcRegistrationCompleteRequest, x_m_group_device_key: str | None = Header(default=None)):
         device = resolve_device_key(x_m_group_device_key)
         if device["device_type"] not in {"esp32-cashier", "cashier"}:
             raise HTTPException(403, "device_type_not_allowed")
-        return cashier_nfc_registration_complete(device["device_id"], q, x_m_group_device_key)
+        return _cashier_nfc_registration_complete(device["device_id"], q, x_m_group_device_key)
 
-    @r.get("/cashier/{device_id}/nfc-registration")
-    def cashier_nfc_registration(device_id,x_m_group_device_key: str | None = Header(default=None)):
+    def _cashier_nfc_registration(device_id, x_m_group_device_key: str | None = None):
         require_device(device_id,x_m_group_device_key)
         with db.connect() as c:
             row=c.execute(
@@ -1362,9 +1361,8 @@ def build_router(db, app_settings=None):
             return {"status":"idle"}
         return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
 
-    @r.post("/cashier/{device_id}/nfc-registration/complete")
-    def cashier_nfc_registration_complete(device_id,q:NfcRegistrationCompleteRequest,
-                                           x_m_group_device_key: str | None = Header(default=None)):
+    def _cashier_nfc_registration_complete(device_id, q: NfcRegistrationCompleteRequest,
+                                           x_m_group_device_key: str | None = None):
         require_device(device_id,x_m_group_device_key)
         if not q.pin.isdigit() or len(q.pin)!=4:
             raise HTTPException(400,"registration_pin_must_be_4_digits")
