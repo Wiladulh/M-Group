@@ -168,7 +168,25 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
                 headers={"X-M-Group-Device-Key": new_key},
                 json={"device_type": "esp32-cashier", "status": "active"},
             ).status_code == 200
+            registered = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:DD:EE:71", "device_key": new_key},
+            )
+            assert registered.status_code == 200, registered.text
             assert client.get(f"/api/v1/devices/by-key-hint/{hint}", headers=admin).status_code == 404
+
+            with client.app.state.db.connect() as conn:
+                conn.execute("INSERT INTO identity_members(member_id,name) VALUES('nfc-member','NFC Test')")
+                conn.commit()
+            nfc_start = client.post(
+                "/api/v1/members/nfc-member/nfc-registration/start",
+                headers=admin,
+                json={"cashier_key_hint": new_hint},
+            )
+            assert nfc_start.status_code == 200, nfc_start.text
+            assert "device_id" not in nfc_start.json()
+            assert "cashier_device_id" not in nfc_start.json()
+            assert nfc_start.json()["cashier_location"] == "Cashier Lobby"
 
             dashboard = client.get("/api/v1/dashboard", headers=admin)
             assert dashboard.status_code == 200, dashboard.text
