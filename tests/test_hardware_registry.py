@@ -69,7 +69,7 @@ def test_server_key_registers_device_without_exposing_internal_reference():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_id"] == provisioned_id)
+            item = next(x for x in listed.json()["devices"] if x["device_ref"] == provisioned_id)
             assert "hardware_id" not in item
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
