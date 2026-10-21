@@ -6,7 +6,7 @@ M-Group supports one optional primary image per Vending product slot (Product ID
 - Maximum uploaded file size: 2 MiB (2,097,152 bytes).
 - Images are decoded and validated server-side; images with invalid content or dimensions above 4096 × 4096 are rejected.
 - Image bytes and MIME type are stored in SQLite with the product record, so native database backups include them.
-- The admin WebUI provides a preview, replacement by uploading a new file, and image deletion.
+- The admin WebUI provides a preview and an **Upload gambar** button on each product row, beside the image. Name, price, stock, and slot capacity are editable directly in that row and can be saved without opening the separate product form. The separate form remains available for initial product setup and image deletion.
 - The vending catalog API returns an image_url when a product has an image. Vending firmware can request that URL with the same X-M-Group-Device-Key header used for the catalog API.
 - Image responses use the stored validated MIME type and X-Content-Type-Options: nosniff.
 
