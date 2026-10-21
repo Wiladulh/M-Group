@@ -453,7 +453,13 @@ def build_router(db, app_settings=None):
         require_admin(request)
         limit=max(1,min(limit,500))
         with db.connect() as c:
-            rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
+            rows=c.execute("""SELECT e.id,e.event_type,e.entity_type,
+                       CASE WHEN e.entity_type='device' THEN COALESCE(d.display_name,'Perangkat')
+                            ELSE e.entity_id END AS entity,
+                       e.detail,e.created_at
+                       FROM audit_events e
+                       LEFT JOIN device_registry d ON d.device_id=e.entity_id
+                       ORDER BY e.id DESC LIMIT ?""",(limit,)).fetchall()
         return {"events":[dict(x) for x in rows]}
 
     @r.post("/devices/handshake")
@@ -499,8 +505,10 @@ def build_router(db, app_settings=None):
                           d.display_name AS device_location,p.transaction_source,p.created_at
                    FROM payment_transactions p LEFT JOIN device_registry d ON d.device_id=p.device_id
                    ORDER BY p.created_at DESC LIMIT 50""").fetchall()
-            vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
-                   FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
+            vending_rows=c.execute("""SELECT v.transaction_id,v.machine_id,v.product_id,v.account_id,v.amount,v.status,v.created_at,
+                          m.location AS device_location,m.name AS machine_name
+                   FROM vending_transactions v LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
+                   ORDER BY v.created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
             machines=c.execute("SELECT machine_id,name,status,location,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
