@@ -40,6 +40,11 @@ def test_cashier_deposit_accepts_firmware_contract_without_device_id_header():
                 c.commit()
 
             key = provision(client, "cashier-01", "esp32-cashier")
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:43", "device_key": key},
+            )
+            assert registration.status_code == 200, registration.text
             pin = client.post(
                 "/api/v1/members/m1/pin",
                 json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"},
