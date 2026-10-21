@@ -102,7 +102,7 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 - [ ] Semua GND tersambung bersama.
 - [ ] Tidak ada sinyal 5 V langsung ke GPIO ESP32.
 - [ ] LCD, keypad, dan reader sudah diuji terpisah.
-- [ ] Device ID dan key cocok dengan registri server.
+- [ ] Device Key aktif dan Cashier berhasil terdaftar ke server.
 - [ ] Pembayaran sukses, PIN salah, kartu tidak dikenal, dan saldo tidak cukup sudah diuji dengan akun uji.
 - [ ] Reboot saat transaksi pending tidak menyebabkan transaksi baru atau debit ganda.
 
