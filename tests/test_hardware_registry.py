@@ -27,10 +27,12 @@ def test_server_key_registers_device_without_exposing_internal_reference():
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT device_id,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                    "SELECT device_id,internal_ref,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
                     (key_hash,),
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
+                assert row["internal_ref"].startswith("dev_")
+                assert len(row["internal_ref"]) == 36
                 provisioned_id = row["device_id"]
 
             registration = {
