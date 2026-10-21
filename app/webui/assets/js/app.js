@@ -24,7 +24,7 @@ function switchTab(tabName) {
 }
 
 let selectedAnalyticsPeriod='1w';
-let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[];
+let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[],deviceDisplayNames={};
 function renderAnalytics(d){
   const rows=d.analytics||[];
   const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
@@ -42,6 +42,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
+  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.device_id,x.display_name||x.device_type||'Perangkat']));
   const stats=d.stats||{};
   const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
   $('summary').innerHTML=[
@@ -56,15 +57,15 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
   $('recentTransactions').innerHTML=table(recent.map(x=>({
     created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
-    device_id:x.device_id||x.machine_id,account_id:x.account_id,
+    Perangkat:deviceDisplayNames[x.device_id]||x.machine_name||'Vending',account_id:x.account_id,
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
-  })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
+  })),['created_at','source','transaction_id','Perangkat','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
   dashboardMembers=d.members;
   dashboardAccounts=d.accounts;
   const memberSelect=$('payMember'),currentMember=memberSelect.value;
   const activeMembers=dashboardMembers.filter(x=>x.status==='active');
-  memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+  memberSelect.innerHTML='<option value="">Pilih Nasabah</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
   if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
   else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
   await loadPaymentMemberData(memberSelect.value);
@@ -73,7 +74,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   dashboardAccounts=d.accounts;
   const accountSelect=$('account'),currentAccount=accountSelect.value;
-  accountSelect.innerHTML='<option value="">Pilih member</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
+  accountSelect.innerHTML='<option value="">Pilih Nasabah</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
   if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
   else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
   await loadFinancialLedger();
@@ -81,7 +82,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
-  $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
+  $('devices').innerHTML=table(d.devices.map(x=>({location:x.display_name||'—',device_type:x.device_type,status:x.status,last_seen:x.last_seen})),['location','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
 async function load(){
@@ -192,14 +193,14 @@ async function loadNfcCashiers(){
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
+  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
-    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
+    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier terpilih: silakan scan kartu NFC, lalu Nasabah memasukkan PIN transaksi 4 digit. Menunggu hasil...';
     else if(d.status==='completed'){
       $('nfcRegistrationResult').textContent='Registrasi NFC berhasil. UID kartu dan verifikasi PIN telah diproses server.';
       clearInterval(nfcPollTimer);
@@ -342,7 +343,7 @@ function renderPaymentTransactions(){
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
   const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
   const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','device_id','status','created_at']);
+  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:deviceDisplayNames[x.device_id]||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
 }
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
@@ -470,7 +471,7 @@ async function loadCashierTransactions(){
   if(deviceSelect){
     const current=deviceSelect.value;
     const devices=[...new Set(rows.map(x=>x.device_id).filter(Boolean))].sort();
-    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(deviceDisplayNames[x]||'Cashier')+'</option>').join('');
     if(devices.includes(current))deviceSelect.value=current;
   }
   const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
@@ -479,7 +480,7 @@ async function loadCashierTransactions(){
   const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
   const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
   $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
-  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','member_id','account_id','transaction_type','amount','status']);
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,perangkat:deviceDisplayNames[x.device_id]||'Cashier',amount:money(x.amount)})),['created_at','transaction_id','perangkat','member_id','account_id','transaction_type','amount','status']);
   $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
 }
 $('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
@@ -517,7 +518,7 @@ async function loadAudit(){
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const {r,d}=await json('/api/v1/audit/report'+q,{});
-    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
+    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
 }
 $('auditForm').onsubmit=async e=>{e.preventDefault();await loadAudit()};
