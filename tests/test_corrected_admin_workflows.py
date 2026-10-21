@@ -64,7 +64,8 @@ def test_generated_device_key_registration_keeps_internal_reference_private():
                 },
             )
             assert registered.status_code == 200
-            assert registered.json()["device_id"] == provisioned_id
+            assert "device_id" not in registered.json()
+            assert "hardware_id" not in registered.json()
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
