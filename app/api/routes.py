@@ -784,6 +784,18 @@ def build_router(db, app_settings=None):
                    VALUES(?,NULL,?,NULL,?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
                 (device_id,device_type,display_name,digest,key[-6:]),
             )
+            # A registered Vending device must immediately appear in the inventory
+            # selector. The machine identifier is a separate internal machine key;
+            # the device's human-readable location is used for display.
+            if device_type in {"esp32-vending", "esp32-s3-vending", "vending"}:
+                c.execute(
+                    """INSERT INTO vending_machines(machine_id,name,location,device_id,status)
+                       VALUES(?,?,?,?, 'active')
+                       ON CONFLICT(machine_id) DO UPDATE SET
+                         name=excluded.name,location=excluded.location,device_id=excluded.device_id,
+                         updated_at=CURRENT_TIMESTAMP""",
+                    ("vm-" + uuid4().hex[:16], display_name, display_name, device_id),
+                )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
                 ("device","provisioned",device_id,f"type={device_type};location={display_name}"),
