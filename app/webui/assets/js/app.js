@@ -42,7 +42,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
-  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.device_id,x.display_name||x.device_type||'Perangkat']));
+  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.device_ref,x.display_name||x.device_type||'Perangkat']));
   const stats=d.stats||{};
   const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
   $('summary').innerHTML=[
@@ -193,7 +193,7 @@ async function loadNfcCashiers(){
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
+  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_ref)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
@@ -245,11 +245,11 @@ async function loadDevices(){
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>'<tr>'+
-        '<td><input data-device-name="'+esc(x.device_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+        '<td><input data-device-name="'+esc(x.device_ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(x.device_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td><select data-device-status="'+esc(x.device_ref)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.device_id)+'">Simpan</button></td>'+
+        '<td><button type="button" data-device-save="'+esc(x.device_ref)+'">Simpan</button></td>'+
       '</tr>').join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
   }catch(e){$('deviceAuthResult').textContent=e.message}
