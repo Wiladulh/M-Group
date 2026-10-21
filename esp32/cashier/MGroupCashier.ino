@@ -132,7 +132,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
   savePendingPayment(credential,amount,seq);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"credential_id\":\""+credential+
+  String body="{\\"credential_id\\":\\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
               DEVICE_NONCE+":"+seq+"\",\"pin\":\""+pin+"\"}";
@@ -232,7 +232,7 @@ void checkMemberBalance(){
   }
   String credential=uidToCredential(uid,len);
   String cardUid=credential.substring(4);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"card_uid\":\""+cardUid+"\"}";
+  String body="{\\"card_uid\\":\\""+cardUid+"\\"}";
   int code=0;
   String reply=postJson("/api/v1/devices/member-balance",body,code);
   Serial.printf("MEMBER BALANCE %d %s\\n",code,reply.c_str());
