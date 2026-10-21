@@ -271,16 +271,18 @@ $('deviceProvisionForm').onsubmit=async e=>{
   e.preventDefault();
   const deviceType=$('provisionDeviceType').value;
   const result=$('deviceProvisionResult');
-  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
+  const displayName=$('provisionDeviceLocation').value.trim();
+  if(!displayName){result.textContent='Device Location wajib diisi sebelum membuat key.';return}
+  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+' di lokasi "'+displayName+'"?'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({device_type:deviceType})
+    body:JSON.stringify({device_type:deviceType,display_name:displayName})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Key autentikasi dibuat. Salin key ke WebUI perangkat; Device ID dibuat otomatis dari MAC address saat registrasi pertama.';
+  result.textContent='Key autentikasi dibuat untuk lokasi '+displayName+'. Salin key ke WebUI perangkat; key hanya ditampilkan satu kali.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
@@ -310,10 +312,10 @@ $('financialForm').onsubmit=async e=>{
   if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
   if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
   const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
-  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
   const selectedAccount=dashboardAccounts.find(x=>x.account_id===accountId);
   const memberLabel=selectedAccount?.member_name||accountId;
+  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
   const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
@@ -373,7 +375,7 @@ async function loadVendingMachines(){
     const {r,d}=await json('/api/v1/vending',{});
     if(!r.ok)throw new Error(d.detail||'Gagal memuat daftar mesin');
     const rows=d.machines||[],sel=$('machineId'),current=sel.value;
-    sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
+    sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.location||x.name||'Lokasi belum ditentukan')+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
     if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
