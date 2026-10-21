@@ -364,12 +364,18 @@ $('paymentForm').onsubmit=async e=>{
   if(r.ok){$('paypin').value='';$('idem').value='';await load()}
 };
 let vendingCatalog=[];
+function renderVendingCatalog(){
+  $('products').innerHTML='<table><thead><tr><th>Slot</th><th>Image</th><th>Nama Produk</th><th>Harga (Rp)</th><th>Stok</th><th>Promo NFC</th><th>Promo QRIS</th><th>Status</th></tr></thead><tbody>'+vendingCatalog.map(x=>{
+    const pid=esc(x.product_id),name=esc(x.name||''),image=x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+name+'" style="display:block;width:64px;height:64px;object-fit:contain;margin-bottom:6px">':'<div class="hint" style="margin-bottom:6px">Belum ada gambar</div>';
+    return '<tr data-product-row="'+pid+'"><td>'+pid+'</td><td>'+image+'<input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="'+pid+'" style="display:none"><button type="button" data-upload-image="'+pid+'">Upload gambar</button><div class="hint" data-image-status="'+pid+'">Maks. 2 MB</div></td><td><input data-product-field="name" data-product-id="'+pid+'" value="'+name+'" maxlength="120" placeholder="Nama produk" style="min-width:130px"></td><td><input data-product-field="price" data-product-id="'+pid+'" type="number" min="1" step="1" value="'+(x.price??'')+'" style="width:110px"></td><td><input data-product-field="stock" data-product-id="'+pid+'" type="number" min="0" step="1" value="'+(x.stock??0)+'" style="width:80px"></td><td><input value="0%" aria-label="Promo NFC belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><input value="0%" aria-label="Promo QRIS belum aktif" disabled style="width:70px"><div class="hint">Belum aktif</div></td><td><span data-product-save-status="'+pid+'">'+(x.enabled?'Aktif':'Nonaktif')+'</span><br><button type="button" data-save-product="'+pid+'">Simpan</button></td></tr>';
+  }).join('')+'</tbody></table><p class="hint">Nama, harga, dan stok dapat diedit langsung pada baris produk. Promo NFC dan QRIS ditampilkan 0% dan belum diterapkan.</p>';
+}
 async function loadVendingCatalog(machineId){
   if(!machineId)return;
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
   vendingCatalog=d.products||[];
-  $('products').innerHTML='<table><thead><tr><th>Gambar</th><th>Product ID</th><th>Nama</th><th>Harga</th><th>Stok</th><th>Kapasitas</th><th>Aktif</th></tr></thead><tbody>'+vendingCatalog.map(x=>'<tr><td>'+(x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+esc(x.name||'produk')+'" style="width:64px;height:64px;object-fit:contain">':'—')+'</td><td>'+esc(x.product_id)+'</td><td>'+esc(x.name||'')+'</td><td>'+esc(money(x.price))+'</td><td>'+esc(x.stock)+'</td><td>'+esc(x.capacity)+'</td><td>'+(x.enabled?'ya':'tidak')+'</td></tr>').join('')+'</tbody></table>';
+  renderVendingCatalog();
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
@@ -424,6 +430,58 @@ $('removeProductImage').onclick=async()=>{
   $('productResult').textContent=r.ok?'Gambar produk dihapus.':(d.detail||'Gagal menghapus gambar.');
   if(r.ok)await loadVendingCatalog(mid);
 };
+async function saveInlineVendingProduct(pid){
+  const mid=$('machineId').value.trim(),row=document.querySelector('[data-product-row="'+CSS.escape(pid)+'"]');
+  if(!mid||!row)return;
+  const status=row.querySelector('[data-product-save-status]');
+  const current=vendingCatalog.find(x=>String(x.product_id)===pid);
+  const name=row.querySelector('[data-product-field="name"]').value.trim();
+  const price=Number(row.querySelector('[data-product-field="price"]').value);
+  const stock=Number(row.querySelector('[data-product-field="stock"]').value);
+  if(!name){status.textContent='Nama wajib diisi';return}
+  if(!Number.isSafeInteger(price)||price<=0){status.textContent='Harga tidak valid';return}
+  if(!Number.isSafeInteger(stock)||stock<0){status.textContent='Stok tidak valid';return}
+  if(stock>Number(current?.capacity??0)){status.textContent='Stok melebihi kapasitas';return}
+  status.textContent='Menyimpan…';
+  const q={product_id:pid,name,price,stock,enabled:current?!!current.enabled:true,capacity:Number(current?.capacity??Math.max(stock,0))};
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
+  if(!r.ok){status.textContent=d.detail||'Gagal menyimpan';return}
+  status.textContent='Tersimpan';
+  const savedName=name;
+  await loadVendingCatalog(mid);
+  const updated=vendingCatalog.find(x=>String(x.product_id)===pid);
+  if(updated&&updated.name===savedName){
+    const nextRow=document.querySelector('[data-product-row="'+CSS.escape(pid)+'"]');
+    if(nextRow)nextRow.querySelector('[data-product-save-status]').textContent='Tersimpan';
+  }
+}
+$('products').addEventListener('change',async e=>{
+  const fileInput=e.target.closest('input[data-product-image]');
+  if(fileInput){
+    const pid=fileInput.dataset.productImage,file=fileInput.files?.[0],mid=$('machineId').value.trim();
+    if(!file)return;
+    const status=document.querySelector('[data-image-status="'+CSS.escape(pid)+'"]');
+    if(file.size>2*1024*1024){fileInput.value='';status.textContent='Maksimum 2 MB';return}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){fileInput.value='';status.textContent='Gunakan JPEG, PNG, atau WebP';return}
+    const product=vendingCatalog.find(x=>String(x.product_id)===pid);
+    if(!product?.name||!product?.price){status.textContent='Isi nama dan harga lalu Simpan sebelum upload';fileInput.value='';return}
+    status.textContent='Mengunggah…';
+    const form=new FormData();form.append('image',file);
+    const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'PUT',body:form});
+    if(!r.ok){status.textContent=d.detail||'Upload gagal';return}
+    status.textContent='Gambar tersimpan';
+    await loadVendingCatalog(mid);
+    return;
+  }
+  const field=e.target.closest('input[data-product-field]');
+  if(field)await saveInlineVendingProduct(field.dataset.productId);
+});
+$('products').addEventListener('click',e=>{
+  const upload=e.target.closest('button[data-upload-image]');
+  if(upload){const input=document.querySelector('input[data-product-image="'+CSS.escape(upload.dataset.uploadImage)+'"]');input?.click();return}
+  const save=e.target.closest('button[data-save-product]');
+  if(save)saveInlineVendingProduct(save.dataset.saveProduct).catch(err=>{const status=document.querySelector('[data-product-save-status="'+CSS.escape(save.dataset.saveProduct)+'"]');if(status)status.textContent=err.message||'Gagal menyimpan'});
+});
 $('productForm').onsubmit=async e=>{
   e.preventDefault();
   const mid=$('machineId').value.trim(),pid=$('productId').value.trim();
