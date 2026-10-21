@@ -24,7 +24,7 @@ function switchTab(tabName) {
 }
 
 let selectedAnalyticsPeriod='1w';
-let dashboardAccounts=[],dashboardNasabahs=[],dashboardPayments=[];
+let dashboardAccounts=[],dashboardMembers=[],dashboardPayments=[];
 function renderAnalytics(d){
   const rows=d.analytics||[];
   const total=rows.reduce((n,x)=>n+Number(x.transactions||0),0);
@@ -39,13 +39,13 @@ function renderAnalytics(d){
 async function loadDashboard(period=selectedAnalyticsPeriod){
   const {r,d}=await json('/api/v1/dashboard?period='+encodeURIComponent(period));
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['Nasabahs','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
   const stats=d.stats||{};
   const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
   $('summary').innerHTML=[
-    ['Anggota',d.Nasabahs.length],['Rekening',d.accounts.length],['Saldo Nasabah',money(totalBalance)],
+    ['Anggota',d.members.length],['Rekening',d.accounts.length],['Saldo member',money(totalBalance)],
     ['Pembayaran terbaru',d.payments.length],['Pinjaman',d.loans.length],['Mesin vending',d.machines.length],
     ['Perangkat',d.devices.length],['Cashier masuk hari ini',money(stats.cashier_money_in_today)],
     ['Cashier keluar hari ini',money(stats.cashier_money_out_today)],['Vending masuk hari ini',money(stats.vending_money_in_today)]
@@ -60,26 +60,26 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
-  dashboardNasabahs=d.Nasabahs;
+  dashboardMembers=d.members;
   dashboardAccounts=d.accounts;
-  const NasabahSelect=$('payNasabah'),currentNasabah=NasabahSelect.value;
-  const activeNasabahs=dashboardNasabahs.filter(x=>x.status==='active');
-  NasabahSelect.innerHTML='<option value="">Pilih Nasabah</option>'+activeNasabahs.map(x=>'<option value="'+esc(x.Nasabah_id)+'">'+esc(x.Nasabah_id)+' — '+esc(x.name)+'</option>').join('');
-  if(activeNasabahs.some(x=>x.Nasabah_id===currentNasabah))NasabahSelect.value=currentNasabah;
-  else if(activeNasabahs.length)NasabahSelect.value=activeNasabahs[0].Nasabah_id;
-  await loadPaymentNasabahData(NasabahSelect.value);
+  const memberSelect=$('payMember'),currentMember=memberSelect.value;
+  const activeMembers=dashboardMembers.filter(x=>x.status==='active');
+  memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
+  if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
+  else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
+  await loadPaymentMemberData(memberSelect.value);
   $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
   $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
-  $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','Nasabah_name','account_type','balance','status']);
+  $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   dashboardAccounts=d.accounts;
   const accountSelect=$('account'),currentAccount=accountSelect.value;
-  accountSelect.innerHTML='<option value="">Pilih Nasabah</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.Nasabah_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
+  accountSelect.innerHTML='<option value="">Pilih member</option>'+d.accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.member_name)+' — saldo Rp '+money(x.balance)+'</option>').join('');
   if(d.accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
   else if(d.accounts.length)accountSelect.value=d.accounts[0].account_id;
   await loadFinancialLedger();
-  await loadNasabahList();
+  await loadMemberList();
   dashboardPayments=d.payments;renderPaymentTransactions();
-  $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','Nasabah_id','principal','installment_amount','remaining_balance','status']);
+  $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
   $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
@@ -96,93 +96,93 @@ async function load(){
  }
 }
 $('dashboardForm').onsubmit=async e=>{e.preventDefault();await load()};
-async function loadNasabahs(){
-  const q={name:$('NasabahName').value.trim(),nik:$('NasabahNik').value.trim(),address:$('NasabahAddress').value.trim()||null,
-    birth_place:$('NasabahBirthPlace').value.trim()||null,birth_date:$('NasabahBirthDate').value||null,sex:$('NasabahSex').value||null,
-    rt:$('NasabahRt').value.trim()||null,rw:$('NasabahRw').value.trim()||null,village:$('NasabahVillage').value.trim()||null,
-    district:$('NasabahDistrict').value.trim()||null,city_regency:$('NasabahCity').value.trim()||null,province:$('NasabahProvince').value.trim()||null,
-    religion:$('NasabahReligion').value.trim()||null,marital_status:$('NasabahMarital').value.trim()||null,occupation:$('NasabahOccupation').value.trim()||null,
-    citizenship:$('NasabahCitizenship').value.trim()||null,phone:$('NasabahPhone').value.trim()||null,email:$('NasabahEmail').value.trim()||null,
-    registration_date:$('NasabahRegistrationDate').value||null};
+async function loadMembers(){
+  const q={name:$('memberName').value.trim(),nik:$('memberNik').value.trim(),address:$('memberAddress').value.trim()||null,
+    birth_place:$('memberBirthPlace').value.trim()||null,birth_date:$('memberBirthDate').value||null,sex:$('memberSex').value||null,
+    rt:$('memberRt').value.trim()||null,rw:$('memberRw').value.trim()||null,village:$('memberVillage').value.trim()||null,
+    district:$('memberDistrict').value.trim()||null,city_regency:$('memberCity').value.trim()||null,province:$('memberProvince').value.trim()||null,
+    religion:$('memberReligion').value.trim()||null,marital_status:$('memberMarital').value.trim()||null,occupation:$('memberOccupation').value.trim()||null,
+    citizenship:$('memberCitizenship').value.trim()||null,phone:$('memberPhone').value.trim()||null,email:$('memberEmail').value.trim()||null,
+    registration_date:$('memberRegistrationDate').value||null};
   try{
-    const id=$('NasabahId').value.trim();
-    const url=id?'/api/v1/Nasabahs/'+encodeURIComponent(id):'/api/v1/Nasabahs';
-    const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{...q,status:$('NasabahStatus').value}:q)});
-    if(!r.ok)throw new Error(d.detail||'Gagal menyimpan Nasabah');
-    if(!id&&d.Nasabah_id)$('NasabahId').value=d.Nasabah_id;
-    $('NasabahAuthResult').textContent='Nasabah '+(d.Nasabah_id||id)+' berhasil disimpan.';
-    await loadNasabahList();
-  }catch(e){$('NasabahAuthResult').textContent=e.message}
+    const id=$('memberId').value.trim();
+    const url=id?'/api/v1/members/'+encodeURIComponent(id):'/api/v1/members';
+    const {r,d}=await json(url,{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{...q,status:$('memberStatus').value}:q)});
+    if(!r.ok)throw new Error(d.detail||'Gagal menyimpan member');
+    if(!id&&d.member_id)$('memberId').value=d.member_id;
+    $('memberAuthResult').textContent='Member '+(d.member_id||id)+' berhasil disimpan.';
+    await loadMemberList();
+  }catch(e){$('memberAuthResult').textContent=e.message}
 }
-let NasabahListRows=[];
-function renderNasabahRows(){
-  const search=($('NasabahSearch')?.value||'').trim().toLowerCase();
-  const status=$('NasabahStatusFilter')?.value||'ALL';
-  const rows=NasabahListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.Nasabah_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('Nasabahs').innerHTML=rows.length?'<table><thead><tr><th>Nasabah ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.Nasabah_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-Nasabah-action="edit" data-Nasabah-id="'+esc(x.Nasabah_id)+'">Edit</button> <button type="button" data-Nasabah-action="nfc" data-Nasabah-id="'+esc(x.Nasabah_id)+'">Daftar/Ganti NFC</button> <button type="button" data-Nasabah-action="pin" data-Nasabah-id="'+esc(x.Nasabah_id)+'">Reset PIN</button> <button type="button" data-Nasabah-action="correction" data-Nasabah-id="'+esc(x.Nasabah_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada Nasabah terdaftar.</p>';
+let memberListRows=[];
+function renderMemberRows(){
+  const search=($('memberSearch')?.value||'').trim().toLowerCase();
+  const status=$('memberStatusFilter')?.value||'ALL';
+  const rows=memberListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.member_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
 }
-$('NasabahSearch').oninput=renderNasabahRows;
-$('NasabahStatusFilter').onchange=renderNasabahRows;
+$('memberSearch').oninput=renderMemberRows;
+$('memberStatusFilter').onchange=renderMemberRows;
 
-async function loadNasabahList(){
-  const {r,d}=await json('/api/v1/Nasabahs',{});
+async function loadMemberList(){
+  const {r,d}=await json('/api/v1/members',{});
   if(r.ok){
-    NasabahListRows=d.Nasabahs||[];
-    renderNasabahRows();
+    memberListRows=d.members||[];
+    renderMemberRows();
     await loadNfcCashiers();
   }
 }
-$('NasabahForm').onsubmit=async e=>{e.preventDefault();await loadNasabahs()};
-$('Nasabahs').addEventListener('click',async e=>{
-  const b=e.target.closest('button[data-Nasabah-action]');if(!b)return;
-  const NasabahId=b.dataset.NasabahId,action=b.dataset.NasabahAction;
+$('memberForm').onsubmit=async e=>{e.preventDefault();await loadMembers()};
+$('members').addEventListener('click',async e=>{
+  const b=e.target.closest('button[data-member-action]');if(!b)return;
+  const memberId=b.dataset.memberId,action=b.dataset.memberAction;
   try{
     if(action==='edit'){
-      const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId),{});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
       if(!r.ok)throw new Error(d.detail||'Gagal membaca anggota');
-      const m=d;$('NasabahId').value=m.Nasabah_id;$('NasabahName').value=m.name||'';$('NasabahNik').value=m.nik||'';
-      $('NasabahAddress').value=m.address||'';$('NasabahBirthPlace').value=m.birth_place||'';$('NasabahBirthDate').value=m.birth_date||'';
-      $('NasabahSex').value=m.sex||'';$('NasabahRt').value=m.rt||'';$('NasabahRw').value=m.rw||'';$('NasabahVillage').value=m.village||'';
-      $('NasabahDistrict').value=m.district||'';$('NasabahCity').value=m.city_regency||'';$('NasabahProvince').value=m.province||'';
-      $('NasabahReligion').value=m.religion||'';$('NasabahMarital').value=m.marital_status||'';$('NasabahOccupation').value=m.occupation||'';
-      $('NasabahCitizenship').value=m.citizenship||'WNI';$('NasabahPhone').value=m.phone||'';$('NasabahEmail').value=m.email||'';
-      $('NasabahRegistrationDate').value=m.registration_date||'';$('NasabahStatus').value=m.status||'active';
-      $('NasabahAuthResult').textContent='Mode edit: '+NasabahId+'. Simpan perubahan melalui tombol Simpan Nasabah.';
-      $('NasabahForm').scrollIntoView({behavior:'smooth',block:'start'});
+      const m=d;$('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
+      $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
+      $('memberSex').value=m.sex||'';$('memberRt').value=m.rt||'';$('memberRw').value=m.rw||'';$('memberVillage').value=m.village||'';
+      $('memberDistrict').value=m.district||'';$('memberCity').value=m.city_regency||'';$('memberProvince').value=m.province||'';
+      $('memberReligion').value=m.religion||'';$('memberMarital').value=m.marital_status||'';$('memberOccupation').value=m.occupation||'';
+      $('memberCitizenship').value=m.citizenship||'WNI';$('memberPhone').value=m.phone||'';$('memberEmail').value=m.email||'';
+      $('memberRegistrationDate').value=m.registration_date||'';$('memberStatus').value=m.status||'active';
+      $('memberAuthResult').textContent='Mode edit: '+memberId+'. Simpan perubahan melalui tombol Simpan Member.';
+      $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='pin'){
       const operator_id=prompt('ID petugas yang melakukan reset PIN:');if(!operator_id)return;
       if(!confirm('Pastikan identitas anggota sudah diverifikasi sesuai prosedur M-Group. Lanjut reset PIN?'))return;
       const pin=prompt('Masukkan PIN transaksi baru (4–6 digit):');if(!pin)return;
       const reason=prompt('Alasan reset PIN:');if(!reason)return;
-      const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,operator_id,reason,identity_verified:true})});
       if(!r.ok)throw new Error(d.detail||'Reset PIN gagal');
-      $('NasabahAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
+      $('memberAuthResult').textContent='Reset PIN berhasil. PIN tidak ditampilkan atau disimpan di WebUI.';
     }else if(action==='nfc'){
-      const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId),{});
-      if(!r.ok)throw new Error(d.detail||'Gagal membaca Nasabah');
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
+      if(!r.ok)throw new Error(d.detail||'Gagal membaca member');
       const m=d;
-      $('NasabahId').value=m.Nasabah_id;$('NasabahName').value=m.name||'';$('NasabahNik').value=m.nik||'';
-      $('NasabahAddress').value=m.address||'';$('NasabahBirthPlace').value=m.birth_place||'';$('NasabahBirthDate').value=m.birth_date||'';
-      $('NasabahSex').value=m.sex||'';$('NasabahRt').value=m.rt||'';$('NasabahRw').value=m.rw||'';$('NasabahVillage').value=m.village||'';
-      $('NasabahDistrict').value=m.district||'';$('NasabahCity').value=m.city_regency||'';$('NasabahProvince').value=m.province||'';
-      $('NasabahReligion').value=m.religion||'';$('NasabahMarital').value=m.marital_status||'';$('NasabahOccupation').value=m.occupation||'';
-      $('NasabahCitizenship').value=m.citizenship||'WNI';$('NasabahPhone').value=m.phone||'';$('NasabahEmail').value=m.email||'';
-      $('NasabahRegistrationDate').value=m.registration_date||'';$('NasabahStatus').value=m.status||'active';
-      $('nfcRegistrationResult').textContent='Nasabah terpilih. Pilih Cashier, lalu tekan “Scan / Ganti Kartu NFC”.';
-      $('NasabahForm').scrollIntoView({behavior:'smooth',block:'start'});
+      $('memberId').value=m.member_id;$('memberName').value=m.name||'';$('memberNik').value=m.nik||'';
+      $('memberAddress').value=m.address||'';$('memberBirthPlace').value=m.birth_place||'';$('memberBirthDate').value=m.birth_date||'';
+      $('memberSex').value=m.sex||'';$('memberRt').value=m.rt||'';$('memberRw').value=m.rw||'';$('memberVillage').value=m.village||'';
+      $('memberDistrict').value=m.district||'';$('memberCity').value=m.city_regency||'';$('memberProvince').value=m.province||'';
+      $('memberReligion').value=m.religion||'';$('memberMarital').value=m.marital_status||'';$('memberOccupation').value=m.occupation||'';
+      $('memberCitizenship').value=m.citizenship||'WNI';$('memberPhone').value=m.phone||'';$('memberEmail').value=m.email||'';
+      $('memberRegistrationDate').value=m.registration_date||'';$('memberStatus').value=m.status||'active';
+      $('nfcRegistrationResult').textContent='Member terpilih. Pilih Cashier, lalu tekan “Scan / Ganti Kartu NFC”.';
+      $('memberForm').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(action==='correction'){
       const operator_id=prompt('ID petugas yang melakukan koreksi:');if(!operator_id)return;
       const original_transaction_id=prompt('Referensi/ID transaksi Top Up asli:');if(!original_transaction_id)return;
       const corrected_amount=Number(prompt('Nominal Top Up yang benar (rupiah):'));if(!Number.isSafeInteger(corrected_amount)||corrected_amount<=0)throw new Error('Nominal koreksi tidak valid');
       const reason=prompt('Alasan koreksi (minimal 5 karakter):');if(!reason)return;
       if(!confirm('Konfirmasi koreksi transaksi Top Up '+original_transaction_id+' ke nominal '+money(corrected_amount)+'?'))return;
-      const idempotency_key='Nasabah-correction-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
-      const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
+      const idempotency_key='member-correction-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+      const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/topup-corrections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id,original_transaction_id,corrected_amount,reason,idempotency_key})});
       if(!r.ok)throw new Error(d.detail||'Koreksi Top Up gagal');
-      $('NasabahAuthResult').textContent='Koreksi tercatat. Nominal sebelum: '+money(d.original_amount)+'; sesudah: '+money(d.corrected_amount)+'.';
+      $('memberAuthResult').textContent='Koreksi tercatat. Nominal sebelum: '+money(d.original_amount)+'; sesudah: '+money(d.corrected_amount)+'.';
       await load();
     }
-  }catch(err){$('NasabahAuthResult').textContent=err.message}
+  }catch(err){$('memberAuthResult').textContent=err.message}
 });
 
 let nfcPollTimer=null;
@@ -194,16 +194,16 @@ async function loadNfcCashiers(){
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
   sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
-async function pollNfcRegistration(NasabahId,sessionId){
+async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
-    const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
+    const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
-    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu Nasabah memasukkan PIN transaksi 4 digit. Menunggu hasil...';
+    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
     else if(d.status==='completed'){
       $('nfcRegistrationResult').textContent='Registrasi NFC berhasil. UID kartu dan verifikasi PIN telah diproses server.';
       clearInterval(nfcPollTimer);
-      await loadNasabahList();
+      await loadMemberList();
     }else{
       $('nfcRegistrationResult').textContent='Status registrasi NFC: '+d.status;
       if(d.status==='expired'||d.status==='failed')clearInterval(nfcPollTimer);
@@ -214,24 +214,24 @@ async function pollNfcRegistration(NasabahId,sessionId){
 }
 $('nfcStart').onclick=async()=>{
   try{
-  const NasabahId=$('NasabahId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
-    if(!NasabahId)throw new Error('Simpan atau pilih Nasabah terlebih dahulu');
+  const memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
+    if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
     if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
-    const NasabahResponse=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId),{});
-    if(!NasabahResponse.r.ok)throw new Error(NasabahResponse.d.detail||'Nasabah belum tersimpan di server');
-    const hasActiveCard=(NasabahResponse.d.nfc_cards||[]).some(card=>card.status==='active');
-    let endpoint='/api/v1/Nasabahs/'+encodeURIComponent(NasabahId)+'/nfc-registration/start';
+    const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
+    if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
+    const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
+    let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
     let body={cashier_device_id:deviceId};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
-      endpoint='/api/v1/Nasabahs/'+encodeURIComponent(NasabahId)+'/nfc-replacement/start';
+      endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
       body={cashier_device_id:deviceId,operator_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
-    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier terpilih akan meminta Nasabah scan kartu dan memasukkan PIN 4 digit.';
-    await pollNfcRegistration(NasabahId,d.session_id);
+    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier terpilih akan meminta member scan kartu dan memasukkan PIN 4 digit.';
+    await pollNfcRegistration(memberId,d.session_id);
   }catch(e){$('nfcRegistrationResult').textContent=e.message}
 };
 
@@ -315,8 +315,8 @@ $('financialForm').onsubmit=async e=>{
   const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
   const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
   const selectedAccount=dashboardAccounts.find(x=>x.account_id===accountId);
-  const NasabahLabel=selectedAccount?.Nasabah_name||accountId;
-  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+NasabahLabel+'?'))return;
+  const memberLabel=selectedAccount?.member_name||accountId;
+  if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
   const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
@@ -324,19 +324,19 @@ $('financialForm').onsubmit=async e=>{
   $('financialResult').textContent=JSON.stringify(d,null,2);
   if(r.ok){await load();await loadFinancialLedger()}
 };
-async function loadPaymentNasabahData(NasabahId){
+async function loadPaymentMemberData(memberId){
   const credentialSelect=$('credential'),accountSelect=$('payaccount');
-  if(!NasabahId){credentialSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';return}
-  const accounts=dashboardAccounts.filter(x=>x.Nasabah_id===NasabahId&&x.status==='active');
+  if(!memberId){credentialSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';accountSelect.innerHTML='<option value="">Pilih Nasabah terlebih dahulu</option>';return}
+  const accounts=dashboardAccounts.filter(x=>x.member_id===memberId&&x.status==='active');
   const currentAccount=accountSelect.value;
   accountSelect.innerHTML=accounts.length?accounts.map(x=>'<option value="'+esc(x.account_id)+'">'+esc(x.account_id)+' · '+money(x.balance)+'</option>').join(''):'<option value="">Tidak ada rekening aktif</option>';
   if(accounts.some(x=>x.account_id===currentAccount))accountSelect.value=currentAccount;
-  const {r,d}=await json('/api/v1/Nasabahs/'+encodeURIComponent(NasabahId),{});
+  const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
   if(!r.ok){credentialSelect.innerHTML='<option value="">Gagal memuat kartu</option>';return}
   const cards=(d.nfc_cards||[]).filter(x=>x.status==='active'&&x.credential_id);
   credentialSelect.innerHTML=cards.length?cards.map(x=>'<option value="'+esc(x.credential_id)+'">'+esc(x.credential_id)+' · '+esc(x.card_uid||'NFC')+'</option>').join(''):'<option value="">Tidak ada kartu NFC aktif</option>';
 }
-$('payNasabah').onchange=()=>loadPaymentNasabahData($('payNasabah').value);
+$('payMember').onchange=()=>loadPaymentMemberData($('payMember').value);
 function renderPaymentTransactions(){
   if(!$('payments'))return;
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
@@ -479,7 +479,7 @@ async function loadCashierTransactions(){
   const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
   const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
   $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
-  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','Nasabah_id','account_id','transaction_type','amount','status']);
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,amount:money(x.amount)})),['created_at','transaction_id','device_id','member_id','account_id','transaction_type','amount','status']);
   $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
 }
 $('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
@@ -517,7 +517,7 @@ async function loadAudit(){
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value;
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(date?'&date='+encodeURIComponent(date):'');
     const {r,d}=await json('/api/v1/audit/report'+q,{});
-    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','Nasabah_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
+    $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','device_id','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
 }
 $('auditForm').onsubmit=async e=>{e.preventDefault();await loadAudit()};
@@ -558,7 +558,7 @@ $('backupRestore').onclick=async()=>{
   }catch(e){$('backupResult').textContent=e.message}
 };
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
-const validTabs=['dashboard','Nasabah','financial','payment','vending','cashier','devices','audit','settings'];
+const validTabs=['dashboard','member','financial','payment','vending','cashier','devices','audit','settings'];
 try {
   const savedTab=sessionStorage.getItem('m-group-active-tab');
   if(validTabs.includes(savedTab)) switchTab(savedTab);
