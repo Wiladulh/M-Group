@@ -48,4 +48,4 @@ The balance is computed by the server's financial ledger. The response contains 
 - Do not submit a payment, ask for a payment PIN, or change local/server balances during lookup.
 - Keep the device key out of logs and UI. Use HTTPS where available.
 - An NFC UID by itself is not cryptographic proof of card authenticity; balance lookup must not be treated as payment authorization.
-- Vending can call this same endpoint with its own registered device ID/key; no separate balance API is required.
+- Vending can call this endpoint with its own Device Key; the server resolves the device internally, so the request body needs no Device ID.
