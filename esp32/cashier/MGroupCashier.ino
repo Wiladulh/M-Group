@@ -33,29 +33,37 @@ bool readerReady=false;
 long paymentAmount=0;
 Preferences cashierPrefs;
 bool pendingPayment=false,pendingDeposit=false;
-String pendingCredential="",pendingSeq="";
+String pendingCredential="",pendingSeq="",pendingPaymentKey="",pendingDepositKey="";
 long pendingAmount=0;
 String pendingDepositCredential="",pendingDepositSeq="";
 long pendingDepositAmount=0;
 void savePendingPayment(const String& credential,long amount,const String& seq){
+  if(!pendingPaymentKey.length() || pendingSeq!=seq){
+    pendingPaymentKey=DEVICE_NONCE+":"+seq;
+    cashierPrefs.putString("pay_key",pendingPaymentKey);
+  }
   cashierPrefs.putBool("pay_pending",true); cashierPrefs.putString("pay_cred",credential);
   cashierPrefs.putLong("pay_amount",amount); cashierPrefs.putString("pay_seq",seq);
   pendingPayment=true; pendingCredential=credential; pendingAmount=amount; pendingSeq=seq;
 }
 void clearPendingPayment(){
   cashierPrefs.putBool("pay_pending",false); cashierPrefs.remove("pay_cred");
-  cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq");
-  pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq="";
+  cashierPrefs.remove("pay_amount"); cashierPrefs.remove("pay_seq"); cashierPrefs.remove("pay_key");
+  pendingPayment=false; pendingCredential=""; pendingAmount=0; pendingSeq=""; pendingPaymentKey="";
 }
 void savePendingDeposit(const String& credential,long amount,const String& seq){
+  if(!pendingDepositKey.length() || pendingDepositSeq!=seq){
+    pendingDepositKey=DEVICE_NONCE+":deposit:"+seq;
+    cashierPrefs.putString("dep_key",pendingDepositKey);
+  }
   cashierPrefs.putBool("dep_pending",true); cashierPrefs.putString("dep_cred",credential);
   cashierPrefs.putLong("dep_amount",amount); cashierPrefs.putString("dep_seq",seq);
   pendingDeposit=true; pendingDepositCredential=credential; pendingDepositAmount=amount; pendingDepositSeq=seq;
 }
 void clearPendingDeposit(){
   cashierPrefs.putBool("dep_pending",false); cashierPrefs.remove("dep_cred");
-  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq");
-  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq="";
+  cashierPrefs.remove("dep_amount"); cashierPrefs.remove("dep_seq"); cashierPrefs.remove("dep_key");
+  pendingDeposit=false; pendingDepositCredential=""; pendingDepositAmount=0; pendingDepositSeq=""; pendingDepositKey="";
 }
 
 void lcdShow(String a,String b="");
@@ -350,6 +358,13 @@ void setup(){
     pendingDepositCredential=cashierPrefs.getString("dep_cred","");
     pendingDepositAmount=cashierPrefs.getLong("dep_amount",0);
     pendingDepositSeq=cashierPrefs.getString("dep_seq","");
+    pendingDepositKey=cashierPrefs.getString("dep_key","");
+    if(!pendingDepositKey.length() && pendingDepositSeq.length()){
+      // Preserve idempotency for a deposit persisted by older firmware.
+      String legacyMac=WiFi.macAddress();legacyMac.replace(":","");legacyMac.toLowerCase();
+      pendingDepositKey="Cashier_"+legacyMac+":deposit:"+pendingDepositSeq;
+      cashierPrefs.putString("dep_key",pendingDepositKey);
+    }
     if(!pendingDepositCredential.length() || pendingDepositAmount<=0 || !pendingDepositSeq.length()){
       Serial.println("FATAL: pending deposit metadata invalid; inspect device before new deposits");
       while(true) delay(1000);
@@ -359,6 +374,13 @@ void setup(){
     pendingCredential=cashierPrefs.getString("pay_cred","");
     pendingAmount=cashierPrefs.getLong("pay_amount",0);
     pendingSeq=cashierPrefs.getString("pay_seq","");
+    pendingPaymentKey=cashierPrefs.getString("pay_key","");
+    if(!pendingPaymentKey.length() && pendingSeq.length()){
+      // Preserve idempotency for a transaction persisted by older firmware.
+      String legacyMac=WiFi.macAddress();legacyMac.replace(":","");legacyMac.toLowerCase();
+      pendingPaymentKey="Cashier_"+legacyMac+":"+pendingSeq;
+      cashierPrefs.putString("pay_key",pendingPaymentKey);
+    }
     if(!pendingCredential.length() || pendingAmount<=0 || !pendingSeq.length()){
       Serial.println("FATAL: pending payment metadata invalid; inspect device before new payments");
       while(true) delay(1000);
