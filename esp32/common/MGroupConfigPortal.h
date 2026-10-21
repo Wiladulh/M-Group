@@ -31,7 +31,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Perangkat dikenali server menggunakan Device Key. Device ID tidak perlu dibuat atau dimasukkan.</p>
+<p class="warn">Server mengenali perangkat melalui Device Key.</p>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
