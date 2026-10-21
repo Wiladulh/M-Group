@@ -75,7 +75,8 @@ class VendingService:
         with self.db.connect() as c:
             rows = {}
             for row in c.execute(
-                "SELECT product_id,slot,name,price,stock,capacity,servo_channel,enabled "
+                "SELECT product_id,slot,name,price,stock,capacity,servo_channel,enabled, "
+                "CASE WHEN image_data IS NOT NULL THEN 1 ELSE 0 END AS has_image "
                 "FROM vending_products WHERE machine_id=? ORDER BY slot",
                 (machine_id,),
             ).fetchall():
@@ -98,7 +99,8 @@ class VendingService:
         self.machine(machine_id)
         with self.db.connect() as c:
             rows = c.execute(
-                "SELECT product_id,name,price,stock,enabled,slot,capacity,servo_channel "
+                "SELECT product_id,name,price,stock,enabled,slot,capacity,servo_channel, "
+                "CASE WHEN image_data IS NOT NULL THEN 1 ELSE 0 END AS has_image "
                 "FROM vending_products WHERE machine_id=? AND slot BETWEEN 1 AND 5 ORDER BY slot",
                 (machine_id,)
             ).fetchall()
@@ -174,13 +176,15 @@ class VendingService:
         with self.db.connect() as c:
             if product_id in self.PRODUCT_IDS:
                 r=c.execute(
-                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel "
+                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel, "
+                    "CASE WHEN image_data IS NOT NULL THEN 1 ELSE 0 END AS has_image "
                     "FROM vending_products WHERE machine_id=? AND slot=?",
                     (machine_id,int(product_id))
                 ).fetchone()
             else:
                 r=c.execute(
-                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel "
+                    "SELECT product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel, "
+                    "CASE WHEN image_data IS NOT NULL THEN 1 ELSE 0 END AS has_image "
                     "FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)
                 ).fetchone()
         if not r: raise ValueError("product_not_found")
