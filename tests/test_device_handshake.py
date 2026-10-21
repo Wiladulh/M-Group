@@ -21,22 +21,26 @@ def test_cashier_and_vending_identity_handshake():
                 headers=headers,
             )
             assert cashier_key.status_code == 200
-            cashier_device_id = cashier_key.json()["device_id"]
-            assert cashier_device_id.startswith("pending-")
+            assert "device_id" not in cashier_key.json()
+            cashier_key_value = cashier_key.json()["device_key"]
+            with client.app.state.db.connect() as conn:
+                cashier_device_id = conn.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(cashier_key_value.encode()).hexdigest(),),
+                ).fetchone()["device_id"]
 
             cashier = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-cashier",
-                "hardware_id": "Cashier_aabbcc001001",
                 "mac_address": "AA:BB:CC:00:10:01",
-                "device_key": cashier_key.json()["device_key"],
+                "device_key": cashier_key_value,
             })
             assert cashier.status_code == 200
             c = cashier.json()
             assert c["handshake"] == "accepted"
             assert c["status"] == "active"
             assert c["device_type"] == "esp32-cashier"
-            assert c["hardware_id"] == "cashier_aabbcc001001"
-            assert c["device_id"] == cashier_device_id
+            assert "hardware_id" not in c
+            assert "device_id" not in c
 
             vending_key = client.post(
                 "/api/v1/devices/provision",
@@ -44,26 +48,29 @@ def test_cashier_and_vending_identity_handshake():
                 headers=headers,
             )
             assert vending_key.status_code == 200
-            vending_device_id = vending_key.json()["device_id"]
-            assert vending_device_id.startswith("pending-")
+            assert "device_id" not in vending_key.json()
+            vending_key_value = vending_key.json()["device_key"]
+            with client.app.state.db.connect() as conn:
+                vending_device_id = conn.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(vending_key_value.encode()).hexdigest(),),
+                ).fetchone()["device_id"]
 
             vending = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-vending",
-                "hardware_id": "Vending_aabbcc004801",
                 "mac_address": "AA:BB:CC:00:48:01",
-                "device_key": vending_key.json()["device_key"],
+                "device_key": vending_key_value,
             })
             assert vending.status_code == 200
             v = vending.json()
             assert v["handshake"] == "accepted"
             assert v["status"] == "active"
             assert v["device_type"] == "esp32-s3-vending"
-            assert v["hardware_id"] == "vending_aabbcc004801"
-            assert v["device_id"] == vending_device_id
+            assert "hardware_id" not in v
+            assert "device_id" not in v
 
             bad = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-s3-vending",
-                "hardware_id": "Vending_aabbcc004801",
                 "mac_address": "AA:BB:CC:00:48:01",
                 "device_key": "wrong",
             })
@@ -75,6 +82,7 @@ def test_cashier_and_vending_identity_handshake():
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='registration'").fetchone()[0] == 2
                 assert conn.execute("SELECT COUNT(*) FROM device_events WHERE event_type='identity_handshake'").fetchone()[0] == 0
             rows = devices.json()["devices"]
-            assert {x["hardware_id"] for x in rows} >= {"cashier_aabbcc001001", "vending_aabbcc004801"}
+            assert "hardware_id" not in rows[0]
+            assert {x["mac_address"] for x in rows} >= {"AA:BB:CC:00:10:01", "AA:BB:CC:00:48:01"}
         finally:
             main.get_settings = old
