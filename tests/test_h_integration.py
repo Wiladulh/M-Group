@@ -133,7 +133,7 @@ def test_h_full_integration_one_by_one():
                 },
             )
             assert cashier_payment.status_code == 200
-            assert cashier_payment.json()["device_id"] == "cashier-h"
+            assert "device_id" not in cashier_payment.json()
 
             # H-07 Vending
             vending = client.post(
