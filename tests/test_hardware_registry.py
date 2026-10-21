@@ -158,6 +158,11 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
             new_hint = rotated.json()["device_key_hint"]
             assert new_key and new_hint != hint
             assert "device_id" not in rotated.json()
+            registered = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:DD:EE:71", "device_key": new_key},
+            )
+            assert registered.status_code == 200, registered.text
             assert client.post(
                 "/api/v1/devices/heartbeat",
                 headers={"X-M-Group-Device-Key": key},
@@ -168,11 +173,6 @@ def test_device_management_and_dashboard_never_expose_internal_device_ids():
                 headers={"X-M-Group-Device-Key": new_key},
                 json={"device_type": "esp32-cashier", "status": "active"},
             ).status_code == 200
-            registered = client.post(
-                "/api/v1/devices/register",
-                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:DD:EE:71", "device_key": new_key},
-            )
-            assert registered.status_code == 200, registered.text
             assert client.get(f"/api/v1/devices/by-key-hint/{hint}", headers=admin).status_code == 404
 
             with client.app.state.db.connect() as conn:
