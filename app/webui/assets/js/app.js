@@ -42,7 +42,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
-  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.device_ref,x.display_name||x.device_type||'Perangkat']));
+  deviceDisplayNames=Object.fromEntries((d.devices||[]).map(x=>[x.auth_key_hint,x.display_name||x.device_type||'Perangkat']));
   const stats=d.stats||{};
   const totalBalance=d.accounts.reduce((n,x)=>n+Number(x.balance||0),0);
   $('summary').innerHTML=[
@@ -57,7 +57,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
   $('recentTransactions').innerHTML=table(recent.map(x=>({
     created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
-    Perangkat:deviceDisplayNames[x.device_ref]||x.machine_name||'Vending',account_id:x.account_id,
+    Perangkat:x.device_location||x.machine_name||'Vending',account_id:x.account_id,
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','Perangkat','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
@@ -193,7 +193,7 @@ async function loadNfcCashiers(){
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_ref)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
+  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.auth_key_hint)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
@@ -215,19 +215,19 @@ async function pollNfcRegistration(memberId,sessionId){
 }
 $('nfcStart').onclick=async()=>{
   try{
-  const memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
+  const memberId=$('memberId').value.trim(),cashierKeyHint=$('nfcCashierDevice').value.trim();
     if(!memberId)throw new Error('Simpan atau pilih Nasabah terlebih dahulu');
-    if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
+    if(!cashierKeyHint)throw new Error('Pilih Cashier aktif terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
     if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Nasabah belum tersimpan di server');
     const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
-    let body={cashier_device_id:deviceId};
+    let body={cashier_key_hint:cashierKeyHint};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={cashier_device_id:deviceId,operator_id};
+      body={cashier_key_hint:cashierKeyHint,operator_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
@@ -245,11 +245,11 @@ async function loadDevices(){
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>'<tr>'+
-        '<td><input data-device-name="'+esc(x.device_ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+        '<td><input data-device-name="'+esc(x.auth_key_hint)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(x.device_ref)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td><select data-device-status="'+esc(x.auth_key_hint)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.device_ref)+'">Simpan</button></td>'+
+        '<td><button type="button" data-device-save="'+esc(x.auth_key_hint)+'">Simpan</button></td>'+
       '</tr>').join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
   }catch(e){$('deviceAuthResult').textContent=e.message}
@@ -259,10 +259,10 @@ async function saveDevice(deviceId){
   const status=document.querySelector('[data-device-status="'+CSS.escape(deviceId)+'"]').value;
   if(!name){$('deviceAuthResult').textContent='Nama perangkat wajib diisi';return}
   try{
-    const current=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{});
+    const current=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(deviceId),{});
     if(!current.r.ok)throw new Error(current.d.detail||'Gagal membaca perangkat');
     const q={device_type:current.d.device_type,status:status,display_name:name};
-    const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
+    const {r,d}=await json('/api/v1/devices/by-key-hint/'+encodeURIComponent(deviceId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
     if(!r.ok)throw new Error(d.detail||'Gagal menyimpan perangkat');
     $('deviceAuthResult').textContent='Perangkat berhasil diperbarui.';
     await loadDevices();
@@ -342,8 +342,8 @@ function renderPaymentTransactions(){
   if(!$('payments'))return;
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
   const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
-  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_ref,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:deviceDisplayNames[x.device_ref]||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_location,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:x.device_location||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
 }
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
@@ -530,17 +530,17 @@ async function loadCashierTransactions(){
   const deviceSelect=$('cashierDevice');
   if(deviceSelect){
     const current=deviceSelect.value;
-    const devices=[...new Set(rows.map(x=>x.device_ref).filter(Boolean))].sort();
-    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(deviceDisplayNames[x]||'Cashier')+'</option>').join('');
+    const devices=[...new Set(rows.map(x=>x.device_location).filter(Boolean))].sort();
+    deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
     if(devices.includes(current))deviceSelect.value=current;
   }
   const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
-  const filtered=rows.filter(x=>(device==='ALL'||x.device_ref===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
+  const filtered=rows.filter(x=>(device==='ALL'||x.device_location===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
   const completed=filtered.filter(x=>String(x.status).toLowerCase()==='completed');
   const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
   const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
   $('cashierMetrics').innerHTML=[['Transaksi',filtered.length],['Penerimaan berhasil',money(incoming)],['Pembayaran berhasil',money(outgoing)],['Netto',money(incoming-outgoing)]].map(x=>'<div class="card"><div class="label">'+esc(x[0])+'</div><div class="value">'+esc(x[1])+'</div></div>').join('');
-  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,perangkat:deviceDisplayNames[x.device_id]||'Cashier',amount:money(x.amount)})),['created_at','transaction_id','perangkat','member_id','account_id','transaction_type','amount','status']);
+  $('cashierResult').innerHTML=table(filtered.map(x=>({...x,perangkat:x.device_location||'Cashier',amount:money(x.amount)})),['created_at','transaction_id','perangkat','member_id','account_id','transaction_type','amount','status']);
   $('cashierDetail').textContent='Sumber: server M-Group. Nilai netto dihitung hanya dari transaksi berstatus completed.';
 }
 $('cashierForm').onsubmit=async e=>{e.preventDefault();await loadCashierTransactions()};
