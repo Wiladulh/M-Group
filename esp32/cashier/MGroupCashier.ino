@@ -239,7 +239,7 @@ void checkMemberBalance(){
   if(code==200){
     long balance=jsonNumber(reply,"balance");
     String member=jsonField(reply,"member_name");
-    lcdShow(member.length()?member:"Saldo Member","Rp."+String(balance<0?0:balance));
+    lcdShow(member.length()?member:"Saldo Nasabah","Rp."+String(balance<0?0:balance));
     delay(3500);
   }else if(code==401 || code==403){
     lcdShow("Cek saldo gagal","Device/akses");
