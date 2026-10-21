@@ -21,7 +21,7 @@ def test_h_full_integration_one_by_one():
                 headers=admin,
                 json={
                     "name": "H Test Member",
-                    "nik": "3273010101010001",
+                    "nik": "TEST-NIK-001",
                     "birth_place": "Lamongan",
                     "birth_date": "1990-01-01",
                     "sex": "Laki-laki",
@@ -31,7 +31,7 @@ def test_h_full_integration_one_by_one():
             )
             assert member.status_code == 200
             member_id = member.json()["member_id"]
-            assert member.json()["nik"] == "3273010101010001"
+            assert member.json()["nik"] == "TEST-NIK-001"
 
             # H-02 Member -> Cashier
             provision = client.post(
@@ -80,15 +80,18 @@ def test_h_full_integration_one_by_one():
             assert complete.status_code == 200
             credential_id = complete.json()["credential_id"]
 
-            # Create the member's savings account and seed balance.
+            # Member creation now creates a savings account automatically.
+            # Seed that canonical account rather than inserting a duplicate savings account.
             with client.app.state.db.connect() as c:
-                c.execute(
-                    "INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES(?,?,?)",
-                    ("acct-h", member_id, "savings"),
-                )
+                account = c.execute(
+                    "SELECT account_id FROM financial_accounts WHERE member_id=? AND account_type='savings' AND status='active' ORDER BY created_at LIMIT 1",
+                    (member_id,),
+                ).fetchone()
+                assert account is not None
+                account_id = account["account_id"]
                 c.execute(
                     "INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES(?,?,?,?)",
-                    ("acct-h", "credit", 20000, "h-seed"),
+                    (account_id, "credit", 20000, "h-seed"),
                 )
                 c.commit()
 
@@ -98,7 +101,7 @@ def test_h_full_integration_one_by_one():
                 headers=admin,
                 json={
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "amount": 5000,
                     "method": "NFC",
                     "provider": "local",
@@ -121,7 +124,7 @@ def test_h_full_integration_one_by_one():
                 json={
                     "device_id": "cashier-h",
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "amount": 2000,
                     "method": "NFC",
                     "provider": "local",
@@ -159,7 +162,7 @@ def test_h_full_integration_one_by_one():
                 json={
                     "product_id": "1",
                     "credential_id": credential_id,
-                    "account_id": "acct-h",
+                    "account_id": account_id,
                     "idempotency_key": "h-vending-1",
                 },
             )
