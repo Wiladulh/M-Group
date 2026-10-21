@@ -368,7 +368,7 @@ async function loadVendingCatalog(machineId){
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
   vendingCatalog=d.products||[];
-  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','enabled']);
+  $('products').innerHTML='<table><thead><tr><th>Gambar</th><th>Product ID</th><th>Nama</th><th>Harga</th><th>Stok</th><th>Kapasitas</th><th>Aktif</th></tr></thead><tbody>'+vendingCatalog.map(x=>'<tr><td>'+(x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+esc(x.name||'produk')+'" style="width:64px;height:64px;object-fit:contain">':'—')+'</td><td>'+esc(x.product_id)+'</td><td>'+esc(x.name||'')+'</td><td>'+esc(money(x.price))+'</td><td>'+esc(x.stock)+'</td><td>'+esc(x.capacity)+'</td><td>'+(x.enabled?'ya':'tidak')+'</td></tr>').join('')+'</tbody></table>';
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
@@ -385,6 +385,16 @@ async function loadVendingMachines(){
 }
 $('loadVendingMachines').onclick=loadVendingMachines;
 $('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
+function renderProductImage(item){
+  const file=$('productImage').files?.[0];
+  if(file){
+    $('productImagePreview').innerHTML='<img alt="Pratinjau gambar produk" src="'+URL.createObjectURL(file)+'" style="max-width:180px;max-height:180px;object-fit:contain">';
+  }else if(item?.image_url){
+    $('productImagePreview').innerHTML='<img alt="Gambar produk saat ini" src="'+esc(item.image_url)+'" style="max-width:180px;max-height:180px;object-fit:contain">';
+  }else{
+    $('productImagePreview').textContent='Belum ada gambar produk.';
+  }
+}
 $('productId').onchange=()=>{
   const item=vendingCatalog.find(x=>String(x.product_id)===$('productId').value);
   $('productName').value=item?.name||'';
@@ -392,6 +402,23 @@ $('productId').onchange=()=>{
   $('productStock').value=item?.stock??0;
   $('productCapacity').value=item?.capacity??0;
   $('productEnabled').checked=item?!!item.enabled:true;
+  $('productImage').value='';
+  renderProductImage(item);
+};
+$('productImage').onchange=()=>{
+  const file=$('productImage').files?.[0];
+  if(file && file.size>2*1024*1024){$('productImage').value='';$('productResult').textContent='Ukuran gambar maksimum 2 MB.';}
+  renderProductImage(vendingCatalog.find(x=>String(x.product_id)===$('productId').value));
+};
+$('removeProductImage').onclick=async()=>{
+  const mid=$('machineId').value.trim(),pid=$('productId').value.trim();
+  if(!mid||!pid){$('productResult').textContent='Pilih mesin dan produk terlebih dahulu.';return}
+  const item=vendingCatalog.find(x=>String(x.product_id)===pid);
+  if(!item?.image_url){$('productImage').value='';renderProductImage(item);$('productResult').textContent='Produk ini belum memiliki gambar.';return}
+  if(!confirm('Hapus gambar produk ini?'))return;
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'DELETE'});
+  $('productResult').textContent=r.ok?'Gambar produk dihapus.':(d.detail||'Gagal menghapus gambar.');
+  if(r.ok)await loadVendingCatalog(mid);
 };
 $('productForm').onsubmit=async e=>{
   e.preventDefault();
@@ -399,8 +426,17 @@ $('productForm').onsubmit=async e=>{
   if(!mid||!pid){$('productResult').textContent='Muat daftar mesin lalu pilih mesin dan Product ID';return}
   const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
-  $('productResult').textContent=JSON.stringify(d,null,2);
-  if(r.ok){await loadVendingCatalog(mid);await load()}
+  if(!r.ok){$('productResult').textContent=d.detail||'Gagal menyimpan produk';return}
+  const file=$('productImage').files?.[0];
+  if(file){
+    if(file.size>2*1024*1024){$('productResult').textContent='Ukuran gambar maksimum 2 MB.';return}
+    const form=new FormData();form.append('image',file);
+    const upload=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'PUT',body:form});
+    if(!upload.r.ok){$('productResult').textContent='Data produk tersimpan, tetapi gambar gagal diunggah: '+(upload.d.detail||'kesalahan upload');return}
+  }
+  $('productImage').value='';
+  $('productResult').textContent=file?'Produk dan gambar berhasil disimpan.':'Produk berhasil disimpan.';
+  await loadVendingCatalog(mid);await load();
 };
 let vendingTransactions=[];
 async function loadVendingTransactions(machineId){
