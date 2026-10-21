@@ -57,7 +57,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,12);
   $('recentTransactions').innerHTML=table(recent.map(x=>({
     created_at:x.created_at,source:x.source,transaction_id:x.transaction_id,
-    Perangkat:deviceDisplayNames[x.device_id]||x.machine_name||'Vending',account_id:x.account_id,
+    Perangkat:deviceDisplayNames[x.device_ref]||x.machine_name||'Vending',account_id:x.account_id,
     transaction_type:x.transaction_type,amount:money(x.final_amount??x.amount),status:x.status
   })),['created_at','source','transaction_id','Perangkat','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
@@ -342,8 +342,8 @@ function renderPaymentTransactions(){
   if(!$('payments'))return;
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
   const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
-  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:deviceDisplayNames[x.device_id]||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.device_ref,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,perangkat:deviceDisplayNames[x.device_ref]||'—',amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','perangkat','status','created_at']);
 }
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
@@ -470,12 +470,12 @@ async function loadCashierTransactions(){
   const deviceSelect=$('cashierDevice');
   if(deviceSelect){
     const current=deviceSelect.value;
-    const devices=[...new Set(rows.map(x=>x.device_id).filter(Boolean))].sort();
+    const devices=[...new Set(rows.map(x=>x.device_ref).filter(Boolean))].sort();
     deviceSelect.innerHTML='<option value="ALL">Semua Cashier</option>'+devices.map(x=>'<option value="'+esc(x)+'">'+esc(deviceDisplayNames[x]||'Cashier')+'</option>').join('');
     if(devices.includes(current))deviceSelect.value=current;
   }
   const device=deviceSelect?.value||'ALL',type=$('cashierType').value,statusFilter=$('cashierStatus').value;
-  const filtered=rows.filter(x=>(device==='ALL'||x.device_id===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
+  const filtered=rows.filter(x=>(device==='ALL'||x.device_ref===device)&&(type==='ALL'||x.transaction_type===type)&&(statusFilter==='ALL'||String(x.status).toLowerCase()===statusFilter));
   const completed=filtered.filter(x=>String(x.status).toLowerCase()==='completed');
   const incoming=completed.filter(x=>x.transaction_type==='DEPOSIT').reduce((n,x)=>n+Number(x.amount||0),0);
   const outgoing=completed.filter(x=>x.transaction_type==='PAYMENT').reduce((n,x)=>n+Number(x.amount||0),0);
