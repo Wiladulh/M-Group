@@ -152,3 +152,66 @@ def test_vending_product_image_rejects_oversize_and_invalid_images():
             assert invalid.status_code == 415
         finally:
             main.get_settings = old
+
+
+def test_vending_product_image_can_be_fetched_with_device_key():
+    from io import BytesIO
+    from PIL import Image
+
+    with TemporaryDirectory() as directory:
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "S", (), {"db_path": Path(directory) / "m-group.db"}
+        )()
+        try:
+            client = TestClient(main.create_app())
+            admin = login_admin(client)
+            provision = client.post(
+                "/api/v1/devices/vending-image/provision",
+                headers=admin,
+                json={"device_type": "esp32-s3-vending", "display_name": "Vending image test"},
+            )
+            assert provision.status_code == 200, provision.text
+            key = provision.json()["device_key"]
+            heartbeat = client.post(
+                "/api/v1/devices/vending-image/heartbeat",
+                headers={"X-M-Group-Device-Key": key},
+                json={"device_type": "esp32-s3-vending", "status": "active"},
+            )
+            assert heartbeat.status_code == 200, heartbeat.text
+
+            with client.app.state.db.connect() as conn:
+                conn.execute(
+                    "INSERT INTO vending_machines(machine_id,name,device_id) VALUES(?,?,?)",
+                    ("machine-image", "Image test", "vending-image"),
+                )
+                conn.commit()
+            product = client.put(
+                "/api/v1/vending/machine-image/products/1",
+                headers=admin,
+                json={
+                    "product_id": "1", "name": "Water", "price": 5000,
+                    "stock": 2, "slot": 1, "capacity": 5, "servo_channel": 1,
+                },
+            )
+            assert product.status_code == 200, product.text
+
+            buffer = BytesIO()
+            Image.new("RGB", (2, 2), (20, 80, 120)).save(buffer, format="JPEG")
+            image_bytes = buffer.getvalue()
+            uploaded = client.put(
+                "/api/v1/vending/machine-image/products/1/image",
+                headers=admin,
+                files={"image": ("water.jpg", image_bytes, "image/jpeg")},
+            )
+            assert uploaded.status_code == 200, uploaded.text
+
+            device_headers = {"X-M-Group-Device-Key": key}
+            catalog = client.get("/api/v1/vending/machine-image/products", headers=device_headers)
+            assert catalog.status_code == 200, catalog.text
+            image = client.get(catalog.json()["products"][0]["image_url"], headers=device_headers)
+            assert image.status_code == 200
+            assert image.headers["content-type"].startswith("image/jpeg")
+            assert image.content == image_bytes
+        finally:
+            main.get_settings = old
