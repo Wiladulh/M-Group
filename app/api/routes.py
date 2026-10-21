@@ -1077,25 +1077,6 @@ def build_router(db, app_settings=None):
             item["discount_amount"] = 0
             item["promo_id"] = None
         for item in catalog:
-            item["base_price"] = item["price"]
-            item["effective_price"] = item["price"]
-            item["discount_amount"] = 0
-            item["promo_id"] = None
-            promo = promos.resolve(machine["machine_id"], item["product_id"], "NFC", "local")
-            if not promo:
-                with db.connect() as c:
-                    legacy = c.execute(
-                        "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=?",
-                        (machine["machine_id"], int(item["product_id"])),
-                    ).fetchone()
-                if legacy:
-                    promo = promos.resolve(machine["machine_id"], legacy["product_id"], "NFC", "local")
-            if promo:
-                discount, _ = promos.calculate(item["price"], promo["discount_percent"])
-                item["discount_amount"] = discount
-                item["effective_price"] = item["price"] - discount
-                item["promo_id"] = promo["promo_id"]
-        for item in catalog:
             item["image_url"] = (
                 f"/api/v1/vending/{machine['machine_id']}/products/{item['product_id']}/image"
                 if item.get("has_image") else None
