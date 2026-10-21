@@ -287,6 +287,12 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             raise HTTPException(404, str(e))
 
+    def public_vending_machine(machine):
+        result = dict(machine)
+        # The device-to-machine foreign key is an internal relationship, not a public ID.
+        result.pop("device_id", None)
+        return result
+
     def public_vending_transaction(tx):
         result = dict(tx)
         with db.connect() as c:
@@ -1091,7 +1097,7 @@ def build_router(db, app_settings=None):
                 f"/api/v1/vending/{machine['machine_id']}/products/{item['product_id']}/image"
                 if item.get("has_image") else None
             )
-        return {"machine": machine, "products": catalog}
+        return {"machine": public_vending_machine(machine), "products": catalog}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(request: Request, machine_id,product_id,q:VendingProductRequest):
