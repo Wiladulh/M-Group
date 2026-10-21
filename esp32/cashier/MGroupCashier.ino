@@ -97,7 +97,7 @@ String postJson(const String& path,const String& body,int& code){
 bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
   String mac=WiFi.macAddress();
-  String body="{\\"device_type\\":\\"esp32-cashier\\",\\"mac_address\\":\\""+mac+"\\",\\"device_key\\":\\""+M_GROUP_DEVICE_KEY+"\\"}";
+  String body="{\"device_type\":\"esp32-cashier\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=postJson("/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
   deviceRegistered=code>=200&&code<300;
@@ -108,7 +108,7 @@ void heartbeat(){
   if(!deviceRegistered){Serial.println("HEARTBEAT skipped: device not registered");return;}
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
-  String body="{\\"device_type\\":\\"esp32-cashier\\",\\"status\\":\\"active\\"}";
+  String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
   String reply=postJson("/api/v1/devices/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
@@ -140,7 +140,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
   savePendingPayment(credential,amount,seq);
-  String body="{\\"credential_id\\":\\""+credential+
+  String body="{\"credential_id\":\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
               pendingPaymentKey+"\",\"pin\":\""+pin+"\"}";
@@ -240,7 +240,7 @@ void checkMemberBalance(){
   }
   String credential=uidToCredential(uid,len);
   String cardUid=credential.substring(4);
-  String body="{\\"card_uid\\":\\""+cardUid+"\\"}";
+  String body="{\"card_uid\":\""+cardUid+"\"}";
   int code=0;
   String reply=postJson("/api/v1/devices/member-balance",body,code);
   Serial.printf("MEMBER BALANCE %d %s\\n",code,reply.c_str());
