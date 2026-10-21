@@ -154,6 +154,63 @@ class Database:
                     )
                     continue
 
+                if path.name == "024_device_internal_refs.sql":
+                    # Introduce opaque, server-owned relational references before
+                    # removing the legacy public-ish device_id column in a later
+                    # compatibility migration. Keep legacy columns for now so old
+                    # application versions and financial history remain readable.
+                    registry_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
+                    if "internal_ref" not in registry_columns:
+                        c.execute("ALTER TABLE device_registry ADD COLUMN internal_ref TEXT")
+                    c.execute(
+                        "UPDATE device_registry SET internal_ref='dev_' || lower(hex(randomblob(16))) "
+                        "WHERE internal_ref IS NULL OR internal_ref=''"
+                    )
+                    c.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_device_registry_internal_ref "
+                        "ON device_registry(internal_ref)"
+                    )
+
+                    reference_tables = {
+                        "device_events": ("device_id",),
+                        "vending_machines": ("device_id",),
+                        "cashier_deposits": ("device_id",),
+                        "payment_transactions": ("device_id",),
+                        "nfc_registration_sessions": ("device_id",),
+                        "device_balance_lookup_limits": ("device_id",),
+                    }
+                    for table, legacy_columns in reference_tables.items():
+                        table_exists = c.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+                        ).fetchone()
+                        if not table_exists:
+                            continue
+                        columns = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+                        if "device_ref" not in columns:
+                            c.execute(f"ALTER TABLE {table} ADD COLUMN device_ref TEXT")
+                            columns.add("device_ref")
+                        if "device_id" in columns:
+                            c.execute(
+                                f"UPDATE {table} SET device_ref=("
+                                "SELECT internal_ref FROM device_registry "
+                                f"WHERE device_registry.device_id={table}.device_id) "
+                                "WHERE device_ref IS NULL"
+                            )
+                        c.execute(
+                            f"CREATE INDEX IF NOT EXISTS ix_{table}_device_ref ON {table}(device_ref)"
+                        )
+
+                    # Preserve a stable internal reference for device-bound audit
+                    # records without rewriting their original event payloads.
+                    c.execute(
+                        "INSERT OR IGNORE INTO system_meta(key,value) "
+                        "VALUES('device_internal_ref_schema_version','001')"
+                    )
+                    c.execute(
+                        "INSERT OR REPLACE INTO system_meta(key,value) VALUES('schema_version','024')"
+                    )
+                    continue
+
                 if path.name == "021_remove_device_hardware_id.sql":
                     c.execute("DROP INDEX IF EXISTS ux_device_hardware_id")
                     device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
