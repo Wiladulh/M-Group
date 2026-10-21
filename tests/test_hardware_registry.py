@@ -27,12 +27,11 @@ def test_server_key_registers_device_without_exposing_internal_reference():
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT device_id,hardware_id,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                    "SELECT device_id,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
                     (key_hash,),
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
                 provisioned_id = row["device_id"]
-                assert row["hardware_id"] is None
 
             registration = {
                 "device_type": "esp32-cashier",
@@ -89,7 +88,6 @@ def test_unprovisioned_key_cannot_create_device():
                 "/api/v1/devices/register",
                 json={
                     "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier_aabbccddee01",
                     "mac_address": "AA:BB:CC:DD:EE:01",
                     "device_key": "arbitrary-unprovisioned-key",
                 },
