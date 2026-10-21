@@ -143,7 +143,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   String body="{\\"credential_id\\":\\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
-              DEVICE_NONCE+":"+seq+"\",\"pin\":\""+pin+"\"}";
+              pendingPaymentKey+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;delay(250);continue;}
@@ -187,7 +187,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
   savePendingDeposit(credential,amount,seq);
   String body="{\"credential_id\":\""+credential+"\",\"amount\":"+String(amount)+
               ",\"operator_pin\":\""+operatorPin+"\",\"member_pin\":\""+memberPin+
-              "\",\"idempotency_key\":\""+DEVICE_NONCE+":deposit:"+seq+"\"}";
+              "\",\"idempotency_key\":\""+pendingDepositKey+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;continue;}
