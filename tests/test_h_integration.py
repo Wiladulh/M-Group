@@ -187,7 +187,7 @@ def test_h_full_integration_one_by_one():
             # H-08 Devices
             devices = client.get("/api/v1/devices", headers=admin)
             assert devices.status_code == 200
-            ids = {x["device_id"] for x in devices.json()["devices"]}
+            ids = {x["device_ref"] for x in devices.json()["devices"]}
             assert {"cashier-h", "vending-h"} <= ids
 
             # H-09 WebUI
