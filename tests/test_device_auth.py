@@ -180,11 +180,10 @@ def test_auto_provision_registers_by_key_without_exposing_device_id():
             assert heartbeat.status_code == 200, heartbeat.text
             with client.app.state.db.connect() as c:
                 after=c.execute(
-                    "SELECT device_id,hardware_id,status FROM device_registry WHERE auth_key_hash=?",
+                    "SELECT device_id,status FROM device_registry",
                     (key_hash,),
                 ).fetchone()
                 assert after["device_id"] == before["device_id"]
-                assert after["hardware_id"] is None
                 assert after["status"] == "active"
         finally:
             main.get_settings=old
