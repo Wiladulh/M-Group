@@ -468,7 +468,7 @@ def build_router(db, app_settings=None):
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
-        return {"device_id":device_id,"events":[dict(x) for x in rows]}
+        return {"device_ref":device_id,"events":[{**dict(x),"device_ref":dict(x).pop("device_id")} for x in rows]}
 
     @r.get("/dashboard")
     def dashboard(request: Request, period: str = "1w"):
