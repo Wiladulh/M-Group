@@ -21,7 +21,7 @@ A confirmed beam passage proves the product crossed the sensor point, not that t
 
 ## Catalog and promo
 
-The product API keeps `price` / `base_price` as the configured base price and exposes `effective_price`, `discount_amount`, and `promo_id` for the NFC/local path currently used by firmware. The device refreshes its catalog periodically and after a completed vend. QRIS remains inactive until its provider integration is implemented.
+The product API exposes `price` / `base_price` as the configured price and sets `effective_price` to the same amount, `discount_amount` to `0`, and `promo_id` to `null`. Promotion rules may be stored for future development but are intentionally not applied to catalog prices or transactions yet. The admin inventory shows Promo NFC and Promo QRIS as `0%` and inactive. QRIS payments remain inactive until their provider integration is implemented.
 
 ## Device enrollment
 
