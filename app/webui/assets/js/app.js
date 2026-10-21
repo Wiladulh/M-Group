@@ -61,6 +61,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   })),['created_at','source','transaction_id','device_id','account_id','transaction_type','amount','status']);
   renderAnalytics(d);
   dashboardMembers=d.members;
+  dashboardAccounts=d.accounts;
   const memberSelect=$('payMember'),currentMember=memberSelect.value;
   const activeMembers=dashboardMembers.filter(x=>x.status==='active');
   memberSelect.innerHTML='<option value="">Pilih member</option>'+activeMembers.map(x=>'<option value="'+esc(x.member_id)+'">'+esc(x.member_id)+' — '+esc(x.name)+'</option>').join('');
