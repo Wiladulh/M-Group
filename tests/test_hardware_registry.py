@@ -43,14 +43,14 @@ def test_server_key_registers_device_without_exposing_internal_reference():
             first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["device_id"] == provisioned_id
-            assert data["hardware_id"] == "cashier_aabbccddee01"
+            assert "device_id" not in data
+            assert "hardware_id" not in data
             assert data["status"] == "active"
             assert data["registered"] is True
 
             repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["device_id"] == provisioned_id
+            assert "device_id" not in repeat.json()
 
             wrong_key = {**registration, "device_key": "wrong-secret"}
             bad = client.post("/api/v1/devices/register", json=wrong_key)
