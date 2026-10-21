@@ -14,39 +14,45 @@ def test_device_heartbeat_and_vending_product_sync():
             client = TestClient(main.create_app())
 
             cashier = client.post(
-                "/api/v1/devices/cashier-01/provision",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier", "display_name": "Cashier 01"},
                 headers=login_admin(client),
             )
             assert cashier.status_code == 200
             cashier_key = cashier.json()["device_key"]
 
             vending = client.post(
-                "/api/v1/devices/vm-01/provision",
-                json={"device_type": "esp32-s3-vending"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-s3-vending", "display_name": "Vending 01"},
                 headers=login_admin(client),
             )
             assert vending.status_code == 200
             vending_key = vending.json()["device_key"]
 
             hb = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": cashier_key},
             )
             assert hb.status_code == 200
 
             vm = client.post(
-                "/api/v1/devices/vm-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-s3-vending", "status": "active"},
                 headers={"X-M-Group-Device-Key": vending_key},
             )
             assert vm.status_code == 200
 
             with client.app.state.db.connect() as c:
+                vending_internal = c.execute(
+                    "SELECT device_id FROM device_registry WHERE auth_key_hash=?",
+                    (__import__("hashlib").sha256(vending_key.encode()).hexdigest(),),
+                ).fetchone()
+                assert vending_internal is not None
                 c.execute(
                     "INSERT INTO vending_machines(machine_id,name,status,device_id) "
-                    "VALUES('vm-01','Vending 01','active','vm-01')"
+                    "VALUES('vm-01','Vending 01','active',?)",
+                    (vending_internal["device_id"],),
                 )
                 c.commit()
 
@@ -71,8 +77,9 @@ def test_device_heartbeat_and_vending_product_sync():
 
             dashboard = client.get("/api/v1/dashboard", headers=login_admin(client))
             assert dashboard.status_code == 200
-            devices = {x["device_ref"]: x for x in dashboard.json()["devices"]}
-            assert devices["cashier-01"]["status"] == "active"
-            assert devices["vm-01"]["device_type"] == "esp32-s3-vending"
+            devices = {x["display_name"]: x for x in dashboard.json()["devices"]}
+            assert devices["Cashier 01"]["status"] == "active"
+            assert devices["Vending 01"]["device_type"] == "esp32-s3-vending"
+            assert all("device_id" not in x and "device_ref" not in x for x in dashboard.json()["devices"])
         finally:
             main.get_settings = old
