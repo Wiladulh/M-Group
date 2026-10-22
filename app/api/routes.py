@@ -847,15 +847,16 @@ def build_router(db, app_settings=None):
         if not display_name or len(display_name) > 100:
             raise HTTPException(400,"device_location_required")
         device_id="pending-"+uuid4().hex[:12]
+        internal_ref="dev_"+uuid4().hex
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             c.execute(
                 """INSERT INTO device_registry
-                   (device_id,device_type,mac_address,display_name,status,last_seen,
+                   (device_id,internal_ref,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?, ?, NULL, ?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,device_type,display_name,digest,key[-6:]),
+                   VALUES(?, ?, ?, NULL, ?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (device_id,internal_ref,device_type,display_name,digest,key[-6:]),
             )
             # A registered Vending device must immediately appear in the inventory
             # selector. The machine identifier is a separate internal machine key;
