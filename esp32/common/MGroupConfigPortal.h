@@ -6,23 +6,19 @@
 #include <ESPAsyncWebServer.h>
 class MGroupConfigPortal {
  public:
-  void begin(String &wifiSsid,String &wifiPassword,String &baseUrl,String &deviceId,String &deviceKey,const char *deviceLabel,const char *storageNamespace,bool forceSetup) {
-    ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; id_=&deviceId; key_=&deviceKey; label_=deviceLabel;
+  void begin(String &wifiSsid,String &wifiPassword,String &baseUrl,String &deviceKey,const char *deviceLabel,const char *storageNamespace,bool forceSetup) {
+    ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; key_=&deviceKey; label_=deviceLabel;
     prefs_.begin(storageNamespace,false);
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
     *url_=prefs_.getString("server_url",*url_); *key_=prefs_.getString("device_key",*key_);
-    // Initialize the station interface before reading its hardware MAC.
     WiFi.mode(WIFI_STA);
-    String prefix=String(label_).startsWith("Cashier")?"Cashier_":"Vending_";
-    String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
-    *id_=prefix+mac;
     bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
     if(needed) startPortal();
   }
   bool active() const { return active_; }
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
-  String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
+  String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*key_=nullptr;
   const char *label_="M-Group Device"; bool active_=false;
   static String page(const char *label) {
     String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -35,7 +31,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Device ID dibuat otomatis dari seluruh MAC address perangkat dan tidak perlu dimasukkan.</p>
+<p class="warn">Server mengenali perangkat melalui Device Key.</p>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>

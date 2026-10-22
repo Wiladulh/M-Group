@@ -80,9 +80,8 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
 5. Isi konfigurasi di bagian atas `MGroupCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
    - `M_GROUP_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
-   - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan
    - `M_GROUP_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
-6. Daftarkan/provision perangkat bertipe kasir pada server dengan ID yang sama. Pastikan key aktif.
+6. Generate key untuk perangkat bertipe Cashier dari Dashboard M-Group, lalu masukkan Device Key ke mini WebUI. Server mengenali perangkat berdasarkan key; tidak perlu Device ID.
 7. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
 8. Flash sketch, buka Serial Monitor pada **115200 baud**, lalu reset perangkat.
 
@@ -103,7 +102,7 @@ Jangan masukkan device key, kata sandi Wi-Fi, atau PIN asli ke dokumentasi publi
 - [ ] Semua GND tersambung bersama.
 - [ ] Tidak ada sinyal 5 V langsung ke GPIO ESP32.
 - [ ] LCD, keypad, dan reader sudah diuji terpisah.
-- [ ] Device ID dan key cocok dengan registri server.
+- [ ] Device Key aktif dan Cashier berhasil terdaftar ke server.
 - [ ] Pembayaran sukses, PIN salah, kartu tidak dikenal, dan saldo tidak cukup sudah diuji dengan akun uji.
 - [ ] Reboot saat transaksi pending tidak menyebabkan transaksi baru atau debit ganda.
 

@@ -32,7 +32,6 @@ def test_cashier_payment_requires_active_registered_device():
             assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
 
             q = {
-                "device_id": "cashier-01",
                 "credential_id": "test-credential-01",
                 "account_id": "member-account-01",
                 "amount": 1000,
@@ -44,15 +43,20 @@ def test_cashier_payment_requires_active_registered_device():
             assert client.post("/api/v1/cashier/payments", json=q).status_code == 401
 
             provision = client.post(
-                "/api/v1/devices/cashier-01/provision",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier", "display_name": "Cashier Gate"},
                 headers=login_admin(client),
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "mac_address": "AA:BB:CC:00:10:82", "device_key": device_key},
+            )
+            assert registration.status_code == 200, registration.text
 
             hb = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": device_key},
             )
@@ -65,6 +69,6 @@ def test_cashier_payment_requires_active_registered_device():
             )
             assert payment.status_code == 200
             assert payment.json()["status"] == "completed"
-            assert payment.json()["device_id"] == "cashier-01"
+            assert "device_id" not in payment.json()
         finally:
             main.get_settings = old

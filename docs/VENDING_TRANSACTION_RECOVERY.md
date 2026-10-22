@@ -2,7 +2,7 @@
 
 ## Transaction contract
 
-- Every vending attempt uses a device-scoped idempotency key: `<device-id>:<persistent-sequence>`.
+- Every vending attempt uses a per-device idempotency key whose opaque nonce is generated locally and persisted in NVS: `<persisted-device-nonce>:<persistent-sequence>`.
 - The complete create request (product, NFC credential, sequence, and servo channel) is persisted in NVS before the first HTTP request. If the response is lost or the device reboots, it retries with the same sequence/idempotency key; it must not create a fresh vend until the pending request resolves.
 - The firmware stores the transaction ID and current phase in NVS before authorization and before servo actuation.
 - If the authorization response is ambiguous, the device queries `GET /api/v1/vending/transactions/{transaction_id}` with `X-M-Group-Device-Key` before deciding what to do.
@@ -21,11 +21,11 @@ A confirmed beam passage proves the product crossed the sensor point, not that t
 
 ## Catalog and promo
 
-The product API keeps `price` / `base_price` as the configured base price and exposes `effective_price`, `discount_amount`, and `promo_id` for the NFC/local path currently used by firmware. The device refreshes its catalog periodically and after a completed vend. QRIS remains inactive until its provider integration is implemented.
+The product API exposes `price` / `base_price` as the configured price and sets `effective_price` to the same amount, `discount_amount` to `0`, and `promo_id` to `null`. Promotion rules may be stored for future development but are intentionally not applied to catalog prices or transactions yet. The admin inventory shows Promo NFC and Promo QRIS as `0%` and inactive. QRIS payments remain inactive until their provider integration is implemented.
 
 ## Device enrollment
 
-The administrator generates a one-time Device Key from the authenticated dashboard. The ESP32 mini WebUI accepts Wi-Fi SSID/password, server URL, and that key only; it does not ask for a Device ID. Firmware derives `Cashier_<last-six-MAC-hex>` or `Vending_<last-six-MAC-hex>` from its Wi-Fi MAC and sends a first-registration request with the key. The server verifies that the key was provisioned for the selected device type, validates that the ID matches the MAC address, then records the MAC-derived ID. This registration request is authenticated enrollment; arbitrary unprovisioned keys are rejected.
+The administrator generates a one-time Device Key from the authenticated dashboard. The ESP32 mini WebUI accepts Wi-Fi SSID/password, server URL, and that key only. Firmware enrolls with its device type, MAC address, and Device Key. The Device Key is the only device authentication credential; firmware and public API responses do not use or expose a Device ID. The server binds the MAC address to the provisioned key, checks the device type, and rejects keys that were not issued by the server.
 
 ## Verification levels
 

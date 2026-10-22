@@ -67,3 +67,11 @@ def test_vending_promo_foundation_is_scoped_by_machine_product_and_method():
             {"promo_id":"promo-nfc","machine_id":"pm-01","product_id":"water","payment_method":"NFC","payment_provider":"local","discount_percent":10},
             {"promo_id":"promo-qris","machine_id":"pm-01","product_id":"water","payment_method":"QRIS","payment_provider":"provider-x","discount_percent":20},
         ]
+        # Promotion rules may be stored for future use, but the feature is
+        # intentionally inactive until launch: transactions must charge base price.
+        f=VendingService(db)
+        tx=f.begin("pm-01","water","pm-nfc","pm-acct","pm-promo-disabled","NFC","local")
+        assert tx["base_amount"]==5000
+        assert tx["discount_amount"]==0
+        assert tx["amount"]==5000
+        assert tx["promo_id"] is None

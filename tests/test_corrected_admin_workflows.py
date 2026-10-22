@@ -27,49 +27,49 @@ def _client(tmp_path):
     return client, old
 
 
-def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
+def test_generated_device_key_registration_keeps_internal_reference_private():
     with TemporaryDirectory() as tmp:
         client, old = _client(tmp)
         try:
             headers = login_admin(client)
             created = client.post(
                 "/api/v1/devices/provision",
-                json={"device_type": "esp32-cashier"},
+                json={"device_type": "esp32-cashier", "display_name": "Loket depan"},
                 headers=headers,
             )
             assert created.status_code == 200
             payload = created.json()
-            assert payload["device_id"].startswith("pending-")
-            provisioned_id = payload["device_id"]
+            assert "device_id" not in payload
+            assert "hardware_id" not in payload
             key = payload["device_key"]
             assert len(key) >= 32
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT device_id,hardware_id,display_name,auth_key_hash FROM device_registry"
+                    "SELECT device_id,display_name,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                    (hashlib.sha256(key.encode()).hexdigest(),),
                 ).fetchone()
                 assert row["device_id"].startswith("pending-")
-                assert row["hardware_id"] is None
-                assert row["display_name"] == "Lokasi belum ditentukan"
+                provisioned_id = row["device_id"]
+                assert row["display_name"] == "Loket depan"
                 assert row["auth_key_hash"] == hashlib.sha256(key.encode()).hexdigest()
 
             registered = client.post(
                 "/api/v1/devices/register",
                 json={
                     "device_type": "esp32-cashier",
-                    "hardware_id": "Cashier_aabbccddeeff",
                     "mac_address": "AA:BB:CC:DD:EE:FF",
                     "device_key": key,
                 },
             )
             assert registered.status_code == 200
-            assert registered.json()["device_id"] == provisioned_id
+            assert "device_id" not in registered.json()
+            assert "hardware_id" not in registered.json()
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT device_id,hardware_id,status FROM device_registry"
+                    "SELECT device_id,status FROM device_registry"
                 ).fetchone()
                 assert row["device_id"] == provisioned_id
-                assert row["hardware_id"] == "cashier_aabbccddeeff"
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
         finally:
