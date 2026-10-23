@@ -727,96 +727,63 @@ def build_router(db, app_settings=None):
             raise HTTPException(404,str(e))
 
     @r.post("/devices/provision")
-    def device_provision_auto(request: Request, q:DeviceProvisionRequest):
+    def device_provision_auto(request: Request, q: DeviceProvisionRequest):
+        """Issue a one-time server credential; no hardware identity is requested or returned."""
         require_admin(request)
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
-        if device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400,"invalid_device_type")
-        device_id="pending-"+uuid4().hex[:12]
-        key=secrets.token_urlsafe(32)
-        digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
-        with db.connect() as c:
-            c.execute(
-                """INSERT INTO device_registry
-                   (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
-                    auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (device_id,device_type,digest,key[-6:]),
-            )
-            c.execute(
-                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device","provisioned",device_id,f"type={device_type};location=unassigned"),
-            )
-            c.commit()
-        return {"device_id":device_id,"display_name":"Lokasi belum ditentukan",
-                "device_type":device_type,"device_key":key,
-                "status":"awaiting_device_registration","key_shown_once":True}
-
-    @r.post("/devices/{device_id}/provision")
-    def device_provision_legacy(request: Request, device_id,q:DeviceProvisionRequest):
-        """Deprecated compatibility endpoint; new firmware must use key-only provisioning."""
-        require_admin(request)
-        legacy_id = device_id.strip()
-        device_type = q.device_type.strip().lower()
-        if device_type == "esp32-vending":
-            device_type = "esp32-s3-vending"
-        if not legacy_id:
-            raise HTTPException(400, "device_id_required")
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400, "invalid_device_type")
+        credential_ref = "cred-" + uuid4().hex
         key = secrets.token_urlsafe(32)
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            existing = c.execute(
-                "SELECT device_id FROM device_registry WHERE device_id=? OR hardware_id=?",
-                (legacy_id, legacy_id),
-            ).fetchone()
-            if existing:
-                raise HTTPException(409, "legacy_device_id_already_exists_use_key_rotation_workflow")
             c.execute(
                 """INSERT INTO device_registry
-                   (device_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (legacy_id, device_type, digest, key[-6:]),
+                   (device_id,device_type,display_name,status,last_seen,auth_key_hash,
+                    auth_key_hint,created_at,updated_at)
+                   VALUES(?,?,'Perangkat M-Group','active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (credential_ref, device_type, digest, key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device", "legacy_provisioned", legacy_id, f"type={device_type};deprecated=true"),
+                ("credential", "provisioned", credential_ref, f"type={device_type};result=issued"),
             )
             c.commit()
-        return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
-                "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
+        return {"device_type": device_type, "device_key": key,
+                "status": "active", "key_shown_once": True}
 
-    @r.post("/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if not device_id.strip(): raise HTTPException(400,"device_id_required")
-        if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
-        # Heartbeat is telemetry, not an administrative status mutation. Only an
-        # admin may disable/maintain a device; accepting status from firmware lets
-        # a device accidentally lock itself out or write arbitrary registry states.
+    @r.post("/devices/heartbeat")
+    def device_heartbeat(q: DeviceHeartbeatRequest,
+                         x_m_group_device_key: str | None = Header(default=None)):
+        """Record endpoint liveness using its server-issued key, without a path ID."""
+        credential = require_device_key(
+            x_m_group_device_key,
+            DeviceManagementService.ALLOWED_TYPES,
+        )
         if q.status != "active":
-            raise HTTPException(400,"invalid_heartbeat_status")
+            raise HTTPException(400, "invalid_heartbeat_status")
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400,"invalid_device_type")
-        require_device(device_id,x_m_group_device_key)
+            raise HTTPException(400, "invalid_device_type")
+        if credential["device_type"] != device_type:
+            raise HTTPException(403, "credential_scope_mismatch")
+        digest = credential["auth_key_hash"]
         with db.connect() as c:
-            row = c.execute(
-                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
-            ).fetchone()
-            stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
-            if not row or stored_type != device_type:
-                raise HTTPException(409,"device_type_mismatch")
-            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
-                      (device_id,))
-            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                      (device_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
+            c.execute(
+                "UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE auth_key_hash=?",
+                (digest,),
+            )
+            c.execute(
+                "INSERT INTO device_events(device_id,event_type,payload) "
+                "SELECT device_id,'heartbeat',? FROM device_registry WHERE auth_key_hash=?",
+                (q.model_copy(update={"device_type": device_type}).model_dump_json(), digest),
+            )
             c.commit()
-        return {"device_id":device_id,"device_type":device_type,"status":"active"}
+        return {"device_type": device_type, "status": "active"}
 
     @r.post("/access/{credential_id}")
     def access(request: Request, credential_id):
