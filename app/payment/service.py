@@ -20,6 +20,7 @@ class PaymentService:
         provider="local",
         idempotency_key=None,
         pin=None,
+        require_pin=False,
         original_amount=None,
         discount_amount=0,
         promo_id=None,
@@ -55,7 +56,7 @@ class PaymentService:
             raise PermissionError("credential_account_mismatch")
         account_id = resolved_account_id
 
-        if method == "NFC":
+        if method == "NFC" and require_pin:
             if pin is None:
                 raise PermissionError("pin_required")
             if not self.identity.verify_credential_pin(credential_id, pin):
