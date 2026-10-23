@@ -894,3 +894,38 @@ Referensi resmi Midtrans untuk pelaksanaan:
 - Core API / BI-SNAP overview: https://docs.midtrans.com/reference/core-api-snap-open-api-overview
 
 Pilihan produk Midtrans (Snap, Core API legacy, atau BI-SNAP QRIS MPM) harus diputuskan dan dikunci saat implementasi berdasarkan fitur akun merchant, kebutuhan QRIS, dan dukungan refund yang benar-benar tersedia. Adapter Payment Service boleh menyembunyikan perbedaan provider dari modul layanan, tetapi tidak boleh menyamarkan perbedaan kontrak, autentikasi, webhook, atau refund di lapisan adapter.
+
+
+## 19. Pemeriksaan batasan dan keputusan proyek yang telah disepakati
+
+Bagian ini merangkum keputusan yang sudah disampaikan pemilik proyek. Bagian ini melengkapi acceptance criteria sebelumnya dan harus dipakai sebagai checklist saat audit sebelum implementasi.
+
+### 19.1 Batasan yang dianggap terkunci
+
+- [ ] **Rebuild dari fondasi bersih**, dengan seluruh fitur dan perilaku bisnis yang telah disepakati tetap dipertahankan; jangan menganggap fitur lama boleh dihilangkan hanya karena kode sedang ditulis ulang.
+- [ ] **Penghapusan permanen `device_id`** dari backend, database, API, WebUI, firmware, konfigurasi, installer, migrasi, test, log, dan dokumentasi. Jangan menggantinya dengan nama/field lain yang hanya menyamarkan device_id. `machine_id` boleh ada hanya sebagai ID entitas bisnis mesin vending, bukan ID hardware/auth.
+- [ ] **Autentikasi perangkat melalui key/credential yang divalidasi server**, dengan provisioning, pencabutan/rotasi, scope, dan penyimpanan secret yang aman; tidak mempercayai ID perangkat yang dikirim klien sebagai autentikasi.
+- [ ] **Cashier dan Vending wajib memiliki fitur cek saldo anggota** melalui alur NFC yang sesuai, dan hasil saldo bersumber dari server/ledger. Ini adalah kebutuhan produk, bukan fitur opsional.
+- [ ] Cashier mempertahankan alur transaksi NFC, pembayaran, setoran tabungan, cek saldo, dan fungsi kasir yang telah disepakati. Operasi setoran yang memerlukan otorisasi harus menggunakan PIN/izin yang ditetapkan, tanpa PIN operator default bersama.
+- [ ] **Penarikan/withdrawal merupakan bagian dari fungsi Cashier** dan harus dimodelkan sebagai transaksi finansial berizin dengan ledger/audit. Batas nominal, PIN/otorisasi, approval tambahan, dan role yang diizinkan harus dikunci dalam aturan bisnis sebelum implementasi; jangan menghilangkan fitur penarikan hanya karena batas tersebut belum diputuskan.
+- [ ] WebUI mempertahankan tab/fitur yang telah disepakati dan semua fungsi utama yang sudah ada/dirancang; lakukan inventarisasi dan bandingkan terhadap UI/demo terdahulu agar tidak ada fitur yang hilang.
+- [ ] Setiap produk memiliki gambar produk; ukuran maksimum **2 MB per gambar**, dengan tombol upload yang mudah dijangkau di samping/area edit produk. Image, nama, harga, stok, promo NFC, dan promo QRIS dapat dikelola pada UI sesuai izin.
+- [ ] **Promo NFC dan QRIS tetap 0% dan belum diterapkan** pada tahap awal. UI boleh menampilkan kolomnya, tetapi backend tidak boleh memberi diskon secara implisit sampai fitur dan aturan promo disetujui.
+- [ ] **Midtrans menjadi satu-satunya provider QRIS bersama** untuk Vending, Cashier, dan SPBU Mini. Satu Payment Service dipakai lintas modul; saldo NFC/member tetap ledger internal yang terpisah.
+- [ ] Kredensial Midtrans dapat dikonfigurasi di server tanpa mengubah kode atau membuat commit baru, dengan pemisahan Sandbox/Production, penyimpanan rahasia, dan konfigurasi webhook yang sesuai produk.
+- [ ] SPBU Mini/Pertamini mengikuti semua syarat pembayaran terverifikasi, batas nominal/volume/waktu, meter aktual, dead-man handle, emergency stop fisik, fail-safe lokal, lockout, rekonsiliasi, dan penanganan refund yang aman. Kontrol keselamatan tidak boleh bergantung hanya pada server/jaringan.
+- [ ] Saldo, ledger, stok, harga, status pembayaran, transaksi, izin, dan audit bersumber dari server/database; semua operasi finansial harus aman terhadap retry, timeout, request ganda, restart, dan koneksi terputus.
+- [ ] **Jangan merusak database VPS lama atau melakukan migrasi destruktif otomatis.** Backup dahulu; rebuild dikerjakan di branch terpisah; data lama tidak dihapus dan perubahan tidak digabung ke `main` sebelum melalui persetujuan, review, dan quality gates yang disyaratkan.
+- [ ] Jangan mengklaim siap merge/rilis hanya karena file berubah. Laporan harus menyatakan bukti build/test/workflow yang benar-benar dijalankan, keterbatasan yang belum diselesaikan, dan langkah deployment/fresh install VPS.
+
+### 19.2 Hal yang masih memerlukan keputusan rinci, bukan alasan untuk menghapus fitur
+
+Hal berikut masih harus dirinci sebelum implementasi, dan harus dicatat sebagai keputusan terbuka sampai benar-benar dikonfirmasi:
+1. Kebijakan operasional withdrawal Cashier: role yang boleh menarik, PIN/approval, limit per transaksi/per hari, saldo minimum, dan prosedur koreksi.
+2. Detail hardware/protokol yang benar-benar tersedia untuk Cashier/Vending dan komponen SPBU; jangan mengasumsikan sensor/aktuator yang belum dipilih telah tersedia.
+3. Produk/jenis integrasi Midtrans yang diaktifkan pada akun merchant (Snap, Core API, atau BI-SNAP QRIS MPM), serta ketentuan refund QRIS/acquirer yang berlaku.
+4. Detail autentikasi admin awal, rotasi/expiry key, rate limit PIN, dan retensi audit yang belum ditetapkan.
+5. Inventaris lengkap WebUI lama/demo dan keputusan migrasi data VPS lama.
+6. Batas dan prosedur kompensasi finansial jika dispensing BBM terganggu/terjadi dugaan luapan; proses harus diaudit dan tidak boleh otomatis mengakui klaim yang belum diverifikasi.
+
+Tidak ada satu pun keputusan terbuka di atas yang boleh ditafsirkan sebagai izin untuk menghilangkan fungsi yang telah disepakati. Implementasi harus mempertahankan kebutuhan yang sudah terkunci sambil meminta keputusan hanya untuk detail yang memang belum disepakati.
