@@ -1072,7 +1072,7 @@ def build_router(db, app_settings=None):
         try:
             machine = resolve_vending_machine(machine_id)
             require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
-            require_device(machine["device_id"],x_m_group_device_key)
+            require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
             return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
@@ -1084,9 +1084,7 @@ def build_router(db, app_settings=None):
         try:
             tx = vending.get(transaction_id)
             machine = vending.machine(tx["machine_id"])
-            if not machine.get("device_id"):
-                raise HTTPException(403, "machine_device_not_configured")
-            require_device(machine["device_id"], x_m_group_device_key)
+            require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             return public_vending_transaction(tx)
         except HTTPException:
             raise
@@ -1099,7 +1097,7 @@ def build_router(db, app_settings=None):
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_m_group_device_key)
+            require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:raise HTTPException(400,str(e))
@@ -1110,7 +1108,7 @@ def build_router(db, app_settings=None):
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
             if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_m_group_device_key)
+            require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             return public_vending_transaction(vending.dispense(transaction_id,q.success))
         except ValueError as e:raise HTTPException(409,str(e))
 
