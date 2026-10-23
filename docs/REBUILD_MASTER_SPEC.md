@@ -800,3 +800,97 @@ Simpan catatan terpisah untuk:
 - Midtrans — HTTP(S) Notification/Webhooks dan verifikasi signature: https://docs.midtrans.com/docs/https-notification-webhooks
 - Midtrans — Get Transaction Status: https://docs.midtrans.com/reference/get-transaction-status
 - Midtrans — Refund API: https://docs.midtrans.com/reference/refund-api-1
+
+
+## 18. Satu Integrasi Midtrans untuk Semua QRIS M-Group
+
+### 18.1 Keputusan arsitektur
+
+Midtrans ditetapkan sebagai **provider QRIS bersama** untuk:
+- Vending
+- Cashier
+- SPBU Mini/Pertamini
+
+Ketiga layanan tidak boleh mengimplementasikan integrasi Midtrans masing-masing. Semua permintaan pembayaran QRIS harus melewati satu backend **Payment Service** dengan adapter/provider Midtrans. Modul layanan hanya membuat payment intent/order dengan `source_module` yang tervalidasi (`VENDING`, `CASHIER`, atau `FUEL`) dan referensi transaksi internal. Payment Service mengelola request provider, webhook, pengecekan status, pembatalan/refund yang didukung, rekonsiliasi, idempotensi, serta audit.
+
+Pembayaran saldo NFC/member tetap merupakan metode internal tersendiri, bukan transaksi QRIS Midtrans. Payment Service harus menjaga pemisahan ledger, tetapi dapat menyediakan antarmuka status dan rekonsiliasi yang seragam bagi ketiga modul.
+
+### 18.2 Konfigurasi tanpa perubahan kode
+
+Implementasi wajib menyediakan konfigurasi Midtrans yang dapat diganti oleh administrator berwenang tanpa mengedit kode atau melakukan deploy ulang. Sediakan halaman **Admin → Settings → Payments → Midtrans** dengan:
+- Environment: `Sandbox` atau `Production`.
+- Merchant ID, jika diperlukan untuk informasi/validasi konfigurasi.
+- Server Key (wajib dirahasiakan di backend).
+- Client Key (jika metode/komponen UI yang dipilih memerlukannya).
+- Status integrasi: belum dikonfigurasi, konfigurasi tidak lengkap, sandbox aktif, production aktif, atau perlu verifikasi.
+- Tombol simpan, validasi konfigurasi/koneksi, dan uji alur sandbox yang aman.
+- Waktu perubahan terakhir dan admin yang melakukan perubahan, tanpa menampilkan nilai secret yang tersimpan.
+
+Syarat keamanan konfigurasi:
+- Hanya role owner/super-admin yang diberi izin mengubah kredensial; semua perubahan diaudit.
+- Server Key dienkripsi saat disimpan menggunakan kunci enkripsi yang disediakan dari secret/environment server dan terpisah dari database. Jika deployment belum memiliki mekanisme secret storage yang aman, gunakan environment secret/secret manager sebagai sumber awal; jangan menyimpan key dalam plaintext di database.
+- Secret hanya ditampilkan sebagai input kosong saat mengubahnya; API read tidak boleh mengembalikan nilai secret tersimpan. UI hanya boleh menampilkan status seperti “sudah diatur” dan akhiran yang disamarkan bila aman.
+- Jangan pernah mencatat Server Key, header Authorization, signature material, atau kredensial dalam log, pesan error, backup tanpa proteksi, WebUI publik, firmware, atau repository Git.
+- Pisahkan kredensial Sandbox dan Production. Pergantian environment harus eksplisit, diaudit, dan tidak boleh diam-diam mengubah transaksi yang sedang berjalan. Transaksi lama harus tetap ditautkan ke environment/provider yang dipakai ketika dibuat.
+- Perubahan key tidak boleh membutuhkan perubahan kode. Validasi koneksi hanya membuktikan konfigurasi dasar dapat digunakan; bukan bukti bahwa akun production telah diaktifkan untuk QRIS/refund.
+- Untuk rotasi key, admin memasukkan key baru melalui UI/secret manager. Jangan mengirim kredensial lewat chat, issue GitHub, commit, atau file dokumentasi.
+
+Jika UI konfigurasi belum tersedia pada tahap bootstrap pertama, variabel environment boleh menjadi mekanisme awal yang aman; tetapi sasaran produk tetap pengelolaan konfigurasi tanpa edit kode. Nama variabel yang direkomendasikan:
+- `MIDTRANS_ENVIRONMENT=sandbox|production`
+- `MIDTRANS_MERCHANT_ID`
+- `MIDTRANS_SERVER_KEY`
+- `MIDTRANS_CLIENT_KEY` (hanya jika dibutuhkan produk integrasi yang dipilih)
+- `MIDTRANS_NOTIFICATION_BASE_URL` atau URL konfigurasi yang sesuai dengan mode integrasi.
+
+Nilai rahasia tidak boleh diisi dengan placeholder yang dianggap sebagai kredensial aktif. Dokumentasi deployment harus menerangkan di mana mengatur secret di VPS dan bagaimana melakukan restart/reload layanan dengan aman jika environment variable digunakan.
+
+### 18.3 Endpoint notifikasi dan pengaturan dashboard Midtrans
+
+- Backend M-Group menyediakan endpoint notifikasi HTTPS publik yang stabil untuk mode integrasi yang dipilih.
+- Setelah domain production M-Group ditetapkan, operator memasukkan URL notifikasi yang benar di Dashboard Midtrans. Untuk integrasi legacy/Core/Snap, ikuti URL Payment Notification yang sesuai. Untuk integrasi BI-SNAP QRIS MPM, gunakan path QRIS yang ditentukan oleh spesifikasi BI-SNAP Midtrans. Jangan menganggap semua produk Midtrans memakai satu format/path webhook yang sama.
+- URL notifikasi harus dapat diakses dari internet publik, tidak berada di balik login/VPN, tidak bergantung pada redirect, dan memakai HTTPS serta port standar yang didukung. Endpoint harus memverifikasi notifikasi menurut skema produk yang aktif.
+- Jangan menaruh secret pada URL webhook. Jika perlu mengonfigurasi callback tambahan per transaksi, gunakan kemampuan resmi provider dan nilai yang dikendalikan server.
+- UI konfigurasi harus menampilkan URL notifikasi yang perlu didaftarkan di dashboard sebagai informasi salin-tempel; perubahan URL domain tetap memerlukan sinkronisasi konfigurasi pada dashboard Midtrans, tetapi bukan perubahan kode jika route tetap sama.
+
+### 18.4 Kontrak Payment Service bersama
+
+Sediakan antarmuka internal provider-agnostic yang digunakan semua modul, misalnya:
+- `create_qris_payment(source_module, internal_order_id, amount, expiry, metadata)`
+- `get_payment_status(payment_id)`
+- `process_provider_notification(payload, headers)`
+- `request_refund(payment_id, amount, reason, idempotency_key)` bila refund tersedia dan memenuhi aturan provider
+- `reconcile_payment(payment_id)`
+
+Nama di atas bersifat kontrak konseptual, bukan nama endpoint publik yang harus dipakai mentah-mentah. Validasi nominal, currency IDR, identitas order, otorisasi pengguna, unit/mesin tujuan, dan status transaksi dilakukan backend. Frontend tidak boleh menetapkan status paid, mengirim Server Key, atau membuat izin dispensing sendiri.
+
+Setiap payment record setidaknya memiliki `provider=midtrans`, `environment`, `source_module`, `internal_order_id`, `provider_order_id`, `provider_transaction_id` jika tersedia, nominal, mata uang, metode, status provider yang dinormalisasi, status refund, waktu expiry, dan jejak audit. Gunakan unique constraint dan idempotency pada order serta event untuk mencegah transaksi atau refund ganda.
+
+### 18.5 UX dan kesiapan operasi
+
+- Vending, Cashier, dan SPBU menampilkan QRIS berdasarkan respons Payment Service, bukan dengan membuat QR lokal sendiri.
+- Ketiganya menggunakan status pembayaran yang dinormalisasi, tetapi setiap modul menjalankan tindakan pascapembayaran sesuai konteksnya: penyelesaian pesanan Vending, penyelesaian transaksi Cashier, atau otorisasi sesi dispensing SPBU.
+- Dashboard admin menyediakan ringkasan transaksi QRIS lintas modul dengan filter modul, tanggal, status, environment, dan refund; rincian transaksi tetap menunjukkan modul asal.
+- Bila Midtrans tidak dikonfigurasi atau tidak dapat dijangkau, UI harus menampilkan QRIS tidak tersedia dan memberi pesan yang jelas. Jangan membuat transaksi seolah-olah berhasil; metode internal lain seperti saldo anggota dapat tetap tersedia jika aturan layanan mengizinkan.
+- Perubahan kredensial/environment, uji koneksi, aktivasi/deaktivasi QRIS, dan tindakan refund harus memiliki audit log dan pembatasan role.
+
+### 18.6 Acceptance criteria lintas modul
+
+- [ ] Vending, Cashier, dan SPBU menggunakan satu implementasi Payment Service dan adapter Midtrans, bukan integrasi provider yang terduplikasi.
+- [ ] QRIS di ketiga modul bekerja melalui konfigurasi yang sama, dengan identitas order dan source module yang tidak tertukar.
+- [ ] Mengganti Sandbox ke Production dan mengganti key melalui konfigurasi aman tidak membutuhkan perubahan kode atau commit baru.
+- [ ] Secret tidak dapat dibaca ulang melalui API/UI setelah disimpan dan tidak muncul di log atau repository.
+- [ ] Kredensial Sandbox dan Production terpisah; transaksi menyimpan environment saat transaksi dibuat.
+- [ ] URL webhook yang sesuai mode integrasi dapat disalin dari halaman konfigurasi dan didaftarkan di dashboard Midtrans.
+- [ ] Webhook, Get Status, retry, idempotensi, rekonsiliasi, dan refund mengikuti kontrak produk Midtrans yang benar-benar dipilih.
+- [ ] QRIS tidak aktif sebelum konfigurasi valid; kegagalan provider tidak menghasilkan status paid palsu.
+- [ ] Status paid dari Payment Service tidak melewati syarat keselamatan lokal SPBU.
+- [ ] Perubahan konfigurasi dan tindakan admin tercatat di audit log tanpa menyimpan rahasia.
+
+Referensi resmi Midtrans untuk pelaksanaan:
+- Access Keys: https://docs.midtrans.com/docs/access-keys
+- Snap integration guide: https://docs.midtrans.com/docs/snap-snap-integration-guide
+- HTTP(S) Notification/Webhooks: https://docs.midtrans.com/docs/https-notification-webhooks
+- Switching to Production: https://docs.midtrans.com/docs/switching-to-production-mode
+- Core API / BI-SNAP overview: https://docs.midtrans.com/reference/core-api-snap-open-api-overview
+
+Pilihan produk Midtrans (Snap, Core API legacy, atau BI-SNAP QRIS MPM) harus diputuskan dan dikunci saat implementasi berdasarkan fitur akun merchant, kebutuhan QRIS, dan dukungan refund yang benar-benar tersedia. Adapter Payment Service boleh menyembunyikan perbedaan provider dari modul layanan, tetapi tidak boleh menyamarkan perbedaan kontrak, autentikasi, webhook, atau refund di lapisan adapter.
