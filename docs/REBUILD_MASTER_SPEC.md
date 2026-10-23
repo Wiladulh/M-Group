@@ -929,3 +929,87 @@ Hal berikut masih harus dirinci sebelum implementasi, dan harus dicatat sebagai 
 6. Batas dan prosedur kompensasi finansial jika dispensing BBM terganggu/terjadi dugaan luapan; proses harus diaudit dan tidak boleh otomatis mengakui klaim yang belum diverifikasi.
 
 Tidak ada satu pun keputusan terbuka di atas yang boleh ditafsirkan sebagai izin untuk menghilangkan fungsi yang telah disepakati. Implementasi harus mempertahankan kebutuhan yang sudah terkunci sambil meminta keputusan hanya untuk detail yang memang belum disepakati.
+
+
+## 20. Keputusan arsitektur perangkat yang diperbarui: device_id dipakai kembali
+
+Bagian ini **menggantikan keputusan sebelumnya yang melarang `device_id`**. Setelah perubahan ruang lingkup, M-Group hanya mengelola tiga jenis mesin: Vending, Cashier, dan SPBU Mini/Pertamini. Karena itu, `device_id` adalah identitas resmi mesin dan wajib dipakai, sementara device key adalah kredensial autentikasinya. Keduanya memiliki fungsi yang berbeda.
+
+### 20.1 Ruang lingkup dan terminologi
+
+- Jenis perangkat yang dikelola: `VENDING`, `CASHIER`, `PERTAMINI`.
+- Istilah pelanggan diganti menjadi **Member** di UI, API, dokumentasi, dan pesan yang ditujukan kepada pengguna. Fitur pembayaran NFC/member tetap dipertahankan; ini bukan sistem koperasi dan bukan sistem Natura.
+- Jumlah perangkat tidak boleh dibatasi oleh batas tetap buatan aplikasi. Admin boleh mendaftarkan sebanyak yang dibutuhkan, dengan batas praktis hanya dari kapasitas infrastruktur, kebijakan keamanan, dan kapasitas operasional. Jangan meng-hardcode jumlah maksimum vending/cashier/pertamini.
+- `device_id` adalah identitas stabil untuk satu unit mesin, bukan rahasia dan bukan bukti autentikasi. Format contoh:
+  - `vdg_abc321` — Vending
+  - `vdg_1bad4` — Vending
+  - `csh_kk145` — Cashier
+  - `spbu_44ac1` — Pertamini
+- Format akhiran dapat mengikuti kebijakan generator ID unik. Bila MAC address dipakai sebagai bahan pembentukan identitas, jangan mengekspos seluruh MAC secara otomatis jika tidak diperlukan; akhiran MAC 5 digit hanya contoh dan tidak cukup sebagai mekanisme keamanan atau jaminan unik. Identitas final dibuat/dikonfirmasi oleh server/admin dan memiliki unique constraint.
+- `device_id` boleh disimpan, dikirim sebagai identifier, dipakai untuk audit, konfigurasi, laporan, dan pengaitan transaksi. Server tidak boleh mengautentikasi hanya berdasarkan nilai ini.
+
+### 20.2 Provisioning mesin melalui WebUI
+
+Alur yang wajib didukung:
+1. Admin yang memiliki izin membuka **Admin → Devices → Add Device** dan memilih jenis perangkat (Vending, Cashier, atau Pertamini), nama/lokasi opsional, serta konfigurasi awal.
+2. Server membuat record perangkat dalam status `PENDING_PROVISIONING`, menetapkan `device_id` unik dan membuat device key/credential berentropi tinggi secara kriptografis. Key ditampilkan sekali untuk dipindahkan dengan aman ke perangkat. Jangan menyimpan plaintext key atau mengembalikannya lagi setelah pembuatan.
+3. Admin memasukkan `device_id` dan key ke perangkat melalui antarmuka provisioning lokal yang dilindungi, atau memakai mekanisme provisioning setara yang aman. Key harus dikirim melalui kanal TLS dan tidak dicatat di log.
+4. Perangkat menghubungi server dengan `device_id` dan membuktikan kepemilikan key melalui skema autentikasi yang ditetapkan. Preferensikan challenge-response/HMAC dengan nonce dan timestamp/sequence yang diverifikasi, atau autentikasi TLS yang setara. Jika menggunakan bearer key, wajib TLS, penyimpanan secret perangkat yang sesuai, rotasi/pencabutan, rate limit, dan proteksi replay.
+5. Server memverifikasi bahwa ID dikenal, key cocok dengan hash/credential yang disimpan, credential aktif dan belum dicabut, jenis perangkat/scope sesuai, dan provisioning belum dipakai secara tidak sah. Setelah verifikasi sukses, server menandai perangkat `ACTIVE`, mencatat `last_seen_at`, versi firmware/protokol yang relevan, dan event audit. Dengan demikian server mengenali identitas mesin setelah autentikasi sah.
+6. Perangkat yang belum terdaftar, menggunakan key salah/dicabut, memakai key milik jenis/scope yang berbeda, atau mencoba mengklaim ID milik perangkat lain harus ditolak tanpa menciptakan sesi aktif.
+7. Provisioning, aktivasi, penonaktifan, rotasi key, dan reset perangkat dicatat dalam audit log dengan admin, waktu, hasil, dan alasan. Rahasia key tidak boleh dicatat.
+
+### 20.3 Model data dan aturan autentikasi
+
+Model konseptual:
+- `devices`: `device_id` (unik), `device_type`, display name, lokasi/metadata opsional, status, tanggal dibuat, aktivasi, `last_seen_at`, versi protokol/firmware opsional.
+- `device_credentials`: relasi ke device, hash/representasi aman kredensial, status aktif/revoked, tanggal dibuat/rotasi/kedaluwarsa bila berlaku, metadata provisioning. Jangan simpan key plaintext.
+- `device_auth_events`: hasil autentikasi, waktu, device_id jika teridentifikasi, alasan penolakan, alamat jaringan bila sesuai kebijakan privasi, tanpa secret atau signature material sensitif.
+- `audit_log`: perubahan administratif, assignment, lock/unlock, rotasi, revoke, dan tindakan berizin.
+
+Invarian keamanan:
+- `device_id` wajib unik dan immutable setelah perangkat diaktifkan; jika penggantian ID benar-benar diperlukan, lakukan prosedur admin yang diaudit dan jaga relasi transaksi lama.
+- Key hanya autentikasi, tidak menentukan hak akses sendirian. Server juga memeriksa status perangkat, tipe, scope endpoint, role, dan status lockout.
+- Key dibuat dengan generator kriptografis, memiliki entropi memadai, disimpan dengan perlindungan yang tepat, dapat dicabut/dirotasi, dan tidak pernah dikirim ulang dari API setelah provisioning.
+- Request yang membawa `device_id` tetapi tidak memiliki autentikasi sah selalu ditolak. Request dengan credential valid namun device nonaktif/dicabut/terkunci juga ditolak.
+- Hindari replay dengan nonce/timestamp/sequence atau mekanisme protokol yang setara. Terapkan rate limit dan log penolakan tanpa menyimpan rahasia.
+- Perangkat tidak dapat mengganti `device_id`, jenis, scope, harga, saldo, status pembayaran, atau hasil transaksi hanya dengan mengirim nilai tersebut dari firmware. Nilai yang sensitif ditentukan server atau diverifikasi terhadap record perangkat.
+- Tidak ada batas jumlah mesin hard-coded. Database menggunakan indeks unik dan desain yang dapat diskalakan; limit operasional hanya dapat berupa konfigurasi eksplisit yang terdokumentasi, bukan batas tersembunyi di kode.
+
+### 20.4 Device management WebUI
+
+Halaman **Admin → Devices** harus menyediakan:
+- Daftar/filter semua mesin menurut jenis, status, lokasi, dan aktivitas terakhir.
+- Tambah/generate perangkat; pilih Vending, Cashier, atau Pertamini.
+- Tampilkan `device_id` dan device key satu kali saat pembuatan/provisioning; setelah itu hanya status kredensial, waktu rotasi, atau metadata tersamarkan.
+- Status `PENDING_PROVISIONING`, `ACTIVE`, `DISABLED`, `REVOKED`, dan `LOCKED` atau status setara yang jelas.
+- Aktivasi setelah verifikasi, disable/lock, rotasi/revoke key, dan prosedur re-provisioning dengan konfirmasi admin.
+- Detail perangkat: transaksi, health/last seen, firmware/protocol version, audit event, dan konfigurasi yang boleh dilihat oleh role terkait.
+- Peringatan bila ada percobaan login/provisioning gagal berulang, key dicabut, atau protokol perangkat tidak kompatibel.
+- Tidak boleh ada tombol atau endpoint untuk melihat ulang key lama.
+
+### 20.5 Transaksi dan isolasi antarperangkat
+
+Setiap transaksi/command yang berasal dari perangkat harus dikaitkan ke `device_id` yang berasal dari credential terautentikasi pada server, bukan sekadar nilai body yang dikirim firmware. Server memeriksa bahwa:
+- perangkat aktif, tidak dicabut/terkunci, dan jenisnya cocok dengan endpoint;
+- device scope dan hak akses cocok dengan aksi;
+- command memiliki ID unik/idempotency key dan masa berlaku jika relevan;
+- operasi finansial/stok/dispensing tetap divalidasi atomik di server;
+- satu perangkat tidak dapat mengakses konfigurasi, transaksi, atau command milik perangkat lain kecuali izin eksplisit mengizinkannya.
+
+Untuk Pertamini, autentikasi perangkat tidak menggantikan interlock keselamatan fisik. Emergency stop, dead-man handle, cutoff fail-safe, dan sensor kritis harus tetap bekerja secara lokal walau server/jaringan gagal.
+
+### 20.6 Acceptance criteria pembaruan device_id
+
+- [ ] `device_id` dipakai kembali sebagai identitas stabil mesin dan tidak pernah menjadi satu-satunya mekanisme autentikasi.
+- [ ] Admin dapat membuat perangkat tanpa batas jumlah tetap yang di-hardcode untuk Vending, Cashier, dan Pertamini.
+- [ ] Server membuat ID unik dan device key aman; key hanya diperlihatkan satu kali saat provisioning.
+- [ ] Mesin baru belum dianggap aktif sebelum berhasil membuktikan kredensial yang sah kepada server.
+- [ ] Setelah autentikasi sah, server mengaitkan koneksi/transaksi dengan `device_id` yang terdaftar dan mencatat last seen/audit.
+- [ ] ID palsu, key salah, key revoked, replay, scope/type mismatch, dan perangkat nonaktif ditolak.
+- [ ] Key tidak pernah muncul di log, database plaintext, WebUI setelah pembuatan, respons API, firmware source code, atau repository.
+- [ ] Admin dapat disable, lock, revoke, rotate, dan re-provision perangkat tanpa mengubah kode atau menghapus sejarah transaksi.
+- [ ] Transaksi menyimpan relasi ke mesin asal yang ditentukan dari autentikasi server.
+- [ ] Tidak ada hard limit jumlah mesin dalam kode; indeks unik, pagination, rate limits, dan capacity limits operasional didesain secara eksplisit.
+- [ ] Dokumen lama yang melarang `device_id` dianggap digantikan oleh Bagian 20 ini. Seluruh implementasi, test, installer, firmware, dan dokumentasi harus konsisten dengan keputusan terbaru.
+
