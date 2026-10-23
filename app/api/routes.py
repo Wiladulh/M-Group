@@ -247,10 +247,14 @@ def build_router(db, app_settings=None):
         """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
         with db.connect() as c:
             row = c.execute(
-                """SELECT machine_id FROM vending_machines
-                   WHERE machine_id=? OR device_id=?
-                   ORDER BY CASE WHEN machine_id=? THEN 0 ELSE 1 END LIMIT 1""",
-                (identifier, identifier, identifier),
+                """SELECT vm.machine_id
+                   FROM vending_machines vm
+                   LEFT JOIN device_registry dr ON dr.device_id=vm.device_id
+                   WHERE vm.machine_id=? OR dr.hardware_id=? OR vm.device_id=?
+                   ORDER BY CASE WHEN vm.machine_id=? THEN 0
+                                 WHEN dr.hardware_id=? THEN 1 ELSE 2 END
+                   LIMIT 1""",
+                (identifier, identifier, identifier, identifier, identifier),
             ).fetchone()
         if not row:
             raise HTTPException(404, "machine_not_found")
