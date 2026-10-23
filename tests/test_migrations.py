@@ -19,6 +19,8 @@ def test_canonical_migrations_are_repeatable_and_integrity_clean():
         with db.connect() as c:
             assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+            payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            assert "device_id" not in payment_columns
             operator_pin = c.execute(
                 "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
             ).fetchone()
