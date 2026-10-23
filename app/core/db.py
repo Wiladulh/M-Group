@@ -94,7 +94,7 @@ class Database:
 
         with self.connect() as c:
             for path in paths:
-                if path.name == "019_payment_device_identity_removal.sql":
+                if path.name == "024_payment_device_identity_removal.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
                     if "device_id" in columns:
                         c.execute("DROP INDEX IF EXISTS ix_payment_device")
