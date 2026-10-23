@@ -12,7 +12,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String DEVICE_ID="Vending_";
+String HARDWARE_ID="Vending_";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
@@ -84,8 +84,8 @@ bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
   String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
   compact.toLowerCase();
-  DEVICE_ID="Vending_"+compact;
-  String body="{\"device_type\":\"esp32-s3-vending\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
+  HARDWARE_ID="Vending_"+compact;
+  String body="{\"device_type\":\"esp32-s3-vending\",\"hardware_id\":\""+HARDWARE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=request("POST","/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
   deviceRegistered=code>=200&&code<300;
@@ -149,7 +149,7 @@ void savePendingTransaction(const String&tx,const String&phase,int servoChannel)
   pendingTransaction=true;pendingTransactionId=tx;pendingTransactionPhase=phase;pendingServoChannel=servoChannel;
 }
 bool products(){
-  int code=0;String reply=request("GET",String("/api/v1/vending/")+DEVICE_ID+"/products","",code);
+  int code=0;String reply=request("GET",String("/api/v1/vending/")+HARDWARE_ID+"/products","",code);
   Serial.printf("PRODUCTS %d %s\n",code,reply.c_str());
   if(code<200||code>=300){showMessage("SERVER ERROR","Products unavailable");return false;}
   parseProducts(reply);if(!productCount){showMessage("M-Group VENDING","No products");return false;}
@@ -158,8 +158,8 @@ bool products(){
 }
 String beginTransaction(const String&product,const String&credential,const String&seq){
   createRequestRejected=false;
-  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(DEVICE_ID)+":"+seq+"\"}";
-  String path=String("/api/v1/vending/")+DEVICE_ID+"/transactions";
+  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\"}";
+  String path=String("/api/v1/vending/")+HARDWARE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
     int code=0;String reply=request("POST",path,body,code);
@@ -266,7 +266,7 @@ void setup(){
   Serial.begin(115200);delay(300);
   pinMode(BUTTON_SELECT,INPUT_PULLUP);delay(50);
   const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
-  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,DEVICE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
   vendingPrefs.begin("M_GROUP-vend",false);
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
