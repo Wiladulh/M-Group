@@ -96,7 +96,7 @@ void heartbeat(){
   if(!deviceRegistered){Serial.println("HEARTBEAT skipped: device not registered");return;}
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;String body="{\"device_type\":\"esp32-s3-vending\",\"status\":\"active\"}";
-  String reply=request("POST",String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
+  String reply=request("POST","/api/v1/devices/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
 }
