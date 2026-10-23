@@ -1146,9 +1146,15 @@ def build_router(db, app_settings=None):
         if not row: raise HTTPException(404,"registration_session_not_found")
         return dict(row)
 
-    @r.get("/cashier/{device_id}/nfc-registration")
-    def cashier_nfc_registration(device_id,x_m_group_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_m_group_device_key)
+    @r.get("/cashier/nfc-registration")
+    def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None)):
+        credential = require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
+        digest = credential["auth_key_hash"]
+        with db.connect() as c:
+            credential_row = c.execute("SELECT device_id FROM device_registry WHERE auth_key_hash=?", (digest,)).fetchone()
+        if not credential_row:
+            raise HTTPException(403, "invalid_device_key")
+        device_id = credential_row["device_id"]
         with db.connect() as c:
             row=c.execute(
                 """SELECT session_id,member_id,status
@@ -1161,10 +1167,16 @@ def build_router(db, app_settings=None):
             return {"status":"idle"}
         return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
 
-    @r.post("/cashier/{device_id}/nfc-registration/complete")
-    def cashier_nfc_registration_complete(device_id,q:NfcRegistrationCompleteRequest,
+    @r.post("/cashier/nfc-registration/complete")
+    def cashier_nfc_registration_complete(q:NfcRegistrationCompleteRequest,
                                            x_m_group_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_m_group_device_key)
+        credential = require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
+        digest = credential["auth_key_hash"]
+        with db.connect() as c:
+            credential_row = c.execute("SELECT device_id FROM device_registry WHERE auth_key_hash=?", (digest,)).fetchone()
+        if not credential_row:
+            raise HTTPException(403, "invalid_device_key")
+        device_id = credential_row["device_id"]
         if not q.pin.isdigit() or len(q.pin)!=4:
             raise HTTPException(400,"registration_pin_must_be_4_digits")
         card_uid=(q.card_uid or "").strip().upper()
