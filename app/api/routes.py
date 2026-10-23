@@ -1205,25 +1205,25 @@ def build_router(db, app_settings=None):
         if not row: raise HTTPException(404,"registration_session_not_found")
         return dict(row)
 
-    @r.get("/cashier/{device_id}/nfc-registration")
-    def cashier_nfc_registration(device_id,x_m_group_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_m_group_device_key)
+    @r.get("/cashier/nfc-registration")
+    def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None)):
+        hardware_id = require_device(x_m_group_device_key)
         with db.connect() as c:
             row=c.execute(
                 """SELECT session_id,member_id,status
                    FROM nfc_registration_sessions
                    WHERE device_id=? AND status='scan_pending' AND expires_at>CURRENT_TIMESTAMP
                    ORDER BY created_at LIMIT 1""",
-                (device_id,)
+                (hardware_id,)
             ).fetchone()
         if not row:
             return {"status":"idle"}
         return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
 
-    @r.post("/cashier/{device_id}/nfc-registration/complete")
-    def cashier_nfc_registration_complete(device_id,q:NfcRegistrationCompleteRequest,
+    @r.post("/cashier/nfc-registration/complete")
+    def cashier_nfc_registration_complete(q:NfcRegistrationCompleteRequest,
                                            x_m_group_device_key: str | None = Header(default=None)):
-        require_device(device_id,x_m_group_device_key)
+        hardware_id = require_device(x_m_group_device_key)
         if not q.pin.isdigit() or len(q.pin)!=4:
             raise HTTPException(400,"registration_pin_must_be_4_digits")
         card_uid=(q.card_uid or "").strip().upper()
@@ -1231,7 +1231,7 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             session=c.execute(
                 "SELECT * FROM nfc_registration_sessions WHERE session_id=? AND device_id=?",
-                (q.session_id,device_id)
+                (q.session_id,hardware_id)
             ).fetchone()
             if not session: raise HTTPException(404,"registration_session_not_found")
             if session["status"]!="scan_pending": raise HTTPException(409,"registration_session_not_pending")
@@ -1282,7 +1282,7 @@ def build_router(db, app_settings=None):
                 )
                 c.execute(
                     "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                    ("identity","nfc_registration",q.session_id,f"completed:member={session['member_id']}:device={device_id}")
+                    ("identity","nfc_registration",q.session_id,f"completed:member={session['member_id']}:hardware={hardware_id}")
                 )
                 c.commit()
         except Exception as exc:
