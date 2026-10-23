@@ -714,3 +714,89 @@ Checklist penerimaan:
 - [ ] Unit tidak dapat diaktifkan tanpa commissioning dan pemeriksaan keselamatan yang disyaratkan.
 - [ ] Laporan, backup, restore, audit, dan role access mencakup modul SPBU Mini.
 
+
+
+### 17.10 Integrasi pembayaran QRIS melalui Midtrans
+
+**Penyedia QRIS yang ditetapkan untuk rancangan M-Group: Midtrans.** Bagian ini menentukan kontrak integrasi yang harus diimplementasikan; pencantuman spesifikasi ini bukan berarti integrasi sudah dibuat atau kredensial Midtrans sudah dikonfigurasi. Implementasi harus mengikuti dokumentasi Midtrans yang berlaku dan jenis integrasi yang diaktifkan pada akun merchant M-Group (misalnya Snap atau Core API).
+
+#### A. Pembuatan pembayaran
+
+- Semua permintaan pembuatan transaksi berasal dari backend M-Group. Frontend tidak boleh memanggil Midtrans dengan Server Key atau menetapkan status pembayaran sendiri.
+- Backend membuat ID order M-Group yang unik, stabil, dan tidak dapat digunakan ulang; menyimpan unit SPBU, sesi dispensing, nominal IDR, mata uang, waktu kedaluwarsa internal, serta status lokal sebelum meminta tagihan ke Midtrans.
+- Gunakan endpoint/SDK resmi Midtrans yang sesuai dengan produk yang dikonfigurasi. Simpan identifier transaksi Midtrans, order ID, metode pembayaran, nilai bruto, QR/token/URL pembayaran yang dibutuhkan UI, waktu kedaluwarsa dari provider bila tersedia, dan respons provider yang sudah disaring dari data rahasia.
+- QR/tagihan harus mengacu pada nominal tetap yang dipilih pelanggan. Jangan mengaktifkan pompa hanya karena QR berhasil dibuat, pelanggan kembali ke halaman sukses, browser callback menyatakan sukses, atau pelanggan menunjukkan bukti pembayaran.
+- Simpan Server Key dan kredensial lain hanya di konfigurasi rahasia backend. Jangan mengirimkannya ke WebUI, firmware, log, repo, atau respons API. Pisahkan kredensial sandbox dan production.
+
+#### B. Webhook/HTTP Notification Midtrans
+
+- Konfigurasikan URL HTTPS publik khusus untuk notifikasi pembayaran, misalnya `POST /api/v1/payments/midtrans/notification`. Endpoint tidak boleh mengharuskan sesi login pengguna interaktif, tetapi wajib memverifikasi autentisitas notifikasi.
+- Untuk skema notifikasi Midtrans yang memakai `signature_key`, hitung SHA-512 atas rangkaian persis `order_id + status_code + gross_amount + ServerKey` dan bandingkan secara aman dengan `signature_key` yang diterima. Ambil Server Key dari secret store, bukan dari request.
+- Setelah validasi signature, cocokkan order ID, gross amount, currency IDR, merchant/akun yang diharapkan, dan referensi transaksi dengan data lokal. Status harus dipetakan sesuai kontrak Midtrans yang aktif; jangan menganggap semua status non-pending sebagai sukses.
+- Untuk notifikasi atau alur Midtrans yang memakai skema SNAP/Core API dengan tanda tangan asimetris, terapkan verifikasi signature sesuai dokumentasi produk tersebut; jangan memakai rumus `signature_key` klasik pada payload yang tidak menggunakan skema itu. Bila diperlukan, konfirmasikan status langsung ke API Get Status Midtrans sebelum tindakan finansial.
+- Proses notifikasi secara idempoten. Duplikasi dan notifikasi terlambat tidak boleh membuat dua sesi dispensing, dua debit, atau dua refund. Simpan event notifikasi dan hasil pemrosesannya untuk audit. Gunakan transaksi database/unique constraint untuk mengunci transisi status.
+- Webhook hanya mengakui notifikasi setelah data diterima dan diproses atau disimpan secara tahan lama untuk pemrosesan lanjutan. Jika terjadi gangguan sementara, respons dan retry mengikuti kontrak Midtrans; kegagalan tidak boleh dianggap sebagai pembayaran sukses.
+- Status sukses untuk mengotorisasi dispensing harus berupa status final yang memang menandakan pembayaran berhasil pada metode/produk Midtrans tersebut (umumnya `settlement`; `capture` hanya jika relevan dan diterima sebagai status sukses menurut konfigurasi/jenis pembayaran). Validasi status code/fraud status bila field tersebut berlaku. Untuk QRIS, konfirmasikan status aktual melalui webhook tervalidasi atau Get Status API; jangan mengandalkan redirect frontend.
+- Jika webhook tidak tiba, gunakan rekonsiliasi backend melalui Get Status API Midtrans untuk order/transaksi yang masih pending atau meragukan. Polling harus dibatasi dan dicatat, tidak boleh mengotorisasi transaksi expired, canceled, denied, atau gagal.
+
+#### C. Pemetaan status dan izin dispensing
+
+Status pembayaran provider dan status dispensing harus disimpan terpisah. Contoh status pembayaran internal:
+- `created`: order lokal dibuat.
+- `pending`: pembayaran belum terkonfirmasi.
+- `paid`: status sukses Midtrans telah diverifikasi.
+- `expired`, `cancelled`, `failed`: tidak boleh mulai dispensing.
+- `refund_pending`, `partially_refunded`, `refunded`: status refund dicatat terpisah dari hasil dispensing.
+- `review_required`: status provider, nominal, callback, atau rekonsiliasi tidak konsisten.
+
+Sesi dispensing hanya dapat bertransisi ke `authorized` apabila pembayaran cocok dengan order yang benar, jumlah tepat, status sukses terverifikasi, unit dalam kondisi siap, tidak sedang terkunci, dan sesi belum kedaluwarsa/digunakan. Otorisasi harus berupa token/perintah internal berumur pendek, terikat pada satu unit dan satu sesi, serta tidak bisa dipakai ulang. Kontrol keselamatan lokal tetap dapat menolak atau menghentikan dispensing meskipun pembayaran telah sukses.
+
+Jika pembayaran sukses tiba setelah sesi lokal kedaluwarsa atau unit tidak siap, **jangan mulai dispensing otomatis**. Catat sebagai pembayaran yang perlu ditangani dan jalankan prosedur pembatalan/refund atau review sesuai aturan bisnis dan kemampuan Midtrans.
+
+#### D. Get Status dan rekonsiliasi
+
+- Gunakan API Get Status Midtrans di backend untuk mengonfirmasi status jika notifikasi tidak tersedia, signature/isi tidak konsisten, atau status lokal memerlukan rekonsiliasi.
+- Gunakan autentikasi server-to-server sesuai dokumentasi Midtrans dan environment yang benar. Jangan memanggil API status dari browser atau firmware dengan kredensial rahasia.
+- Cocokkan paling sedikit order ID, transaction ID jika sudah tersedia, nominal bruto, mata uang, status transaksi, serta referensi merchant. Perbedaan apa pun masuk `review_required`; tidak boleh membuka katup.
+- Rekonsiliasi berkala membandingkan transaksi lokal, status provider, hasil meter, jumlah yang ditagih, dan refund. Semua perubahan status menyimpan sumber perubahan, waktu, serta alasan.
+
+#### E. Refund QRIS melalui Midtrans
+
+- Implementasikan refund melalui backend menggunakan Refund API Midtrans yang sesuai dengan jenis transaksi dan endpoint/SDK akun yang digunakan. QRIS termasuk metode yang didukung refund menurut dokumentasi Midtrans, tetapi jendela waktu dan aturan dapat bergantung pada acquirer/kanal QRIS dan ketentuan yang berlaku.
+- Bedakan refund dari pembatalan: untuk transaksi yang sudah `Settlement`, gunakan alur refund; jika transaksi masih `Pending`, `Authorize`, atau `Capture`, ikuti prosedur cancel yang didukung untuk status tersebut. Jangan mencoba refund tanpa memeriksa status terbaru.
+- Simpan setiap permintaan dengan `refund_id`/referensi unik yang tidak digunakan ulang, order ID, transaction ID, nominal, alasan, aktor yang menyetujui, waktu permintaan, respons provider, dan status akhir. Gunakan idempotency/unique constraints agar retry tidak membuat refund ganda.
+- Bedakan secara eksplisit: `refund_requested`, `refund_accepted/pending`, `refund_succeeded`, `refund_failed`, dan `refund_manual_review`. Respons awal API yang berhasil diterima bukan bukti bahwa dana telah sampai kepada pelanggan; verifikasi status melalui respons/status provider dan notifikasi/rekonsiliasi yang tersedia.
+- Partial refund hanya boleh dilakukan jika didukung oleh metode, transaksi, endpoint, dan ketentuan akun Midtrans yang aktif. Jangan mengasumsikan refund parsial selalu tersedia untuk semua QRIS/acquirer. Jika tidak tersedia, catat selisih dan arahkan ke proses manual yang disetujui; jangan mengklaim pelanggan telah menerima uang.
+- Tetapkan kebijakan bisnis untuk kelebihan nominal karena dispensing berhenti lebih awal. Hitung nilai aktual dari meter tervalidasi dan harga per liter yang dikunci pada awal transaksi. Buat catatan refund berdasarkan selisih yang sah, bukan semata-mata sinyal sensor. Jika terjadi dugaan luapan atau gangguan meter, hentikan aliran secara lokal, kunci unit, simpan bukti audit, lalu lakukan review sebelum penyelesaian finansial.
+- Aturan batas waktu refund QRIS, termasuk batas yang berbeda menurut acquirer, harus diperiksa terhadap dokumentasi Midtrans dan konfigurasi merchant saat implementasi. Sistem wajib menampilkan refund yang sudah melewati jendela waktu sebagai perlu tindakan manual, bukan terus mengirim request tanpa batas.
+
+#### F. Model data dan audit minimum
+
+Simpan catatan terpisah untuk:
+- `payment_order`: order ID lokal, provider, provider transaction ID, nominal, mata uang, status, waktu, expiry, unit dan sesi terkait.
+- `payment_notification_event`: payload yang telah disanitasi, waktu diterima, hasil verifikasi signature, event/status, dan hasil pemrosesan; jangan simpan secret.
+- `payment_status_check`: waktu Get Status, hasil status yang dinormalisasi, dan alasan pengecekan.
+- `payment_refund`: ID refund unik, nominal, alasan, status permintaan/provider, timestamp, dan approval trail.
+- `fuel_dispensing_session`: izin dispensing, meter awal/akhir, harga yang dikunci, nilai aktual, status keselamatan, dan rekonsiliasi.
+- `audit_log`: siapa melakukan override, lock/unlock, persetujuan refund, atau koreksi manual beserta alasan.
+
+#### G. Acceptance criteria khusus Midtrans
+
+- [ ] Sandbox dan production memiliki kredensial, konfigurasi, dan data uji terpisah.
+- [ ] QRIS yang baru dibuat atau masih pending tidak dapat menyalakan pompa.
+- [ ] Pembayaran sukses hanya diakui setelah notifikasi diverifikasi dan/atau status dikonfirmasi melalui API Midtrans.
+- [ ] Webhook dengan signature salah, order ID tidak dikenal, nominal salah, atau mata uang tidak sesuai ditolak/ditandai untuk review dan tidak memberi izin dispensing.
+- [ ] Redirect browser dan screenshot bukti bayar tidak dapat mengubah status menjadi paid.
+- [ ] Webhook duplikat, retry, urutan notifikasi tidak beraturan, dan webhook terlambat tidak menyebabkan tindakan ganda.
+- [ ] Kehilangan webhook ditangani oleh Get Status dan rekonsiliasi terkontrol.
+- [ ] Pembayaran sukses saat sesi/unit tidak lagi siap tidak memicu dispensing otomatis.
+- [ ] Refund diuji untuk sukses, ditolak, pending, timeout, retry, duplikasi, dan batas waktu/acquirer yang tidak mendukung.
+- [ ] UI dan laporan membedakan nominal dibayar, nilai BBM aktual, selisih, refund yang diminta, refund yang berhasil, dan refund yang perlu penanganan manual.
+- [ ] Secret Midtrans tidak muncul di log, respons API, frontend, firmware, maupun repository.
+- [ ] Pengujian sandbox tidak dianggap sebagai pengganti uji commissioning keselamatan perangkat fisik.
+
+**Dokumentasi acuan implementasi** (periksa ulang saat mulai coding karena perilaku bergantung pada produk dan konfigurasi akun):
+- Midtrans — Handle After Payment: https://docs.midtrans.com/docs/handle-after-payment
+- Midtrans — HTTP(S) Notification/Webhooks dan verifikasi signature: https://docs.midtrans.com/docs/https-notification-webhooks
+- Midtrans — Get Transaction Status: https://docs.midtrans.com/reference/get-transaction-status
+- Midtrans — Refund API: https://docs.midtrans.com/reference/refund-api-1
