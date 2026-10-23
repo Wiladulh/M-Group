@@ -94,15 +94,15 @@ class Database:
 
         with self.connect() as c:
             for path in paths:
-            if path.name == "019_payment_device_identity_removal.sql":
-                columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
-                if "device_id" in columns:
-                    c.execute("DROP INDEX IF EXISTS ix_payment_device")
-                    c.execute("ALTER TABLE payment_transactions DROP COLUMN device_id")
-                c.execute(
-                    "INSERT OR IGNORE INTO system_meta(key,value) VALUES('payment_device_identity_schema_version','001')"
-                )
-                continue
+                if path.name == "019_payment_device_identity_removal.sql":
+                    columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+                    if "device_id" in columns:
+                        c.execute("DROP INDEX IF EXISTS ix_payment_device")
+                        c.execute("ALTER TABLE payment_transactions DROP COLUMN device_id")
+                    c.execute(
+                        "INSERT OR IGNORE INTO system_meta(key,value) VALUES('payment_device_identity_schema_version','001')"
+                    )
+                    continue
 
                 if path.name == "014_vending_promo_hardening.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(vending_transactions)")}
