@@ -1296,22 +1296,9 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
-        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_m_group_device_id
-        if not device_id:
-            if not x_m_group_device_key:
-                raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
-            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
-            if not matches:
-                raise HTTPException(403, "invalid_device_key")
-            if matches[0]["status"] != "active":
-                raise HTTPException(403, "device_not_active")
-            device_id = matches[0]["device_id"]
-        require_device(device_id,x_m_group_device_key)
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
+        credential = require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
+        device_id = hashlib.sha256((credential["auth_key_hash"] or "").encode("utf-8")).hexdigest()[:32]
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1391,7 +1378,7 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             code = str(e)
             raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
-        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
