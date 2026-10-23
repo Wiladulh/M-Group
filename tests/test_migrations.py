@@ -226,6 +226,8 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
                 "FROM payment_transactions WHERE transaction_id='payment-legacy'"
             ).fetchone()
             assert payment[:] == ("payment-legacy", 1250, "completed", 1250, 1250)
+            payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            assert "device_id" not in payment_columns
 
             vending = c.execute(
                 "SELECT transaction_id,amount,status,base_amount,discount_amount,promo_id "
