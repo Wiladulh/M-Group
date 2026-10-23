@@ -30,7 +30,7 @@ class VendingService:
             if hardware_id and c.execute("SELECT 1 FROM vending_machines WHERE device_id=?",(hardware_id,)).fetchone():
                 raise ValueError("device_already_registered")
             c.execute(
-                "INSERT INTO vending_machines(machine_id,name,location,device_id AS hardware_id,status) VALUES(?,?,?,?,?)",
+                "INSERT INTO vending_machines(machine_id,name,location,device_id,status) VALUES(?,?,?,?,?)",
                 (machine_id,name,location or "",hardware_id,status)
             )
             c.commit()
