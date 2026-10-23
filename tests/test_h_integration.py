@@ -21,7 +21,7 @@ def test_h_full_integration_one_by_one():
                 headers=admin,
                 json={
                     "name": "H Test Member",
-                    "nik": "3273010101010001",
+                    "nik": "TEST-NIK-001",
                     "birth_place": "Lamongan",
                     "birth_date": "1990-01-01",
                     "sex": "Laki-laki",
@@ -31,7 +31,7 @@ def test_h_full_integration_one_by_one():
             )
             assert member.status_code == 200
             member_id = member.json()["member_id"]
-            assert member.json()["nik"] == "3273010101010001"
+            assert member.json()["nik"] == "TEST-NIK-001"
 
             # H-02 Member -> Cashier
             provision = client.post(
@@ -130,7 +130,7 @@ def test_h_full_integration_one_by_one():
                 },
             )
             assert cashier_payment.status_code == 200
-            assert cashier_payment.json()["device_id"] == "cashier-h"
+            assert "device_id" not in cashier_payment.json()
 
             # H-07 Vending
             vending = client.post(

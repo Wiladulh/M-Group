@@ -15,45 +15,36 @@ class VendingService:
     def machines(self):
         with self.db.connect() as c:
             return [dict(r) for r in c.execute(
-                "SELECT machine_id,name,location,device_id,status,created_at,updated_at "
+                "SELECT machine_id,name,location,status,created_at,updated_at "
                 "FROM vending_machines ORDER BY name,machine_id"
             ).fetchall()]
 
-    def register(self,machine_id,name,location="",device_id=None,status="active"):
+    def register(self,machine_id,name,location="",status="active"):
         if not machine_id.strip(): raise ValueError("machine_id_required")
         if not name.strip(): raise ValueError("name_required")
         if status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
-        device_id = device_id.strip() if device_id else None
         with self.db.connect() as c:
             if c.execute("SELECT 1 FROM vending_machines WHERE machine_id=?",(machine_id,)).fetchone():
                 raise ValueError("machine_already_exists")
-            if device_id and c.execute("SELECT 1 FROM vending_machines WHERE device_id=?",(device_id,)).fetchone():
-                raise ValueError("device_already_registered")
             c.execute(
-                "INSERT INTO vending_machines(machine_id,name,location,device_id,status) VALUES(?,?,?,?,?)",
-                (machine_id,name,location or "",device_id,status)
+                "INSERT INTO vending_machines(machine_id,name,location,status) VALUES(?,?,?,?)",
+                (machine_id,name,location or "",status)
             )
             c.commit()
         return self.machine(machine_id)
 
-    def update_machine(self,machine_id,name=None,location=None,device_id=None,status=None):
+    def update_machine(self,machine_id,name=None,location=None,status=None):
         current=self.machine(machine_id)
         new_name=current["name"] if name is None else name
         new_location=current["location"] if location is None else location
-        new_device=current["device_id"] if device_id is None else (device_id.strip() or None)
         new_status=current["status"] if status is None else status
         if not new_name.strip(): raise ValueError("name_required")
         if new_status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
         with self.db.connect() as c:
-            if new_device and c.execute(
-                "SELECT 1 FROM vending_machines WHERE device_id=? AND machine_id<>?",
-                (new_device,machine_id)
-            ).fetchone():
-                raise ValueError("device_already_registered")
             c.execute(
-                "UPDATE vending_machines SET name=?,location=?,device_id=?,status=?,updated_at=CURRENT_TIMESTAMP "
+                "UPDATE vending_machines SET name=?,location=?,status=?,updated_at=CURRENT_TIMESTAMP "
                 "WHERE machine_id=?",
-                (new_name,new_location,new_device,new_status,machine_id)
+                (new_name,new_location,new_status,machine_id)
             )
             c.commit()
         return self.machine(machine_id)

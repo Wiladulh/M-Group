@@ -1,4 +1,5 @@
 class DeviceManagementService:
+    """Manage server-issued credentials, not physical hardware identities."""
     ALLOWED_TYPES = {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}
     ALLOWED_STATUS = {"active", "pending", "offline", "disabled", "maintenance", "unassigned"}
 
@@ -9,18 +10,18 @@ class DeviceManagementService:
         where = "" if include_deleted else "WHERE deleted_at IS NULL"
         with self.db.connect() as c:
             rows = c.execute(
-                f"""SELECT device_id,hardware_id,device_type,mac_address,display_name,
-                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
+                f"""SELECT device_id,device_type,display_name,status,last_seen,
+                           auth_key_hint,created_at,updated_at,deleted_at
                     FROM device_registry {where}
-                    ORDER BY device_id"""
+                    ORDER BY display_name,created_at"""
             ).fetchall()
             return [dict(r) for r in rows]
 
     def get(self, device_id):
         with self.db.connect() as c:
             row = c.execute(
-                """SELECT device_id,hardware_id,device_type,mac_address,display_name,
-                          status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
+                """SELECT device_id,device_type,display_name,status,last_seen,
+                          auth_key_hint,created_at,updated_at,deleted_at
                    FROM device_registry WHERE device_id=?""",
                 (device_id,),
             ).fetchone()
@@ -29,11 +30,11 @@ class DeviceManagementService:
     def update(self, device_id, device_type=None, status=None, display_name=None):
         current = self.get(device_id)
         if current is None:
-            raise ValueError("device_not_found")
+            raise ValueError("credential_not_found")
         if device_type is not None and device_type not in self.ALLOWED_TYPES:
             raise ValueError("invalid_device_type")
         if status is not None and status not in self.ALLOWED_STATUS:
-            raise ValueError("invalid_device_status")
+            raise ValueError("invalid_credential_status")
         if display_name is not None and not display_name.strip():
             raise ValueError("display_name_required")
         new_type = device_type or current["device_type"]
@@ -52,7 +53,7 @@ class DeviceManagementService:
     def soft_delete(self, device_id):
         current = self.get(device_id)
         if current is None:
-            raise ValueError("device_not_found")
+            raise ValueError("credential_not_found")
         with self.db.connect() as c:
             c.execute(
                 """UPDATE device_registry

@@ -87,7 +87,7 @@ bool registerDevice(){
   DEVICE_ID="Vending_"+compact;
   String body="{\"device_type\":\"esp32-s3-vending\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=request("POST","/api/v1/devices/register",body,code);
-  Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
+  Serial.printf("DEVICE REGISTER status=%d\\n",code);
   deviceRegistered=code>=200&&code<300;
   return deviceRegistered;
 }

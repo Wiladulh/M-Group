@@ -19,6 +19,8 @@ def test_canonical_migrations_are_repeatable_and_integrity_clean():
         with db.connect() as c:
             assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+            payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            assert "device_id" not in payment_columns
             operator_pin = c.execute(
                 "SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'"
             ).fetchone()
@@ -224,6 +226,8 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
                 "FROM payment_transactions WHERE transaction_id='payment-legacy'"
             ).fetchone()
             assert payment[:] == ("payment-legacy", 1250, "completed", 1250, 1250)
+            payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            assert "device_id" not in payment_columns
 
             vending = c.execute(
                 "SELECT transaction_id,amount,status,base_amount,discount_amount,promo_id "
@@ -258,9 +262,39 @@ def test_only_app_migrations_is_the_canonical_migration_source():
     migrations = root / "app" / "migrations"
     assert migrations.is_dir()
     assert (migrations / "001_initial.sql").is_file()
-    assert (migrations / "023_device_balance_lookup_limits.sql").is_file()
+    assert (migrations / "024_payment_device_identity_removal.sql").is_file()
     assert not (root / "database" / "migrations").exists()
     names = sorted(path.name for path in migrations.glob("*.sql"))
     assert names[0] == "001_initial.sql"
-    assert names[-1] == "023_device_balance_lookup_limits.sql"
+    assert names[-1] == "024_payment_device_identity_removal.sql"
     assert len(names) == len(set(names))
+
+
+def test_payment_device_identity_migration_preserves_transactions():
+    with TemporaryDirectory() as directory:
+        db = Database(Path(directory) / "payment-identity.db")
+        db.migrate()
+        with db.connect() as c:
+            c.execute("ALTER TABLE payment_transactions ADD COLUMN device_id TEXT")
+            c.execute(
+                "CREATE INDEX ix_payment_device ON payment_transactions(device_id,created_at)"
+            )
+            c.execute(
+                "INSERT INTO payment_transactions(transaction_id,credential_id,account_id,amount,status,device_id) "
+                "VALUES('legacy-payment','legacy-credential','legacy-account',125,'completed','legacy-device')"
+            )
+            c.commit()
+
+        db.migrate()
+        with db.connect() as c:
+            columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            assert "device_id" not in columns
+            row = c.execute(
+                "SELECT transaction_id,credential_id,account_id,amount,status "
+                "FROM payment_transactions WHERE transaction_id='legacy-payment'"
+            ).fetchone()
+            assert row[:] == (
+                "legacy-payment", "legacy-credential", "legacy-account", 125, "completed"
+            )
+            assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert c.execute("PRAGMA foreign_key_check").fetchall() == []

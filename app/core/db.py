@@ -94,6 +94,16 @@ class Database:
 
         with self.connect() as c:
             for path in paths:
+                if path.name == "024_payment_device_identity_removal.sql":
+                    columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+                    if "device_id" in columns:
+                        c.execute("DROP INDEX IF EXISTS ix_payment_device")
+                        c.execute("ALTER TABLE payment_transactions DROP COLUMN device_id")
+                    c.execute(
+                        "INSERT OR IGNORE INTO system_meta(key,value) VALUES('payment_device_identity_schema_version','001')"
+                    )
+                    continue
+
                 if path.name == "014_vending_promo_hardening.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(vending_transactions)")}
                     if "promo_id" not in columns:
@@ -274,7 +284,6 @@ class Database:
                         "provider_transaction_id": "TEXT",
                         "provider_reference": "TEXT",
                         "failure_reason": "TEXT",
-                        "device_id": "TEXT",
                         "original_amount": "INTEGER",
                         "discount_amount": "INTEGER NOT NULL DEFAULT 0",
                         "final_amount": "INTEGER",
@@ -289,7 +298,6 @@ class Database:
                         "provider_transaction_id": "NULL",
                         "provider_reference": "NULL",
                         "failure_reason": "NULL",
-                        "device_id": "NULL",
                         "original_amount": "amount",
                         "discount_amount": "0",
                         "final_amount": "amount",
@@ -318,10 +326,6 @@ class Database:
                     c.execute(
                         "CREATE INDEX IF NOT EXISTS ix_payment_provider_tx "
                         "ON payment_transactions(provider,provider_transaction_id)"
-                    )
-                    c.execute(
-                        "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                        "ON payment_transactions(device_id,created_at)"
                     )
                     c.execute(
                         "CREATE INDEX IF NOT EXISTS ix_payment_account_created "
@@ -492,7 +496,6 @@ class Database:
                 "provider_transaction_id": "TEXT",
                 "provider_reference": "TEXT",
                 "failure_reason": "TEXT",
-                "device_id": "TEXT",
             }
             for name, definition in additions.items():
                 if name not in columns:
@@ -504,10 +507,6 @@ class Database:
             c.execute(
                 "CREATE INDEX IF NOT EXISTS ix_payment_provider_tx "
                 "ON payment_transactions(provider,provider_transaction_id)"
-            )
-            c.execute(
-                "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                "ON payment_transactions(device_id,created_at)"
             )
             device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
             for name, definition in {

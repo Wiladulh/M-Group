@@ -93,7 +93,7 @@ bool registerDevice(){
   DEVICE_ID="Cashier_"+compact;
   String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+DEVICE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=postJson("/api/v1/devices/register",body,code);
-  Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
+  Serial.printf("DEVICE REGISTER status=%d\\n",code);
   deviceRegistered=code>=200&&code<300;
   return deviceRegistered;
 }
@@ -134,15 +134,15 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
   savePendingPayment(credential,amount,seq);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"credential_id\":\""+credential+
+  String body="{\"credential_id\":\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
-              String(DEVICE_ID)+":"+seq+"\",\"pin\":\""+pin+"\"}";
+              String("cashier:")+credential+":"+seq+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply="";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(5000)){code=-1;delay(250);continue;}
     reply=postJson("/api/v1/cashier/payments",body,code);
-    Serial.printf("PAYMENT attempt=%d code=%d %s\\n",attempt,code,reply.c_str());
+    Serial.printf("PAYMENT attempt=%d status=%d\\n",attempt,code);
     // Transport errors and server 5xx are ambiguous: retry the same key/body.
     if(code>0 && code<500) break;
     delay(250);
@@ -150,7 +150,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   if(code<=0 || code>=500){
     lcdShow("HASIL BELUM ADA","Ulangi PIN");
     Serial.printf("PAYMENT PENDING key=%s; same transaction must be retried\\n",
-                  (String(DEVICE_ID)+":"+seq).c_str());
+                  (String("cashier:")+credential+":"+seq).c_str());
     return; // NVS pending record blocks new payments until reconciled.
   }
   clearPendingPayment();
