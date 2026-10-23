@@ -198,7 +198,7 @@ async function pollNfcRegistration(memberId,sessionId){
   const check=async()=>{
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
-    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
+    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.cashier_hardware_id||d.hardware_id||d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
     else if(d.status==='completed'){
       $('nfcRegistrationResult').textContent='Registrasi NFC berhasil. UID kartu dan verifikasi PIN telah diproses server.';
       clearInterval(nfcPollTimer);
