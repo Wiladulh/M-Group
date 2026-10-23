@@ -95,7 +95,7 @@ class PaymentService:
                         "final_amount": row["final_amount"],
                         "method": row["method"],
                         "provider": row["provider"],
-                        "device_id": hardware_id,
+                        "hardware_id": hardware_id,
                         "promo_id": row["promo_id"],
                         "balance": row["balance_after"],
                     }
@@ -168,7 +168,7 @@ class PaymentService:
             "amount": amount,
             "method": method,
             "provider": provider,
-            "device_id": hardware_id,
+            "hardware_id": hardware_id,
             "promo_id": promo_id,
             "ledger_reference": ledger_reference,
             "balance_before": balance_before,
