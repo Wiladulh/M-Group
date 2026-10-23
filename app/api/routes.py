@@ -1314,22 +1314,8 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
-        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_m_group_device_id
-        if not device_id:
-            if not x_m_group_device_key:
-                raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
-            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
-            if not matches:
-                raise HTTPException(403, "invalid_device_key")
-            if matches[0]["status"] != "active":
-                raise HTTPException(403, "device_not_active")
-            device_id = matches[0]["device_id"]
-        require_device(device_id,x_m_group_device_key)
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
+        hardware_id = require_device(x_m_group_device_key)
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1341,7 +1327,7 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
             if old:
-                if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                if (old["device_id"] != hardware_id or old["credential_id"] != q.credential_id
                     or old["amount"] != q.amount):
                     raise HTTPException(409,"idempotency_key_conflict")
                 fin = c.execute(
@@ -1373,7 +1359,7 @@ def build_router(db, app_settings=None):
                 # Recheck under a write lock to make retries/concurrent taps atomic.
                 old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
                 if old:
-                    if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
+                    if (old["device_id"] != hardware_id or old["credential_id"] != q.credential_id
                         or old["amount"] != q.amount):
                         raise HTTPException(409,"idempotency_key_conflict")
                     fin = c.execute(
@@ -1402,14 +1388,14 @@ def build_router(db, app_settings=None):
                 c.execute("""INSERT INTO cashier_deposits
                     (transaction_id,device_id,credential_id,member_id,account_id,amount,status,idempotency_key,balance_before,balance_after,completed_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                    (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
+                    (tid,hardware_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
                 c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
+                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={hardware_id}"))
                 c.commit()
         except ValueError as e:
             code = str(e)
             raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
-        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"hardware_id":hardware_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
