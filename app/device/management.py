@@ -57,7 +57,7 @@ class DeviceManagementService:
             c.execute(
                 """UPDATE device_registry
                    SET status='disabled',deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                   WHERE device_id=?""",
+                   WHERE hardware_id=?""",
                 (hardware_id,),
             )
             c.commit()
