@@ -15,7 +15,7 @@ class VendingService:
     def machines(self):
         with self.db.connect() as c:
             return [dict(r) for r in c.execute(
-                "SELECT machine_id,name,location,device_id,status,created_at,updated_at "
+                "SELECT machine_id,name,location,device_id AS hardware_id,status,created_at,updated_at "
                 "FROM vending_machines ORDER BY name,machine_id"
             ).fetchall()]
 
@@ -30,7 +30,7 @@ class VendingService:
             if hardware_id and c.execute("SELECT 1 FROM vending_machines WHERE device_id=?",(hardware_id,)).fetchone():
                 raise ValueError("device_already_registered")
             c.execute(
-                "INSERT INTO vending_machines(machine_id,name,location,device_id,status) VALUES(?,?,?,?,?)",
+                "INSERT INTO vending_machines(machine_id,name,location,device_id AS hardware_id,status) VALUES(?,?,?,?,?)",
                 (machine_id,name,location or "",hardware_id,status)
             )
             c.commit()
@@ -64,7 +64,7 @@ class VendingService:
     def machine(self,machine_id):
         with self.db.connect() as c:
             r=c.execute(
-                "SELECT machine_id,name,location,device_id,status,created_at,updated_at "
+                "SELECT machine_id,name,location,device_id AS hardware_id,status,created_at,updated_at "
                 "FROM vending_machines WHERE machine_id=?",(machine_id,)
             ).fetchone()
         if not r: raise ValueError("machine_not_found")
