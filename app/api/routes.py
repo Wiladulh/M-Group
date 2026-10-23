@@ -32,7 +32,7 @@ class PaymentRequest(BaseModel):
     method: str = "NFC"
     provider: str = "local"
     idempotency_key: str | None = None
-    device_id: str | None = None
+    hardware_id: str | None = None
     pin: str | None = None
     original_amount: int | None = None
     discount_amount: int = 0
@@ -145,13 +145,13 @@ class VendingRegisterRequest(BaseModel):
     machine_id: str
     name: str
     location: str = ""
-    device_id: str | None = None
+    hardware_id: str | None = None
     status: str = "active"
 
 class VendingUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
-    device_id: str | None = None
+    hardware_id: str | None = None
     status: str | None = None
 
 class VendingProductRequest(BaseModel):
@@ -176,7 +176,7 @@ class VendingDispenseRequest(BaseModel):
     success: bool = True
 
 class NfcRegistrationStartRequest(BaseModel):
-    cashier_device_id: str
+    cashier_hardware_id: str
     operator_id: str = "admin"
 
 class NfcRegistrationCompleteRequest(BaseModel):
@@ -436,13 +436,13 @@ def build_router(db, app_settings=None):
         result = device_register(q)
         return {**result, "handshake": "accepted"}
 
-    @r.get("/devices/{device_id}/events")
-    def device_events(request: Request, device_id,limit:int=100):
+    @r.get("/devices/{hardware_id}/events")
+    def device_events(request: Request, hardware_id,limit:int=100):
         require_admin(request)
         limit=max(1,min(limit,500))
         with db.connect() as c:
-            rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
-        return {"device_id":device_id,"events":[dict(x) for x in rows]}
+            rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(hardware_id,limit)).fetchall()
+        return {"hardware_id":hardware_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
     def dashboard(request: Request, period: str = "1w"):
@@ -646,19 +646,19 @@ def build_router(db, app_settings=None):
         require_admin(request)
         return {"devices": devices.list(include_deleted)}
 
-    @r.get("/devices/{device_id}")
-    def device_get(request: Request, device_id):
+    @r.get("/devices/{hardware_id}")
+    def device_get(request: Request, hardware_id):
         require_admin(request)
-        result = devices.get(device_id)
+        result = devices.get(hardware_id)
         if result is None:
             raise HTTPException(404,"device_not_found")
         return result
 
-    @r.patch("/devices/{device_id}")
-    def device_update(request: Request, device_id,q: DeviceHeartbeatRequest):
+    @r.patch("/devices/{hardware_id}")
+    def device_update(request: Request, hardware_id,q: DeviceHeartbeatRequest):
         require_admin(request)
         try:
-            return devices.update(device_id,q.device_type,q.status,q.display_name)
+            return devices.update(hardware_id,q.device_type,q.status,q.display_name)
         except ValueError as e:
             raise HTTPException(400,str(e))
 
@@ -761,11 +761,11 @@ def build_router(db, app_settings=None):
             # Do not let an arbitrary key create a device record.
             raise HTTPException(403,"device_not_provisioned")
 
-    @r.delete("/devices/{device_id}")
-    def device_delete(request: Request, device_id):
+    @r.delete("/devices/{hardware_id}")
+    def device_delete(request: Request, hardware_id):
         require_admin(request)
         try:
-            return devices.soft_delete(device_id)
+            return devices.soft_delete(hardware_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
@@ -977,7 +977,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
-        try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.register(q.machine_id,q.name,q.location,q.hardware_id,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
@@ -1147,7 +1147,7 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             device=c.execute(
                 "SELECT device_id,device_type,status FROM device_registry WHERE device_id=?",
-                (q.cashier_device_id,)
+                (q.cashier_hardware_id,)
             ).fetchone()
             if not device or device["device_type"]!="esp32-cashier" or device["status"]!="active":
                 raise HTTPException(409,"cashier_not_active")
@@ -1415,7 +1415,7 @@ def build_router(db, app_settings=None):
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
             authenticated_device_id = require_device(x_m_group_device_key)
-            q = q.model_copy(update={"device_id": authenticated_device_id})
+            q = q.model_copy(update={"hardware_id": authenticated_device_id})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
