@@ -829,9 +829,8 @@ def build_router(db, app_settings=None):
         return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
                 "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
 
-    @r.post("/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if not device_id.strip(): raise HTTPException(400,"device_id_required")
+    @r.post("/devices/heartbeat")
+    def device_heartbeat(q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
         # Heartbeat is telemetry, not an administrative status mutation. Only an
         # admin may disable/maintain a device; accepting status from firmware lets
@@ -843,7 +842,7 @@ def build_router(db, app_settings=None):
             device_type = "esp32-s3-vending"
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
-        require_device(device_id,x_m_group_device_key)
+        device_id = require_device(x_m_group_device_key)
         with db.connect() as c:
             row = c.execute(
                 "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
@@ -1448,9 +1447,9 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if q.device_id is None:raise HTTPException(400,"device_id_required")
         try:
-            require_device(q.device_id,x_m_group_device_key)
+            authenticated_device_id = require_device(x_m_group_device_key)
+            q = q.model_copy(update={"device_id": authenticated_device_id})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
