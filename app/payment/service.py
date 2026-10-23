@@ -19,7 +19,6 @@ class PaymentService:
         method="NFC",
         provider="local",
         idempotency_key=None,
-        device_id=None,
         pin=None,
         original_amount=None,
         discount_amount=0,
@@ -56,7 +55,7 @@ class PaymentService:
             raise PermissionError("credential_account_mismatch")
         account_id = resolved_account_id
 
-        if method == "NFC" and device_id is not None:
+        if method == "NFC":
             if pin is None:
                 raise PermissionError("pin_required")
             if not self.identity.verify_credential_pin(credential_id, pin):
@@ -69,7 +68,7 @@ class PaymentService:
             c.execute("BEGIN IMMEDIATE")
             if idempotency_key:
                 row = c.execute(
-                    "SELECT transaction_id,status,credential_id,device_id,original_amount,discount_amount,final_amount,"
+                    "SELECT transaction_id,status,credential_id,original_amount,discount_amount,final_amount,"
                     "method,provider,account_id,balance_before,balance_after,promo_id "
                     "FROM payment_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
@@ -78,7 +77,6 @@ class PaymentService:
                     if (
                         row["account_id"] != account_id
                         or row["credential_id"] != credential_id
-                        or row["device_id"] != device_id
                         or row["method"] != method
                         or row["provider"] != provider
                         or row["original_amount"] != original_amount
@@ -95,7 +93,6 @@ class PaymentService:
                         "final_amount": row["final_amount"],
                         "method": row["method"],
                         "provider": row["provider"],
-                        "device_id": device_id,
                         "promo_id": row["promo_id"],
                         "balance": row["balance_after"],
                     }
@@ -122,9 +119,9 @@ class PaymentService:
             c.execute(
                 "INSERT INTO payment_transactions "
                 "(transaction_id,credential_id,account_id,amount,status,method,provider,"
-                "idempotency_key,device_id,original_amount,discount_amount,final_amount,"
+                "idempotency_key,original_amount,discount_amount,final_amount,"
                 "promo_id,balance_before,balance_after) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     tx,
                     credential_id,
@@ -134,7 +131,6 @@ class PaymentService:
                     method,
                     provider,
                     idempotency_key,
-                    device_id,
                     original_amount,
                     discount_amount,
                     amount,
@@ -151,7 +147,7 @@ class PaymentService:
                     "payment_transaction",
                     tx,
                     f"completed:{method}:{provider}:credential={credential_id}:"
-                    f"device={device_id or '-'}:original={original_amount}:"
+                    f"original={original_amount}:"
                     f"discount={discount_amount}:final={amount}:"
                     f"balance_before={balance_before}:balance_after={balance_after}:"
                     f"ledger={ledger_reference or '-'}:promo={promo_id or '-'}",
@@ -168,7 +164,6 @@ class PaymentService:
             "amount": amount,
             "method": method,
             "provider": provider,
-            "device_id": device_id,
             "promo_id": promo_id,
             "ledger_reference": ledger_reference,
             "balance_before": balance_before,
