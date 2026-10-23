@@ -797,41 +797,6 @@ def build_router(db, app_settings=None):
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
-    @r.post("/devices/{device_id}/provision")
-    def device_provision_legacy(request: Request, device_id,q:DeviceProvisionRequest):
-        """Deprecated compatibility endpoint; new firmware must use key-only provisioning."""
-        require_admin(request)
-        legacy_id = device_id.strip()
-        device_type = q.device_type.strip().lower()
-        if device_type == "esp32-vending":
-            device_type = "esp32-s3-vending"
-        if not legacy_id:
-            raise HTTPException(400, "device_id_required")
-        if device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400, "invalid_device_type")
-        key = secrets.token_urlsafe(32)
-        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-        with db.connect() as c:
-            existing = c.execute(
-                "SELECT device_id FROM device_registry WHERE device_id=? OR hardware_id=?",
-                (legacy_id, legacy_id),
-            ).fetchone()
-            if existing:
-                raise HTTPException(409, "legacy_device_id_already_exists_use_key_rotation_workflow")
-            c.execute(
-                """INSERT INTO device_registry
-                   (device_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (legacy_id, device_type, digest, key[-6:]),
-            )
-            c.execute(
-                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device", "legacy_provisioned", legacy_id, f"type={device_type};deprecated=true"),
-            )
-            c.commit()
-        return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
-                "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
-
     @r.post("/devices/heartbeat")
     def device_heartbeat(q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not q.device_type.strip(): raise HTTPException(400,"device_type_required")
