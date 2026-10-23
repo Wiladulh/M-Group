@@ -1315,7 +1315,12 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/deposits")
     def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
-        hardware_id = require_device(x_m_group_device_key)
+        registry_id = require_device(x_m_group_device_key)
+        with db.connect() as c:
+            identity_row = c.execute("SELECT hardware_id FROM device_registry WHERE device_id=?", (registry_id,)).fetchone()
+        if not identity_row or not identity_row["hardware_id"]:
+            raise HTTPException(403, "device_hardware_identity_missing")
+        hardware_id = identity_row["hardware_id"]
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1400,8 +1405,12 @@ def build_router(db, app_settings=None):
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
-            authenticated_device_id = require_device(x_m_group_device_key)
-            q = q.model_copy(update={"hardware_id": authenticated_device_id})
+            registry_id = require_device(x_m_group_device_key)
+            with db.connect() as c:
+                identity_row = c.execute("SELECT hardware_id FROM device_registry WHERE device_id=?", (registry_id,)).fetchone()
+            if not identity_row or not identity_row["hardware_id"]:
+                raise HTTPException(403, "device_hardware_identity_missing")
+            q = q.model_copy(update={"hardware_id": identity_row["hardware_id"]})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
