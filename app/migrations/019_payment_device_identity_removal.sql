@@ -1,2 +1,0 @@
--- Database.migrate() applies this conditional schema change safely for legacy databases.
--- Payment rows remain intact; only the obsolete device identity column is removed.
