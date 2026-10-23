@@ -69,7 +69,7 @@ class PaymentService:
             c.execute("BEGIN IMMEDIATE")
             if idempotency_key:
                 row = c.execute(
-                    "SELECT transaction_id,status,credential_id,hardware_id,original_amount,discount_amount,final_amount,"
+                    "SELECT transaction_id,status,credential_id,device_id,original_amount,discount_amount,final_amount,"
                     "method,provider,account_id,balance_before,balance_after,promo_id "
                     "FROM payment_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
@@ -78,7 +78,7 @@ class PaymentService:
                     if (
                         row["account_id"] != account_id
                         or row["credential_id"] != credential_id
-                        or row["hardware_id"] != hardware_id
+                        or row["device_id"] != hardware_id
                         or row["method"] != method
                         or row["provider"] != provider
                         or row["original_amount"] != original_amount
@@ -95,7 +95,7 @@ class PaymentService:
                         "final_amount": row["final_amount"],
                         "method": row["method"],
                         "provider": row["provider"],
-                        "hardware_id": hardware_id,
+                        "device_id": hardware_id,
                         "promo_id": row["promo_id"],
                         "balance": row["balance_after"],
                     }
@@ -122,7 +122,7 @@ class PaymentService:
             c.execute(
                 "INSERT INTO payment_transactions "
                 "(transaction_id,credential_id,account_id,amount,status,method,provider,"
-                "idempotency_key,hardware_id,original_amount,discount_amount,final_amount,"
+                "idempotency_key,device_id,original_amount,discount_amount,final_amount,"
                 "promo_id,balance_before,balance_after) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -168,7 +168,7 @@ class PaymentService:
             "amount": amount,
             "method": method,
             "provider": provider,
-            "hardware_id": hardware_id,
+            "device_id": hardware_id,
             "promo_id": promo_id,
             "ledger_reference": ledger_reference,
             "balance_before": balance_before,
