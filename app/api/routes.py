@@ -222,11 +222,16 @@ def build_router(db, app_settings=None):
     financial = FinancialService(db)
     vending = VendingService(db)
 
-    def require_device(device_key: str | None):
-        """Authenticate a device solely by its server-issued key; no caller-supplied device ID."""
-        if not device_key:
+    def require_device(device_id_or_key: str | None, device_key: str | None = None):
+        """Authenticate by the server-issued device key, never by the supplied device ID.
+
+        The optional first argument is retained temporarily for older internal callers;
+        it is not used to select the registry record.
+        """
+        key = device_key if device_key is not None else device_id_or_key
+        if not key:
             raise HTTPException(401, "device_auth_required")
-        got = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
+        got = hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             row = c.execute(
                 "SELECT device_id,status,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
