@@ -172,6 +172,7 @@ class VendingDispenseRequest(BaseModel):
     success: bool = True
 
 class NfcRegistrationStartRequest(BaseModel):
+    cashier_credential_ref: str
     operator_id: str = "admin"
 
 class NfcRegistrationCompleteRequest(BaseModel):
@@ -1087,7 +1088,7 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             device=c.execute(
                 "SELECT device_id,device_type,status FROM device_registry WHERE device_id=?",
-                (q.cashier_device_id,)
+                (q.cashier_credential_ref,)
             ).fetchone()
             if not device or device["device_type"]!="esp32-cashier" or device["status"]!="active":
                 raise HTTPException(409,"cashier_not_active")
