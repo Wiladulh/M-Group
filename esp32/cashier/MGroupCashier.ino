@@ -103,7 +103,7 @@ void heartbeat(){
   if(WiFi.status()!=WL_CONNECTED){Serial.println("HEARTBEAT skipped: WiFi offline");return;}
   int code=0;
   String body="{\"device_type\":\"esp32-cashier\",\"status\":\"active\"}";
-  String reply=postJson(String("/api/v1/devices/")+DEVICE_ID+"/heartbeat",body,code);
+  String reply=postJson("/api/v1/devices/heartbeat",body,code);
   Serial.printf("HEARTBEAT %d %s\n",code,reply.c_str());
   if(code<200||code>=300)deviceRegistered=false;
 }
