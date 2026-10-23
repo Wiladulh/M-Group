@@ -127,9 +127,8 @@ class DeviceHeartbeatRequest(BaseModel):
     display_name: str | None = None
 
 class DeviceRegisterRequest(BaseModel):
+    """Register a logical M-Group endpoint using a server-issued credential only."""
     device_type: str
-    hardware_id: str
-    mac_address: str
     device_key: str
 
 class DeviceProvisionRequest(BaseModel):
