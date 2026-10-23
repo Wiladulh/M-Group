@@ -15,13 +15,13 @@ except ImportError:
 
 SHEETS = {
     "cashier": """
-        SELECT transaction_id,created_at,device_id,member_id,credential_id,account_id,
+        SELECT transaction_id,created_at,member_id,credential_id,account_id,
                'DEPOSIT' AS transaction_type,amount,balance_before,balance_after,status
         FROM cashier_deposits
         ORDER BY created_at
     """,
     "vending": """
-        SELECT transaction_id,created_at,machine_id,device_id,credential_id,account_id,
+        SELECT transaction_id,created_at,machine_id,credential_id,account_id,
                'PURCHASE' AS transaction_type,product_id,amount,payment_status,
                dispense_status,status
         FROM vending_transactions v
@@ -237,7 +237,7 @@ def import_excel(db, source):
                 tid=row[idx["transaction_id"]]
                 if not tid: continue
                 c.execute("""INSERT OR IGNORE INTO cashier_deposits
-                    (transaction_id,device_id,credential_id,member_id,account_id,amount,status,
+                    (transaction_id,credential_id,member_id,account_id,amount,status,
                      balance_before,balance_after,created_at,completed_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                     (tid,row[idx["device_id"]],row[idx["credential_id"]],row[idx["member_id"]],
