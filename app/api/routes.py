@@ -1048,7 +1048,6 @@ def build_router(db, app_settings=None):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
-            if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
@@ -1059,7 +1058,6 @@ def build_router(db, app_settings=None):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
-            if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
             require_device_key(x_m_group_device_key, {"esp32-vending", "esp32-s3-vending", "vending"})
             return public_vending_transaction(vending.dispense(transaction_id,q.success))
         except ValueError as e:raise HTTPException(409,str(e))
