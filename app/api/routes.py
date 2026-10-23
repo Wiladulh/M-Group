@@ -192,7 +192,6 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str
     card_uid: str
 
 class OperatorPinRequest(BaseModel):
@@ -884,13 +883,11 @@ def build_router(db, app_settings=None):
     def device_member_balance(q: MemberBalanceLookupRequest,
                               x_m_group_device_key: str | None = Header(default=None)):
         """Read-only balance lookup for authenticated Cashier/Vending devices."""
-        device_id = q.device_id.strip()
         card_uid = q.card_uid.strip()
-        if not device_id:
-            raise HTTPException(400, "device_id_required")
         if not card_uid:
             raise HTTPException(400, "card_uid_required")
-        require_device(device_id, x_m_group_device_key)
+        # Resolve the device exclusively from its server-issued key; clients do not send device_id.
+        device_id = require_device(x_m_group_device_key)
         with db.connect() as c:
             device = c.execute(
                 "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
