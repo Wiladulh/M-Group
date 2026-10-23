@@ -143,13 +143,11 @@ class VendingRegisterRequest(BaseModel):
     machine_id: str
     name: str
     location: str = ""
-    device_id: str | None = None
     status: str = "active"
 
 class VendingUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
-    device_id: str | None = None
     status: str | None = None
 
 class VendingProductRequest(BaseModel):
@@ -190,7 +188,6 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str
     card_uid: str
 
 class OperatorPinRequest(BaseModel):
@@ -221,19 +218,25 @@ def build_router(db, app_settings=None):
     vending = VendingService(db)
 
     def require_device(device_id: str, device_key: str | None):
+        """Validate a key against an internal credential record, never a client identity."""
         if not device_key:
-            raise HTTPException(401,"device_auth_required")
+            raise HTTPException(401, "device_auth_required")
+        digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            row=c.execute("SELECT status,auth_key_hash FROM device_registry WHERE device_id=?",(device_id,)).fetchone()
-        if not row or row["status"]!="active":
-            raise HTTPException(403,"device_not_active")
-        if not row["auth_key_hash"]:
-            raise HTTPException(403,"device_not_provisioned")
-        got=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
-        if not secrets.compare_digest(got,row["auth_key_hash"]):
-            raise HTTPException(403,"invalid_device_key")
-        return True
-
+            rows = c.execute(
+                "SELECT device_id,status,auth_key_hash,device_type FROM device_registry WHERE auth_key_hash=?",
+                (digest,),
+            ).fetchall()
+        if len(rows) != 1:
+            raise HTTPException(403, "invalid_device_key")
+        row = rows[0]
+        if row["status"] != "active":
+            raise HTTPException(403, "credential_disabled")
+        if not secrets.compare_digest(digest, row["auth_key_hash"] or ""):
+            raise HTTPException(403, "invalid_device_key")
+        if device_id is not None and row["device_id"] != device_id:
+            raise HTTPException(403, "credential_scope_mismatch")
+        return row
 
     def require_device_key(device_key: str | None, allowed_types: set[str]):
         if not device_key:
@@ -256,13 +259,11 @@ def build_router(db, app_settings=None):
         return row
 
     def resolve_vending_machine(identifier: str):
-        """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
+        """Resolve a business machine ID only; authentication is handled by its key."""
         with db.connect() as c:
             row = c.execute(
-                """SELECT machine_id FROM vending_machines
-                   WHERE machine_id=? OR device_id=?
-                   ORDER BY CASE WHEN machine_id=? THEN 0 ELSE 1 END LIMIT 1""",
-                (identifier, identifier, identifier),
+                "SELECT machine_id FROM vending_machines WHERE machine_id=?",
+                (identifier,),
             ).fetchone()
         if not row:
             raise HTTPException(404, "machine_not_found")
