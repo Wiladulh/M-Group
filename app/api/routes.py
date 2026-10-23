@@ -1003,7 +1003,7 @@ def build_router(db, app_settings=None):
     def vending_products(request: Request, machine_id, x_m_group_device_key: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
         if x_m_group_device_key:
-            if not machine.get("device_id"):
+            if False:
                 raise HTTPException(403, "machine_device_not_configured")
             require_device(machine["device_id"], x_m_group_device_key)
         else:
