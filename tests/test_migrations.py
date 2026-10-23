@@ -260,9 +260,9 @@ def test_only_app_migrations_is_the_canonical_migration_source():
     migrations = root / "app" / "migrations"
     assert migrations.is_dir()
     assert (migrations / "001_initial.sql").is_file()
-    assert (migrations / "023_device_balance_lookup_limits.sql").is_file()
+    assert (migrations / "024_payment_device_identity_removal.sql").is_file()
     assert not (root / "database" / "migrations").exists()
     names = sorted(path.name for path in migrations.glob("*.sql"))
     assert names[0] == "001_initial.sql"
-    assert names[-1] == "023_device_balance_lookup_limits.sql"
+    assert names[-1] == "024_payment_device_identity_removal.sql"
     assert len(names) == len(set(names))
