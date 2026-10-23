@@ -439,12 +439,6 @@ def build_router(db, app_settings=None):
             rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
         return {"events":[dict(x) for x in rows]}
 
-    @r.post("/devices/handshake")
-    def device_handshake(q: DeviceRegisterRequest):
-        """Backward-compatible alias; validation and event logging live in register."""
-        result = device_register(q)
-        return {**result, "handshake": "accepted"}
-
     @r.get("/devices/{device_id}/events")
     def device_events(request: Request, device_id,limit:int=100):
         require_admin(request)
