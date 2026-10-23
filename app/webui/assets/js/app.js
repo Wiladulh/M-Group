@@ -80,7 +80,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
   $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
-  $('devices').innerHTML=table(d.devices,['device_id','device_type','status','last_seen']);
+  $('devices').innerHTML=table(d.devices,['hardware_id','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
 async function load(){
@@ -191,7 +191,7 @@ async function loadNfcCashiers(){
   const {r,d}=await json('/api/v1/devices',{});
   if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
   const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
+  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.hardware_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.hardware_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
 }
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
@@ -220,12 +220,12 @@ $('nfcStart').onclick=async()=>{
     if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
     const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
-    let body={cashier_device_id:deviceId};
+    let body={cashier_hardware_id:deviceId};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={cashier_device_id:deviceId,operator_id};
+      body={cashier_hardware_id:deviceId,operator_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
@@ -243,11 +243,11 @@ async function loadDevices(){
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>'<tr>'+
-        '<td><input data-device-name="'+esc(x.device_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+        '<td><input data-device-name="'+esc(x.hardware_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(x.device_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td><select data-device-status="'+esc(x.hardware_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.device_id)+'">Simpan</button></td>'+
+        '<td><button type="button" data-device-save="'+esc(x.hardware_id)+'">Simpan</button></td>'+
       '</tr>').join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
   }catch(e){$('deviceAuthResult').textContent=e.message}
