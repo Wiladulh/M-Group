@@ -239,8 +239,8 @@ def import_excel(db, source):
                 c.execute("""INSERT OR IGNORE INTO cashier_deposits
                     (transaction_id,credential_id,member_id,account_id,amount,status,
                      balance_before,balance_after,created_at,completed_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                    (tid,row[idx["device_id"]],row[idx["credential_id"]],row[idx["member_id"]],
+                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (tid,row[idx["credential_id"]],row[idx["member_id"]],
                      row[idx["account_id"]],int(row[idx["amount"]]),row[idx["status"]],
                      row[idx["balance_before"]],row[idx["balance_after"]],row[idx["created_at"]],row[idx["created_at"]]))
             imported["cashier"]=c.total_changes
