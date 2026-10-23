@@ -222,19 +222,21 @@ def build_router(db, app_settings=None):
     financial = FinancialService(db)
     vending = VendingService(db)
 
-    def require_device(device_id: str, device_key: str | None):
+    def require_device(device_key: str | None):
+        """Authenticate a device solely by its server-issued key; no caller-supplied device ID."""
         if not device_key:
-            raise HTTPException(401,"device_auth_required")
+            raise HTTPException(401, "device_auth_required")
+        got = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            row=c.execute("SELECT status,auth_key_hash FROM device_registry WHERE device_id=?",(device_id,)).fetchone()
-        if not row or row["status"]!="active":
-            raise HTTPException(403,"device_not_active")
-        if not row["auth_key_hash"]:
-            raise HTTPException(403,"device_not_provisioned")
-        got=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
-        if not secrets.compare_digest(got,row["auth_key_hash"]):
-            raise HTTPException(403,"invalid_device_key")
-        return True
+            row = c.execute(
+                "SELECT device_id,status,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                (got,),
+            ).fetchone()
+        if not row or row["status"] != "active":
+            raise HTTPException(403, "device_not_active")
+        if not row["auth_key_hash"] or not secrets.compare_digest(got, row["auth_key_hash"]):
+            raise HTTPException(403, "invalid_device_key")
+        return row["device_id"]
 
 
     def resolve_vending_machine(identifier: str):
