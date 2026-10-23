@@ -477,10 +477,10 @@ def build_router(db, app_settings=None):
                    FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
-            machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
+            machines=c.execute("SELECT machine_id,name,status,location,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
             products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
                    FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
-            devices=c.execute("SELECT device_id,device_type,status,last_seen FROM device_registry ORDER BY device_id").fetchall()
+            devices=c.execute("SELECT device_type,status,last_seen FROM device_registry ORDER BY created_at").fetchall()
             cashier_count=c.execute(
                 "SELECT COUNT(*) FROM payment_transactions WHERE transaction_source='CASHIER' AND status='completed'"
             ).fetchone()[0]
@@ -972,7 +972,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
-        try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.register(q.machine_id,q.name,q.location,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
@@ -984,7 +984,7 @@ def build_router(db, app_settings=None):
     @r.patch("/vending/{machine_id}")
     def vending_update(request: Request, machine_id,q:VendingUpdateRequest):
         require_admin(request)
-        try:return vending.update_machine(machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.update_machine(machine_id,q.name,q.location,q.status)
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
