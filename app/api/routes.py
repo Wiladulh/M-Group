@@ -32,7 +32,6 @@ class PaymentRequest(BaseModel):
     method: str = "NFC"
     provider: str = "local"
     idempotency_key: str | None = None
-    device_id: str | None = None
     pin: str | None = None
     original_amount: int | None = None
     discount_amount: int = 0
@@ -236,6 +235,26 @@ def build_router(db, app_settings=None):
             raise HTTPException(403,"invalid_device_key")
         return True
 
+
+    def require_device_key(device_key: str | None, allowed_types: set[str]):
+        if not device_key:
+            raise HTTPException(401, "device_auth_required")
+        digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
+        with db.connect() as c:
+            rows = c.execute(
+                "SELECT device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                (digest,),
+            ).fetchall()
+        if len(rows) != 1:
+            raise HTTPException(403, "invalid_device_key")
+        row = rows[0]
+        if row["status"] != "active":
+            raise HTTPException(403, "device_not_active")
+        if not secrets.compare_digest(digest, row["auth_key_hash"] or ""):
+            raise HTTPException(403, "invalid_device_key")
+        if row["device_type"] not in allowed_types:
+            raise HTTPException(403, "device_type_not_allowed")
+        return row
 
     def resolve_vending_machine(identifier: str):
         """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
@@ -1441,9 +1460,8 @@ def build_router(db, app_settings=None):
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
-        if q.device_id is None:raise HTTPException(400,"device_id_required")
         try:
-            require_device(q.device_id,x_m_group_device_key)
+            require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             result=payments.pay(**q.model_dump())
