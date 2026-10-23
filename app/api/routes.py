@@ -172,7 +172,6 @@ class VendingDispenseRequest(BaseModel):
     success: bool = True
 
 class NfcRegistrationStartRequest(BaseModel):
-    cashier_device_id: str
     operator_id: str = "admin"
 
 class NfcRegistrationCompleteRequest(BaseModel):
