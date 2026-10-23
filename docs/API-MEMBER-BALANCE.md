@@ -14,7 +14,6 @@ JSON body:
 
 ```json
 {
-  "device_id": "cashier-01",
   "card_uid": "04A1B2C3"
 }
 ```
@@ -49,4 +48,4 @@ The balance is computed by the server's financial ledger. The response contains 
 - Do not submit a payment, ask for a payment PIN, or change local/server balances during lookup.
 - Keep the device key out of logs and UI. Use HTTPS where available.
 - An NFC UID by itself is not cryptographic proof of card authenticity; balance lookup must not be treated as payment authorization.
-- Vending can call this same endpoint with its own registered device ID/key; no separate balance API is required.
+- Cashier and Vending call this endpoint using a valid server-issued device key; no client-supplied device identifier is needed.
