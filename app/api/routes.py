@@ -1464,7 +1464,7 @@ def build_router(db, app_settings=None):
             require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
-            result=payments.pay(**q.model_dump())
+            result=payments.pay(**q.model_dump(), require_pin=True)
             with db.connect() as c:
                 c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
                 c.commit()
