@@ -585,3 +585,132 @@ Baca dokumen ini sebelum mengubah kode. Kerjakan satu fase dalam satu waktu. Unt
 - risiko, asumsi, dan pekerjaan yang belum selesai.
 
 Jangan mengklaim test, build, deploy, atau penghapusan global selesai bila belum dijalankan. Jangan menggabungkan ke main atau mengubah database produksi tanpa persetujuan dan bukti pemeriksaan yang sesuai.
+
+
+## 17. SPBU Mini / Pertamini — Modul Penjualan BBM
+
+Modul SPBU Mini/Pertamini menjadi jenis layanan baru M-Group, terpisah dari Cashier dan Vending tetapi memakai fondasi yang sama untuk member, ledger, pembayaran, autentikasi key, laporan, audit, dan backup. Modul ini mengendalikan transaksi penjualan BBM melalui dispenser/pompa yang sesuai standar keselamatan. **ESP32/server M-Group tidak boleh dianggap sebagai satu-satunya lapisan keselamatan untuk peralatan BBM.** Instalasi fisik, perangkat pemutus aliran, sensor, grounding, proteksi kebakaran, dan komponen listrik harus dipilih serta dipasang oleh tenaga kompeten sesuai ketentuan keselamatan dan peraturan yang berlaku.
+
+### 17.1 Alur pelanggan
+
+1. Pembeli memilih nominal pembelian BBM atau jumlah rupiah yang ingin dibelanjakan.
+2. Sistem menampilkan jenis BBM, harga per liter, nominal, batas volume perkiraan, dan ketentuan transaksi sebelum pembayaran.
+3. Pembeli membayar melalui NFC/member balance atau QRIS yang benar-benar telah diverifikasi server/provider.
+4. **Tidak ada aliran BBM yang diizinkan sebelum server memastikan pembayaran sah dan dana telah diotorisasi/ditahan secara konsisten.** Untuk QRIS, jangan mengandalkan tampilan sukses pada ponsel pembeli; verifikasi harus berasal dari server/provider.
+5. Setelah pembayaran terkonfirmasi, server membuat sesi dispensing dengan nominal maksimum, masa berlaku, referensi transaksi, dan izin sekali pakai.
+6. Pembeli mengangkat nozzle dan menekan/menahan tombol pada pegangan selang (dead-man handle). Aliran hanya aktif selama semua interlock keselamatan terpenuhi.
+7. Meter aliran yang sesuai mengukur volume aktual. Sistem menghentikan aliran saat nominal/volume yang dibayar tercapai, tombol dilepas, sesi kedaluwarsa, komunikasi/telemetri gagal, atau kondisi keselamatan meminta berhenti.
+8. Setelah aliran berhenti, server merekonsiliasi nilai aktual dengan dana yang ditahan. Sisa dana dikembalikan ke saldo member atau melalui refund ke sumber pembayaran jika metode/provider mendukungnya.
+9. Layar menunjukkan liter aktual, harga per liter, nilai terpakai, sisa/refund, dan status transaksi. Jika status belum dapat dipastikan, tampilkan **Menunggu rekonsiliasi** dan jangan membuat debit/refund kedua.
+
+### 17.2 Pengamanan luapan dan penghentian darurat
+
+Sistem harus mengantisipasi tangki pembeli yang kecil/penuh, nozzle yang tidak tertutup rapat, salah penempatan nozzle, sensor rusak, meter aliran tidak masuk akal, kehilangan jaringan, kehilangan daya, dan tombol yang macet. Pengamanan minimum:
+
+- **Dead-man handle:** aliran memerlukan tindakan terus-menerus dari pengguna; melepas tombol harus memicu penghentian. Jangan memakai tombol yang mengunci aliran terus-menerus tanpa pengawasan.
+- **Emergency stop fisik:** mudah dijangkau, memutus aktuasi aliran secara independen dari aplikasi/server, dan memerlukan prosedur reset yang disengaja setelah kondisi aman.
+- **Katup/pompa fail-safe:** kehilangan daya, watchdog, kabel kontrol putus, atau kontroler crash harus membawa aktuator ke kondisi aman yang ditentukan desain. Detail dan rating komponen harus ditetapkan teknisi yang kompeten.
+- **Proteksi overfill/luapan:** bila layak secara teknis, gunakan sensor/fitur penghentian yang sesuai untuk mendeteksi kondisi tangki penuh atau risiko luapan. Sensor ini bukan satu-satunya pengaman; pengguna tetap harus mengawasi pengisian dan mengikuti prosedur operasi.
+- **Batas maksimum transaksi:** setiap sesi memiliki batas nominal, volume, dan waktu operasi. Batas harus dikonfigurasi oleh operator berwenang dan tidak dapat dinaikkan oleh firmware tanpa otorisasi.
+- **Batas aliran/waktu:** jika volume, laju aliran, durasi, atau pembacaan meter menyimpang dari rentang yang masuk akal, hentikan aliran dan tandai sesi untuk pemeriksaan.
+- **Interlock status:** aliran ditolak jika autentikasi gagal, pembayaran belum sah, sesi kedaluwarsa/terpakai, emergency stop aktif, sensor kritis gagal, atau status katup/pompa tidak diketahui.
+- **Tidak ada auto-resume:** setelah emergency stop, luapan, kegagalan sensor, kehilangan daya, atau kegagalan keselamatan, aliran tidak boleh menyala kembali otomatis. Operator harus memeriksa kondisi dan melakukan reset yang sah.
+- **Pemutus lokal independen:** keputusan menghentikan aliran karena keselamatan harus tetap bekerja meskipun server, Wi-Fi, aplikasi, atau ESP32 tidak tersedia. Server dipakai untuk otorisasi dan pencatatan, bukan sebagai satu-satunya pengendali darurat.
+- **Sesuai bahan bakar:** peralatan yang bersentuhan dengan BBM, sensor, enclosure, konektor, kabel, pompa, dan katup harus sesuai untuk lingkungan serta jenis bahan bakar yang digunakan. Jangan memakai modul/relay umum yang tidak memiliki rating dan sertifikasi yang sesuai.
+- **Operasi aman:** grounding/bonding, pencegahan sumber nyala, ventilasi, proteksi kebakaran, signage, prosedur tumpahan, dan penempatan unit harus ditentukan dalam desain instalasi profesional dan memenuhi aturan lokal. Modul perangkat lunak tidak menggantikan kepatuhan ini.
+
+Jika sistem mendeteksi luapan atau tombol stop ditekan, urutan prioritasnya adalah: **hentikan aliran melalui jalur keselamatan lokal terlebih dahulu**, pastikan status aktuator aman, lalu kirim event ke server dan lakukan rekonsiliasi finansial. Jangan menunda pemutusan aliran untuk menunggu respons server.
+
+### 17.3 Penagihan, sisa dana, dan refund
+
+- Transaksi menggunakan model **otorisasi nominal maksimum → dispensing terukur → finalisasi nilai aktual → refund sisa**.
+- Untuk saldo member, dana dapat ditahan/dipesan secara atomik sebelum dispensing; setelah transaksi berakhir, debit final hanya sebesar nilai BBM yang benar-benar terukur dan sisa reservasi dilepas/dikreditkan kembali sesuai ledger.
+- Untuk QRIS, dukungan refund bergantung pada kemampuan resmi provider dan status settlement. Jangan menjanjikan pengembalian otomatis ke rekening/sumber QRIS jika provider tidak mendukungnya. Jika refund ke sumber asal tidak tersedia, buat kewajiban refund yang terlacak dan ikuti kebijakan yang disetujui untuk penyelesaian manual atau kredit saldo member.
+- Jika luapan menyebabkan nilai BBM yang terukur berbeda dari jumlah yang direncanakan, sistem tetap harus menghentikan aliran secepat jalur keselamatan merespons. Nilai terpakai dihitung dari meter tervalidasi; refund dihitung dari dana yang ditahan dikurangi nilai yang sah, dengan penanganan khusus bila terdapat tumpahan atau sengketa.
+- Jangan otomatis menyimpulkan bahwa semua BBM yang keluar merupakan BBM yang diterima pembeli bila terjadi luapan. Catat insiden, nilai meter, perkiraan nilai BBM terpakai/terbuang jika dapat ditentukan, bukti sensor, dan keputusan operator. Kebijakan kompensasi harus eksplisit dan dapat diaudit.
+- Semua debit, reservasi, finalisasi, pelepasan sisa dana, kredit saldo, dan refund harus idempotent, saling tertaut dengan satu transaction reference, dan aman dari retry/timeout.
+- Jika jaringan terputus ketika BBM sedang mengalir, kontrol lokal harus menghentikan aliran sesuai kebijakan keselamatan (default aman: berhenti), mencatat data meter/insiden secara lokal dengan integritas yang memadai, dan mengirimkannya untuk rekonsiliasi saat koneksi pulih. Jangan melanjutkan sesi baru sebelum sesi sebelumnya direkonsiliasi.
+- Untuk QRIS, status pembayaran, settlement, refund request, refund accepted, dan refund completed adalah status berbeda; jangan menandai refund selesai hanya karena permintaan refund berhasil dikirim.
+
+### 17.4 WebUI SPBU Mini
+
+Tambahkan tab **SPBU Mini** dengan bagian berikut:
+
+- **Ringkasan:** status unit, transaksi hari ini, volume terjual, nilai penjualan, sesi pending, refund, dan insiden keselamatan.
+- **Unit/Dispenser:** nama unit, lokasi, status operasional, jenis BBM, harga per liter, batas nominal/volume/durasi, status meter dan sensor, status emergency stop, status terakhir terlihat, serta versi konfigurasi. Tidak ada device_id.
+- **Transaksi:** referensi, member/pembeli bila sah, metode pembayaran, nominal diotorisasi, liter aktual, nilai aktual, sisa dana/refund, status dispensing, status refund, timestamp dan hasil rekonsiliasi.
+- **Insiden & Keselamatan:** emergency stop, luapan, sensor gagal, meter abnormal, komunikasi terputus, shutdown daya, tindakan operator, catatan pemeriksaan, dan reset yang diotorisasi. Insiden tidak boleh dihapus dari audit.
+- **Harga & Batas:** jenis BBM, harga per liter, batas transaksi, batas volume/durasi, dan konfigurasi keselamatan yang boleh diubah. Perubahan harga atau batas memerlukan role berwenang, validasi, konfirmasi, dan audit.
+- **Refund/Rekonsiliasi:** antrean refund, provider reference, nilai, status, alasan, percobaan, dan tindakan operator. Mencegah refund ganda.
+- **Pengujian/Perawatan:** status kalibrasi meter, pemeriksaan sensor, hasil pemeriksaan berkala, tanggal perawatan, dan status unit (aktif, dibatasi, dikunci/maintenance).
+- Unit harus otomatis ditandai tidak siap bertransaksi bila pengaman kritis belum lulus pemeriksaan, masa kalibrasi terlewati jika diwajibkan, atau ada insiden yang belum ditutup.
+
+### 17.5 Backend dan domain SPBU Mini
+
+Tambahkan layanan modular `app/fuel/` (nama dapat disesuaikan) untuk:
+
+- Fuel unit/dispenser registry sebagai entitas bisnis, tanpa identitas perangkat keras device_id.
+- Fuel types, price-per-litre versioning, limit policies, and configuration audit.
+- Dispensing session lifecycle dan otorisasi sekali pakai.
+- Meter readings, plausibility checks, final volume/value calculation, and reconciliation.
+- Safety events and lockout state.
+- Payment authorization/reservation, final capture/debit, release of unused reservation, member balance credit, provider refund and refund status tracking.
+- Idempotency, offline event reconciliation, operator incident review, reporting, and audit.
+
+Data penting yang perlu disimpan mencakup unit bisnis, jenis BBM, versi harga yang dipakai sesi, jumlah yang diotorisasi, nilai reservasi, meter awal/akhir, liter aktual, nilai terhitung, hasil stop, alasan penghentian, event sensor yang relevan, nilai sisa, refund state/provider reference, status rekonsiliasi, dan audit operator. Jangan menyimpan data rahasia yang tidak diperlukan.
+
+### 17.6 State machine transaksi BBM
+
+Gunakan state eksplisit, misalnya:
+
+`created → payment_pending → authorized → dispensing → stopped → reconciling → completed`
+
+Jalur lain termasuk `payment_failed`, `safety_stopped`, `meter_fault`, `refund_pending`, `refund_completed`, dan `needs_manual_review`. Status final harus ditetapkan oleh backend sesuai bukti pembayaran, data meter, hasil keselamatan, dan status refund. Sesi tidak boleh melompat dari `created` ke `dispensing` tanpa otorisasi server dan interlock lokal yang terpenuhi.
+
+Sesi wajib berhenti atau dikunci bila: tombol dead-man dilepas, emergency stop aktif, indikasi luapan terdeteksi, batas nominal/volume/waktu tercapai, pembacaan meter tidak valid, watchdog/sensor kritis gagal, atau kontroler kehilangan kondisi aman yang terkonfirmasi. Safety controller lokal harus menegakkan penghentian meskipun server tidak dapat dijangkau.
+
+### 17.7 API target SPBU Mini
+
+Kontrak endpoint final akan dirinci dalam OpenAPI, tetapi API harus mendukung operasi berikut di bawah prefix `/api/v1`:
+
+- Admin CRUD unit bisnis, jenis BBM, harga versi aktif, limit, dan status perawatan.
+- Memulai sesi penjualan dan mengotorisasi pembayaran NFC/member balance atau QRIS.
+- Memverifikasi status pembayaran di server dan menerbitkan izin dispensing sekali pakai dengan masa berlaku.
+- Menerima heartbeat/status kesiapan, pembacaan meter, hasil stop, dan event keselamatan dari credential unit yang terautentikasi.
+- Melaporkan hasil dispensing dan finalisasi transaksi.
+- Membuat/menjalankan refund atau melepas sisa reservasi secara idempotent.
+- Membaca status sesi, riwayat transaksi, insiden, laporan, dan status refund.
+- Mengunci unit, membuka kembali setelah pemeriksaan, dan mencatat identitas operator yang mengotorisasi reset.
+- Menolak request dispensing bila key tidak sah/revoked, scope salah, sesi tidak valid/expired/used, pembayaran belum terverifikasi, atau unit terkunci.
+
+Jangan membuat endpoint yang memungkinkan WebUI atau server mengabaikan emergency stop lokal. Status keselamatan yang dikirim perangkat adalah telemetri; perangkat keras harus tetap menghentikan aliran secara lokal tanpa menunggu API.
+
+### 17.8 Hardware/firmware dan commissioning
+
+- Buat controller/interface untuk dispenser terpisah dari firmware Cashier/Vending, dengan batas tanggung jawab dan protokol terdokumentasi.
+- ESP32 dapat menjadi controller aplikasi hanya bila cocok untuk desain yang telah ditinjau; fungsi keselamatan kritis perlu dirancang sebagai jalur lokal independen dengan komponen dan rating yang sesuai.
+- Commissioning sebelum unit diaktifkan wajib memeriksa emergency stop, dead-man handle, penutupan katup/pompa, perilaku saat listrik/jaringan hilang, sensor luapan jika digunakan, meter dan kalibrasi, batas nominal/volume/durasi, serta rekonsiliasi pembayaran/refund.
+- Uji keselamatan awal harus dilakukan tanpa BBM atau dalam prosedur pengujian profesional yang disetujui, bukan dengan mengandalkan simulasi software sebagai bukti keselamatan fisik.
+- Unit harus dapat dikunci dari transaksi bila pemeriksaan gagal; hanya personel berwenang dapat membuka lockout setelah pemeriksaan dan pencatatan.
+- Perangkat lunak harus menyediakan fallback aman: jika status sensor atau aktuator kritis tidak diketahui, jangan mulai atau lanjutkan dispensing.
+
+### 17.9 Laporan, audit dan acceptance criteria SPBU Mini
+
+Laporan harus membedakan jumlah pembayaran, nilai BBM terukur, nilai final, dana dilepas/dikembalikan, refund yang diminta, refund yang selesai, dan transaksi yang masih perlu rekonsiliasi. Sumber laporan baru adalah **FUEL** atau **SPBU_MINI**, dengan filter periode, unit, jenis BBM, metode pembayaran, status dispensing, dan status refund.
+
+Checklist penerimaan:
+
+- [ ] NFC/member balance dan QRIS baru mengizinkan aliran setelah pembayaran terverifikasi server.
+- [ ] Nominal/volume/durasi maksimum ditegakkan oleh server dan kontrol lokal.
+- [ ] Dead-man handle dan emergency stop menghentikan aliran melalui jalur lokal independen.
+- [ ] Kondisi sensor/meter kritis tidak valid membuat unit tidak siap atau menghentikan sesi.
+- [ ] Batas tercapai, tombol dilepas, timeout, kehilangan daya/jaringan, dan indikasi luapan mengarah ke kondisi aman.
+- [ ] Tidak ada auto-resume setelah insiden/lockout.
+- [ ] Liter aktual dan nilai transaksi direkonsiliasi dari pembacaan meter tervalidasi.
+- [ ] Sisa reservasi saldo member dilepas/dikembalikan tanpa duplikasi.
+- [ ] Refund QRIS mengikuti kemampuan provider dan status refund yang sebenarnya.
+- [ ] Insiden luapan tidak otomatis dianggap sebagai transaksi BBM normal; ada alur audit dan review.
+- [ ] Request retry, timeout, restart, dan event offline tidak menyebabkan dispense, debit, atau refund ganda.
+- [ ] Unit tidak dapat diaktifkan tanpa commissioning dan pemeriksaan keselamatan yang disyaratkan.
+- [ ] Laporan, backup, restore, audit, dan role access mencakup modul SPBU Mini.
+
