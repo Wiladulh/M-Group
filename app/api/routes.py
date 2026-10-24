@@ -1258,8 +1258,7 @@ def build_router(db, app_settings=None):
         return dict(row)
 
     @r.get("/cashier/nfc-registration")
-    @r.get("/cashier/{device_id}/nfc-registration")
-    def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None), device_id: str | None = None):
+    def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None)):
         identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
         fingerprint=identity["fingerprint"]
         with db.connect() as c:
@@ -1277,9 +1276,8 @@ def build_router(db, app_settings=None):
         return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
 
     @r.post("/cashier/nfc-registration/complete")
-    @r.post("/cashier/{device_id}/nfc-registration/complete")
     def cashier_nfc_registration_complete(q:NfcRegistrationCompleteRequest,
-                                           x_m_group_device_key: str | None = Header(default=None), device_id: str | None = None):
+                                           x_m_group_device_key: str | None = Header(default=None)):
         identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
         cashier_fingerprint=identity["fingerprint"]
         if not q.pin.isdigit() or len(q.pin)!=4:
