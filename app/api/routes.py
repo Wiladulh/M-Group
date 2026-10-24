@@ -1250,7 +1250,7 @@ def build_router(db, app_settings=None):
         require_admin(request)
         with db.connect() as c:
             row=c.execute(
-                "SELECT session_id,member_id,device_id,status,card_uid,credential_id,created_at,completed_at "
+                "SELECT session_id,member_id,status,card_uid,credential_id,created_at,completed_at "
                 "FROM nfc_registration_sessions WHERE session_id=? AND member_id=?",
                 (session_id,member_id)
             ).fetchone()
