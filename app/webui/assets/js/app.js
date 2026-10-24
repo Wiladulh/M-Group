@@ -185,14 +185,6 @@ $('members').addEventListener('click',async e=>{
 });
 
 let nfcPollTimer=null;
-async function loadNfcCashiers(){
-  const sel=$('nfcCashierDevice');
-  if(!sel)return;
-  const {r,d}=await json('/api/v1/devices',{});
-  if(!r.ok){sel.innerHTML='<option value="">Gagal memuat Cashier</option>';return}
-  const rows=(d.devices||[]).filter(x=>x.device_type==='esp32-cashier'&&x.status==='active');
-  sel.innerHTML=rows.length?'<option value="">Pilih Cashier</option>'+rows.map(x=>'<option value="'+esc(x.device_id)+'">'+esc(x.display_name||'Lokasi belum ditentukan')+' — '+esc(x.device_id)+'</option>').join(''):'<option value="">Tidak ada Cashier aktif</option>';
-}
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
   const check=async()=>{
