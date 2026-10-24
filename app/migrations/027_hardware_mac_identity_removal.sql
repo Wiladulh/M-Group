@@ -1,0 +1,2 @@
+-- Remove physical hardware identifiers from the device registry.
+-- Database.migrate performs the idempotent SQLite column/index changes.
