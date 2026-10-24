@@ -780,7 +780,7 @@ def build_router(db, app_settings=None):
             device_type = "esp32-s3-vending"
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
-        hardware_id="pending-"+uuid4().hex[:12]
+        registry_id="pending-"+uuid4().hex[:12]
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
@@ -788,15 +788,15 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (registry_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,?,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (uuid4().hex,hardware_id,device_type,digest,key[-6:]),
+                   VALUES(?,?,NULL,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (registry_id,device_type,digest,key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device","provisioned",hardware_id,f"type={device_type};location=unassigned"),
+                ("device","provisioned",registry_id,f"type={device_type};location=unassigned"),
             )
             c.commit()
-        return {"hardware_id":hardware_id,"display_name":"Lokasi belum ditentukan",
+        return {"registry_id":registry_id,"display_name":"Lokasi belum ditentukan",
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
