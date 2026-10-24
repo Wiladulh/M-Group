@@ -170,6 +170,62 @@ class Database:
                     c.execute("INSERT OR IGNORE INTO system_meta(key,value) VALUES('member_ktp_schema_version','001')")
                     continue
 
+                if path.name == "024_canonical_hardware_registry.sql":
+                    # Forward-migrate the legacy device_id table without retaining
+                    # device_id in the canonical schema. Keep the old row identifier
+                    # only as registry_id and preserve hardware/auth/status metadata.
+                    tables = {
+                        row[0] for row in c.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        )
+                    }
+                    if "device_registry" in tables:
+                        existing = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
+                        if "registry_id" not in existing:
+                            c.execute("ALTER TABLE device_registry RENAME TO device_registry_legacy_024")
+                            c.execute("""
+                                CREATE TABLE device_registry (
+                                    registry_id TEXT PRIMARY KEY,
+                                    hardware_id TEXT UNIQUE,
+                                    device_type TEXT NOT NULL,
+                                    mac_address TEXT,
+                                    display_name TEXT,
+                                    status TEXT NOT NULL DEFAULT 'awaiting_device_registration'
+                                        CHECK(status IN ('active','pending','awaiting_device_registration','offline','disabled','maintenance','unassigned')),
+                                    last_seen TEXT,
+                                    auth_key_hash TEXT,
+                                    auth_key_hint TEXT,
+                                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                    deleted_at TEXT
+                                )
+                            """)
+                            old = {row[1] for row in c.execute("PRAGMA table_info(device_registry_legacy_024)")}
+                            def old_col(name, fallback="NULL"):
+                                return name if name in old else fallback
+                            legacy_id = old_col("device_id", old_col("hardware_id", "lower(hex(randomblob(16)))"))
+                            hardware = old_col("hardware_id", legacy_id)
+                            c.execute(f"""
+                                INSERT INTO device_registry(
+                                    registry_id,hardware_id,device_type,mac_address,display_name,status,
+                                    last_seen,auth_key_hash,auth_key_hint,created_at,updated_at,deleted_at
+                                )
+                                SELECT CAST({legacy_id} AS TEXT),
+                                       COALESCE(NULLIF({hardware},''),CAST({legacy_id} AS TEXT)),
+                                       {old_col("device_type", "'cashier'")},
+                                       {old_col("mac_address")},
+                                       COALESCE(NULLIF({old_col("display_name")},''),NULLIF({hardware},''),CAST({legacy_id} AS TEXT)),
+                                       COALESCE(NULLIF({old_col("status")},''),'active'),
+                                       {old_col("last_seen")},{old_col("auth_key_hash")},{old_col("auth_key_hint")},
+                                       COALESCE(NULLIF({old_col("created_at")},''),CURRENT_TIMESTAMP),
+                                       COALESCE(NULLIF({old_col("updated_at")},''),CURRENT_TIMESTAMP),
+                                       {old_col("deleted_at")}
+                                FROM device_registry_legacy_024
+                            """)
+                            c.execute("DROP TABLE device_registry_legacy_024")
+                    # The SQL migration creates the table for clean installations
+                    # and adds canonical indexes in both fresh and upgraded databases.
+
                 if path.name == "016_hardware_registry.sql":
                     # The rebuilt schema no longer creates device_registry.
                     # Skip this legacy device-registry migration when that table
