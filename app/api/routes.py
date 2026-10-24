@@ -145,12 +145,15 @@ class VendingRegisterRequest(BaseModel):
     machine_id: str
     name: str
     location: str = ""
+    hardware_id: str | None = None
+    # Legacy input accepted during rollout; treated as a hardware identity only.
     device_id: str | None = None
     status: str = "active"
 
 class VendingUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
+    hardware_id: str | None = None
     device_id: str | None = None
     status: str | None = None
 
@@ -1033,7 +1036,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
-        try:return vending.register(q.machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.register(q.machine_id,q.name,q.location,q.hardware_id or q.device_id,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.get("/vending/{machine_id}")
@@ -1045,7 +1048,7 @@ def build_router(db, app_settings=None):
     @r.patch("/vending/{machine_id}")
     def vending_update(request: Request, machine_id,q:VendingUpdateRequest):
         require_admin(request)
-        try:return vending.update_machine(machine_id,q.name,q.location,q.device_id,q.status)
+        try:return vending.update_machine(machine_id,q.name,q.location,q.hardware_id if q.hardware_id is not None else q.device_id,q.status)
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
