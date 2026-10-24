@@ -44,7 +44,7 @@ class DeviceManagementService:
                 """UPDATE device_registry
                    SET device_type=?,status=?,display_name=?,updated_at=CURRENT_TIMESTAMP
                    WHERE device_id=?""",
-                (new_type, new_status, new_name, device_id),
+                (new_type, new_status, new_name, current["device_id"]),
             )
             c.commit()
         return self.get(device_id)
@@ -58,7 +58,7 @@ class DeviceManagementService:
                 """UPDATE device_registry
                    SET status='disabled',deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                    WHERE device_id=?""",
-                (device_id,),
+                (current["device_id"],),
             )
             c.commit()
         return self.get(device_id)
