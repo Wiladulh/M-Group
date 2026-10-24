@@ -1,0 +1,24 @@
+<div id="tab-financial" class="tab-pane">
+  <section class="section">
+    <h2>Saldo & Rekening</h2>
+    <div id="accounts" class="scroll"></div>
+  </section>
+  <section class="section">
+    <h2>Top Up / Penarikan Member</h2>
+    <div class="hint">Pilih member dan nominal secara langsung. Top-up berhasil akan menambah saldo dan otomatis tercatat di Ledger.</div>
+    <form id="financialForm">
+      <label>Member<select id="account" required><option value="">Muat member setelah login</option></select></label>
+      <label>Nominal (Rp)<input id="amount" type="number" min="1" step="1" placeholder="Contoh: 500000" required></label>
+      <label>Jenis mutasi<select id="direction"><option value="credit">Top Up / Kredit</option><option value="debit">Penarikan / Debit</option></select></label>
+      <label>Referensi / alasan<input id="reference" placeholder="Contoh: TOPUP-LOKET-001" required></label>
+      <button>Proses</button>
+    </form>
+    <div id="financialResult" class="result"></div>
+    <h3>Riwayat Ledger Akun</h3>
+    <div id="financialLedger" class="scroll"></div>
+  </section>
+  <section class="section">
+    <h2>Pinjaman</h2>
+    <div id="loans" class="scroll"></div>
+  </section>
+</div>
