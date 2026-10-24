@@ -18,9 +18,9 @@ class ServerApiTests(unittest.TestCase):
         os.environ['MGROUP_DB_PATH'] = str(Path(cls.temp_dir.name) / 'server-test.sqlite3')
         os.environ['MGROUP_ADMIN_TOKEN'] = 'test-admin-token-long-enough'
         os.environ['MGROUP_DEVICE_KEY_PEPPER'] = 'test-only-pepper'
-        from app import config
+        from mgroup_backend import config
         importlib.reload(config)
-        from app import main
+        from mgroup_backend import main
         importlib.reload(main)
         cls.main = main
         cls.client = TestClient(main.app)
