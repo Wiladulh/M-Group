@@ -1162,8 +1162,9 @@ def build_router(db, app_settings=None):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
-            if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_m_group_device_key)
+            identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
+            if machine.get("device_id") and machine["device_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+                raise HTTPException(403,"machine_hardware_identity_mismatch")
             return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:raise HTTPException(400,str(e))
