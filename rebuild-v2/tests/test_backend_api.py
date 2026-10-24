@@ -90,5 +90,46 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 422)
 
 
+    def test_nfc_purchase_is_atomic_and_failed_dispense_refunds_once(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Budi', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        card = self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
+            json={'card_uid': '04-A1-B2-C3'})
+        self.assertEqual(card.status_code, 201, card.text)
+        topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'purchase-test-topup-01', 'member_id': member_id, 'amount_minor': 20000})
+        self.assertEqual(topup.status_code, 200, topup.text)
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-purchase-001', 'device_type': 'vending', 'display_name': 'Vending Test'})
+        self.assertEqual(device.status_code, 201, device.text)
+        body = device.json()
+        headers = {'X-Device-Key': body['device_key']}
+        product = self.client.put(f"/api/v2/vending/devices/{body['registry_id']}/products/1",
+            headers=self.admin_headers(), json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+        self.assertEqual(product.status_code, 200, product.text)
+        payload = {'request_id': 'purchase-request-0001', 'card_uid': '04-A1-B2-C3', 'pin': '123456', 'product_id': 1}
+        purchase = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
+        self.assertEqual(purchase.status_code, 201, purchase.text)
+        transaction_id = purchase.json()['transaction_id']
+        self.assertEqual(purchase.json()['amount_minor'], 5000)
+        replay = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
+        self.assertEqual(replay.status_code, 201, replay.text)
+        self.assertTrue(replay.json()['idempotent_replay'])
+        failed = self.client.post(f'/api/v2/vending/transactions/{transaction_id}/dispense-result',
+            headers=headers, json={'succeeded': False, 'reason': 'servo_timeout'})
+        self.assertEqual(failed.status_code, 200, failed.text)
+        self.assertEqual(failed.json()['status'], 'reversed')
+        repeated = self.client.post(f'/api/v2/vending/transactions/{transaction_id}/dispense-result',
+            headers=headers, json={'succeeded': False, 'reason': 'servo_timeout'})
+        self.assertTrue(repeated.json()['idempotent_replay'])
+        products = self.client.get(f"/api/v2/vending/devices/{body['registry_id']}/products",
+            headers=self.admin_headers()).json()['items']
+        self.assertEqual(products[0]['stock'], 2)
+        members = self.client.get('/api/v2/members', headers=self.admin_headers()).json()['items']
+        self.assertEqual(next(x for x in members if x['member_id'] == member_id)['balance_minor'], 20000)
+
+
 if __name__ == '__main__':
     unittest.main()
