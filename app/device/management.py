@@ -21,8 +21,8 @@ class DeviceManagementService:
             row = c.execute(
                 """SELECT device_id,hardware_id,device_type,mac_address,display_name,
                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
-                   FROM device_registry WHERE device_id=?""",
-                (device_id,),
+                   FROM device_registry WHERE device_id=? OR hardware_id=?""",
+                (device_id,device_id),
             ).fetchone()
             return dict(row) if row else None
 
