@@ -94,6 +94,16 @@ class Database:
 
         with self.connect() as c:
             for path in paths:
+                if path.name == "025_vending_machine_identity_removal.sql":
+                    columns = {row[1] for row in c.execute("PRAGMA table_info(vending_machines)")}
+                    if "device_id" in columns:
+                        c.execute("DROP INDEX IF EXISTS ix_vending_machine_device")
+                        c.execute("ALTER TABLE vending_machines DROP COLUMN device_id")
+                    c.execute(
+                        "INSERT OR IGNORE INTO system_meta(key,value) VALUES('vending_machine_identity_schema_version','001')"
+                    )
+                    continue
+
                 if path.name == "024_payment_device_identity_removal.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
                     if "device_id" in columns:
