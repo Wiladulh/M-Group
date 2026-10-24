@@ -265,6 +265,32 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             raise HTTPException(404, str(e))
 
+    def require_vending_machine_key(machine_id: str, device_key: str | None):
+        """Authorize and bind a vending machine by provisioned key, never by hardware ID."""
+        device = require_device_key(device_key, {"esp32-s3-vending", "esp32-vending", "vending"})
+        digest = hashlib.sha256((device_key or "").encode("utf-8")).hexdigest()
+        with db.connect() as c:
+            binding = c.execute(
+                "SELECT auth_key_hash FROM vending_machine_key_bindings WHERE machine_id=?",
+                (machine_id,),
+            ).fetchone()
+            if binding:
+                if not secrets.compare_digest(digest, binding["auth_key_hash"] or ""):
+                    raise HTTPException(403, "vending_machine_key_mismatch")
+            else:
+                used = c.execute(
+                    "SELECT machine_id FROM vending_machine_key_bindings WHERE auth_key_hash=?",
+                    (digest,),
+                ).fetchone()
+                if used and used["machine_id"] != machine_id:
+                    raise HTTPException(409, "device_key_already_bound_to_machine")
+                c.execute(
+                    "INSERT INTO vending_machine_key_bindings(machine_id,auth_key_hash) VALUES(?,?)",
+                    (machine_id, digest),
+                )
+                c.commit()
+        return device
+
     def public_vending_transaction(tx):
         result = dict(tx)
         with db.connect() as c:
@@ -1003,9 +1029,7 @@ def build_router(db, app_settings=None):
     def vending_products(request: Request, machine_id, x_m_group_device_key: str | None = Header(default=None)):
         machine = resolve_vending_machine(machine_id)
         if x_m_group_device_key:
-            if not machine.get("device_id"):
-                raise HTTPException(403, "machine_device_not_configured")
-            require_device(machine["device_id"], x_m_group_device_key)
+            require_vending_machine_key(machine["machine_id"], x_m_group_device_key)
         else:
             require_admin(request)
         catalog = vending.products(machine["machine_id"])
@@ -1073,8 +1097,7 @@ def build_router(db, app_settings=None):
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
             machine = resolve_vending_machine(machine_id)
-            if not machine.get("device_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["device_id"],x_m_group_device_key)
+            require_vending_machine_key(machine["machine_id"], x_m_group_device_key)
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
             return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
