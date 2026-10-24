@@ -15,17 +15,16 @@ except ImportError:
 
 SHEETS = {
     "cashier": """
-        SELECT transaction_id,created_at,device_id,member_id,credential_id,account_id,
+        SELECT transaction_id,created_at,member_id,credential_id,account_id,
                'DEPOSIT' AS transaction_type,amount,balance_before,balance_after,status
         FROM cashier_deposits
         ORDER BY created_at
     """,
     "vending": """
-        SELECT transaction_id,created_at,machine_id,device_id,credential_id,account_id,
+        SELECT transaction_id,created_at,machine_id,credential_id,account_id,
                'PURCHASE' AS transaction_type,product_id,amount,payment_status,
                dispense_status,status
         FROM vending_transactions v
-        LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
         ORDER BY v.created_at
     """,
     "payments": """
