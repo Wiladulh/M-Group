@@ -12,7 +12,7 @@
 String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
-String HARDWARE_ID="Vending_";
+String HARDWARE_ID="vending_";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
