@@ -258,10 +258,8 @@ def build_router(db, app_settings=None):
         """Resolve firmware device IDs and WebUI machine IDs to one canonical machine."""
         with db.connect() as c:
             row = c.execute(
-                """SELECT machine_id FROM vending_machines
-                   WHERE machine_id=? OR device_id=?
-                   ORDER BY CASE WHEN machine_id=? THEN 0 ELSE 1 END LIMIT 1""",
-                (identifier, identifier, identifier),
+                "SELECT machine_id FROM vending_machines WHERE machine_id=?",
+                (identifier,),
             ).fetchone()
         if not row:
             raise HTTPException(404, "machine_not_found")
@@ -475,7 +473,7 @@ def build_router(db, app_settings=None):
                    FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
                    FROM loan_accounts ORDER BY created_at DESC LIMIT 50""").fetchall()
-            machines=c.execute("SELECT machine_id,name,status,location,device_id,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
+            machines=c.execute("SELECT machine_id,name,status,location,NULL AS last_seen FROM vending_machines ORDER BY name").fetchall()
             products=c.execute("""SELECT CAST(slot AS TEXT) AS product_id,machine_id,name,price,stock,capacity,slot,slot AS servo_channel,enabled
                    FROM vending_products WHERE slot BETWEEN 1 AND 5 ORDER BY machine_id,slot""").fetchall()
             devices=c.execute("SELECT device_id,device_type,status,last_seen FROM device_registry ORDER BY device_id").fetchall()
