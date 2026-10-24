@@ -652,19 +652,19 @@ def build_router(db, app_settings=None):
         require_admin(request)
         return {"devices": devices.list(include_deleted)}
 
-    @r.get("/devices/{device_id}")
-    def device_get(request: Request, device_id):
+    @r.get("/devices/{hardware_id}")
+    def device_get(request: Request, hardware_id):
         require_admin(request)
-        result = devices.get(device_id)
+        result = devices.get(hardware_id)
         if result is None:
             raise HTTPException(404,"device_not_found")
         return result
 
-    @r.patch("/devices/{device_id}")
-    def device_update(request: Request, device_id,q: DeviceHeartbeatRequest):
+    @r.patch("/devices/{hardware_id}")
+    def device_update(request: Request, hardware_id,q: DeviceHeartbeatRequest):
         require_admin(request)
         try:
-            return devices.update(device_id,q.device_type,q.status,q.display_name)
+            return devices.update(hardware_id,q.device_type,q.status,q.display_name)
         except ValueError as e:
             raise HTTPException(400,str(e))
 
@@ -767,11 +767,11 @@ def build_router(db, app_settings=None):
             # Do not let an arbitrary key create a device record.
             raise HTTPException(403,"device_not_provisioned")
 
-    @r.delete("/devices/{device_id}")
-    def device_delete(request: Request, device_id):
+    @r.delete("/devices/{hardware_id}")
+    def device_delete(request: Request, hardware_id):
         require_admin(request)
         try:
-            return devices.soft_delete(device_id)
+            return devices.soft_delete(hardware_id)
         except ValueError as e:
             raise HTTPException(404,str(e))
 
