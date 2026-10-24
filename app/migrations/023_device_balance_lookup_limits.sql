@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS device_balance_lookup_limits (
-    device_id TEXT NOT NULL,
+    hardware_id TEXT NOT NULL,
     card_uid_hash TEXT NOT NULL,
     last_lookup_at REAL NOT NULL,
-    PRIMARY KEY(device_id, card_uid_hash)
+    PRIMARY KEY(hardware_id, card_uid_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_device_balance_lookup_time
     ON device_balance_lookup_limits(last_lookup_at);
