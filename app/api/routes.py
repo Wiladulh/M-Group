@@ -1385,8 +1385,7 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
             if old:
-                if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
-                    or old["amount"] != q.amount):
+                if (old["credential_id"] != q.credential_id or old["amount"] != q.amount):
                     raise HTTPException(409,"idempotency_key_conflict")
                 fin = c.execute(
                     "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
@@ -1417,8 +1416,7 @@ def build_router(db, app_settings=None):
                 # Recheck under a write lock to make retries/concurrent taps atomic.
                 old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
                 if old:
-                    if (old["device_id"] != device_id or old["credential_id"] != q.credential_id
-                        or old["amount"] != q.amount):
+                    if (old["credential_id"] != q.credential_id or old["amount"] != q.amount):
                         raise HTTPException(409,"idempotency_key_conflict")
                     fin = c.execute(
                         "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
