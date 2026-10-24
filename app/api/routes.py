@@ -1453,11 +1453,11 @@ def build_router(db, app_settings=None):
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
-            require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
+            identity = require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             payload=q.model_dump()
-            payload["hardware_id"]=None
+            payload["hardware_id"]=identity["hardware_id"]
             result=payments.pay(**payload)
             with db.connect() as c:
                 c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
