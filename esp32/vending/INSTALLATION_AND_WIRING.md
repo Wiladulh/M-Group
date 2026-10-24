@@ -119,7 +119,7 @@ Jangan commit SSID, password Wi-Fi, atau device key ke repository publik.
 
 - Tambahkan/atur produk di WebUI/server, termasuk harga, stok, status aktif, dan `servo_channel` 1–5.
 - Cocokkan setiap `servo_channel` dengan tabel GPIO di atas. Jangan gunakan channel di luar 1–5.
-- Firmware mengambil katalog dari `/api/v1/vending/{DEVICE_ID}/products`; server tetap menjadi sumber kebenaran harga, stok, saldo, transaksi, dan refund.
+- Firmware mengambil katalog dari `/api/v1/vending/{HARDWARE_ID}/products`; server tetap menjadi sumber kebenaran harga, stok, saldo, transaksi, dan refund.
 - Produk melewati satu corong, sehingga sensor IR harus dipasang di jalur bersama yang dilalui semua produk.
 
 ## 9. Uji awal berurutan
