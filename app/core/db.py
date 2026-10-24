@@ -183,11 +183,11 @@ class Database:
                         if name not in device_columns:
                             c.execute(f"ALTER TABLE device_registry ADD COLUMN {name} {definition}")
                     c.execute(
-                        "UPDATE device_registry SET hardware_id=device_id "
+                        "UPDATE device_registry SET hardware_id=hardware_id "
                         "WHERE hardware_id IS NULL OR hardware_id=''"
                     )
                     c.execute(
-                        "UPDATE device_registry SET display_name=device_id "
+                        "UPDATE device_registry SET display_name=hardware_id "
                         "WHERE display_name IS NULL OR display_name=''"
                     )
                     c.execute(
@@ -274,7 +274,7 @@ class Database:
                         "provider_transaction_id": "TEXT",
                         "provider_reference": "TEXT",
                         "failure_reason": "TEXT",
-                        "device_id": "TEXT",
+                        "hardware_id": "TEXT",
                         "original_amount": "INTEGER",
                         "discount_amount": "INTEGER NOT NULL DEFAULT 0",
                         "final_amount": "INTEGER",
@@ -289,7 +289,7 @@ class Database:
                         "provider_transaction_id": "NULL",
                         "provider_reference": "NULL",
                         "failure_reason": "NULL",
-                        "device_id": "NULL",
+                        "hardware_id": "NULL",
                         "original_amount": "amount",
                         "discount_amount": "0",
                         "final_amount": "amount",
@@ -321,7 +321,7 @@ class Database:
                     )
                     c.execute(
                         "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                        "ON payment_transactions(device_id,created_at)"
+                        "ON payment_transactions(hardware_id,created_at)"
                     )
                     c.execute(
                         "CREATE INDEX IF NOT EXISTS ix_payment_account_created "
@@ -371,7 +371,7 @@ class Database:
                     machine_columns = {row[1] for row in c.execute("PRAGMA table_info(vending_machines)")}
                     machine_additions = {
                         "location": "TEXT NOT NULL DEFAULT ''",
-                        "device_id": "TEXT",
+                        "hardware_id": "TEXT",
                         "updated_at": "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
                     }
                     for name, definition in machine_additions.items():
@@ -492,7 +492,7 @@ class Database:
                 "provider_transaction_id": "TEXT",
                 "provider_reference": "TEXT",
                 "failure_reason": "TEXT",
-                "device_id": "TEXT",
+                "hardware_id": "TEXT",
             }
             for name, definition in additions.items():
                 if name not in columns:
@@ -507,7 +507,7 @@ class Database:
             )
             c.execute(
                 "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                "ON payment_transactions(device_id,created_at)"
+                "ON payment_transactions(hardware_id,created_at)"
             )
             device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
             for name, definition in {
@@ -516,5 +516,5 @@ class Database:
             }.items():
                 if name not in device_columns:
                     c.execute(f"ALTER TABLE device_registry ADD COLUMN {name} {definition}")
-            c.execute("CREATE INDEX IF NOT EXISTS ix_device_auth ON device_registry(device_id,auth_key_hash)")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_device_auth ON device_registry(hardware_id,auth_key_hash)")
             c.commit()
