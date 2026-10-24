@@ -8,7 +8,7 @@ FORBIDDEN = 'device' + '_id'
 class ForbiddenLegacyIdentifierTests(unittest.TestCase):
     def test_runtime_files_do_not_reference_legacy_identifier(self):
         violations = []
-        extensions = {'.py', '.sql', '.ino', '.h', '.hpp', '.cpp', '.js', '.jsx', '.ts', '.tsx', '.json', '.yml', '.yaml', '.toml', '.sh'}
+        extensions = {'.py', '.sql', '.ino', '.h', '.hpp', '.cpp', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.yml', '.yaml', '.toml', '.sh'}
         for relative_dir in RUNTIME_DIRS:
             directory = ROOT / relative_dir
             if not directory.exists():
