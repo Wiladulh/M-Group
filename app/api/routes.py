@@ -725,7 +725,7 @@ def build_router(db, app_settings=None):
                         raise HTTPException(409,"device_key_already_bound")
                 if matched_by_key:
                     collision = c.execute(
-                        """SELECT hardware_id FROM device_registry
+                        """SELECT registry_id FROM device_registry
                            WHERE hardware_id=? AND registry_id<>?""",
                         (hardware_id,row["registry_id"]),
                     ).fetchone()
