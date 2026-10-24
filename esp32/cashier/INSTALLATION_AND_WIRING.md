@@ -80,7 +80,7 @@ Pada modul RC522, pin bertanda **SDA** biasanya berfungsi sebagai SS/CS untuk SP
 5. Isi konfigurasi di bagian atas `MGroupCashier.ino`:
    - `WIFI_SSID` dan `WIFI_PASSWORD`
    - `M_GROUP_BASE_URL`, contoh `http://192.168.1.10:8011` (ganti IP contoh dengan IP server di jaringan lokal; jangan tambah slash di akhir)
-   - `DEVICE_ID`, harus sama persis dengan ID perangkat kasir yang didaftarkan
+   - `HARDWARE_ID`, harus sama persis dengan identitas hardware kasir yang didaftarkan
    - `M_GROUP_DEVICE_KEY`, gunakan key aktif dari registri perangkat server
 6. Daftarkan/provision perangkat bertipe kasir pada server dengan ID yang sama. Pastikan key aktif.
 7. Pastikan server mendengarkan pada alamat LAN, bukan hanya loopback. Konfigurasi default server `127.0.0.1` tidak dapat diakses perangkat lain. Untuk LAN, gunakan bind yang sesuai (misalnya `M_GROUP_HOST=0.0.0.0`, `M_GROUP_PORT=8011`) dan batasi firewall TCP 8011 ke jaringan tepercaya.
