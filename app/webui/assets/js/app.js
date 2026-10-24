@@ -198,7 +198,7 @@ async function pollNfcRegistration(memberId,sessionId){
   const check=async()=>{
     const {r,d}=await json('/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/'+encodeURIComponent(sessionId),{});
     if(!r.ok){$('nfcRegistrationResult').textContent=d.detail||'Gagal membaca status registrasi NFC';clearInterval(nfcPollTimer);return}
-    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier '+d.device_id+': silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
+    if(d.status==='scan_pending')$('nfcRegistrationResult').textContent='Cashier terautentikasi: silakan scan kartu NFC, lalu member memasukkan PIN transaksi 4 digit. Menunggu hasil...';
     else if(d.status==='completed'){
       $('nfcRegistrationResult').textContent='Registrasi NFC berhasil. UID kartu dan verifikasi PIN telah diproses server.';
       clearInterval(nfcPollTimer);
@@ -213,23 +213,22 @@ async function pollNfcRegistration(memberId,sessionId){
 }
 $('nfcStart').onclick=async()=>{
   try{
-  const memberId=$('memberId').value.trim(),deviceId=$('nfcCashierDevice').value.trim();
+  const memberId=$('memberId').value.trim();
     if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
-    if(!deviceId)throw new Error('Pilih Cashier aktif terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
     if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
     const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
-    let body={cashier_device_id:deviceId};
+    let body={};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={cashier_device_id:deviceId,operator_id};
+      body={operator_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
-    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier terpilih akan meminta member scan kartu dan memasukkan PIN 4 digit.';
+    $('nfcRegistrationResult').textContent='Sesi registrasi dimulai. Cashier aktif akan mengklaim sesi dengan device key, lalu meminta member scan kartu dan memasukkan PIN 4 digit.';
     await pollNfcRegistration(memberId,d.session_id);
   }catch(e){$('nfcRegistrationResult').textContent=e.message}
 };
