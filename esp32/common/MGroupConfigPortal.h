@@ -13,10 +13,9 @@ class MGroupConfigPortal {
     *url_=prefs_.getString("server_url",*url_); *key_=prefs_.getString("device_key",*key_);
     // Initialize the station interface before reading its hardware MAC.
     WiFi.mode(WIFI_STA);
-    String prefix=String(label_).startsWith("Cashier")?"Cashier_":"Vending_";
-    String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
-    *id_=prefix+mac;
-    bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
+    const bool vending=String(label_).startsWith("Vending");
+    *id_=vending?prefs_.getString("machine_id",""):"";
+    bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME"||(vending&&id_->isEmpty());
     if(needed) startPortal();
   }
   bool active() const { return active_; }
@@ -35,12 +34,12 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Device ID dibuat otomatis dari seluruh MAC address perangkat dan tidak perlu dimasukkan.</p>
+<p class="warn">Server mengautentikasi perangkat menggunakan Device Key. Untuk Vending, masukkan Machine ID yang sudah dibuat di dashboard; MAC address tidak digunakan sebagai identitas.</p>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
 <label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>
-<label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
+<label>Machine ID (khusus Vending)</label><input name="machine_id" maxlength="128" autocomplete="off" placeholder="Contoh: vending-01"><label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form></main></html>)HTML";
     return h;
   }
@@ -53,12 +52,12 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
     server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){req->send(200,"text/html; charset=utf-8",page(label_));});
     server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){
       auto value=[req](const char *name)->String {return req->hasParam(name,true)?req->getParam(name,true)->value():"";};
-      String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceKey=value("device_key");
-      ssid.trim();serverUrl.trim();deviceKey.trim();
-      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||serverUrl.length()>160||deviceKey.length()>128||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")) {
+      String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceKey=value("device_key"),machineId=value("machine_id");
+      ssid.trim();serverUrl.trim();deviceKey.trim();machineId.trim();
+      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceKey.isEmpty()||(String(label_).startsWith("Vending")&&machineId.isEmpty())||ssid.length()>64||wifiPass.length()>128||serverUrl.length()>160||deviceKey.length()>128||machineId.length()>128||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")) {
         req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa semua kolom dan URL tanpa slash akhir.");return;
       }
-      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_key",deviceKey);
+      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_key",deviceKey);if(String(label_).startsWith("Vending"))prefs_.putString("machine_id",machineId);
       req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
       delay(900);ESP.restart();
     });
