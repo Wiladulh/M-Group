@@ -12,7 +12,5 @@ CREATE TABLE IF NOT EXISTS vending_products(product_id TEXT PRIMARY KEY,name TEX
 CREATE TABLE IF NOT EXISTS vending_inventory(machine_id TEXT NOT NULL REFERENCES vending_machines(machine_id),product_id TEXT NOT NULL REFERENCES vending_products(product_id),slot TEXT NOT NULL,quantity INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(machine_id,slot));
 CREATE TABLE IF NOT EXISTS vending_stock_movements(id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT NOT NULL,product_id TEXT NOT NULL,quantity INTEGER NOT NULL,movement_type TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS vending_transactions(transaction_id TEXT PRIMARY KEY,machine_id TEXT NOT NULL,product_id TEXT NOT NULL,amount INTEGER NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS device_registry(device_id TEXT PRIMARY KEY,device_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',last_seen TEXT);
-CREATE TABLE IF NOT EXISTS device_events(id INTEGER PRIMARY KEY AUTOINCREMENT,device_id TEXT NOT NULL,event_type TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS audit_events(id INTEGER PRIMARY KEY AUTOINCREMENT,event_type TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,detail TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 INSERT OR IGNORE INTO system_meta(key,value) VALUES('schema_version','001');
