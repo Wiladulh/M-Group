@@ -146,14 +146,11 @@ class VendingRegisterRequest(BaseModel):
     name: str
     location: str = ""
     hardware_id: str | None = None
-    # Legacy input accepted during rollout; treated as a hardware identity only.
-    hardware_id: str | None = None
     status: str = "active"
 
 class VendingUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
-    hardware_id: str | None = None
     hardware_id: str | None = None
     status: str | None = None
 
