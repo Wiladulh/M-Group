@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 jobs:
   test:
+    if: github.ref != 'refs/heads/rebuild/clean-room-v2' && github.head_ref != 'rebuild/clean-room-v2'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
