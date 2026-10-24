@@ -192,8 +192,9 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str
     card_uid: str
+    # Optional compatibility field; authentication is by device key only.
+    device_id: str | None = None
 
 class OperatorPinRequest(BaseModel):
     pin: str
@@ -222,19 +223,30 @@ def build_router(db, app_settings=None):
     financial = FinancialService(db)
     vending = VendingService(db)
 
-    def require_device(device_id: str, device_key: str | None):
+    def require_device_by_key(device_key: str | None, allowed_types=None):
+        """Authenticate using the server-issued key, independent of public device IDs."""
         if not device_key:
             raise HTTPException(401,"device_auth_required")
-        with db.connect() as c:
-            row=c.execute("SELECT status,auth_key_hash FROM device_registry WHERE device_id=?",(device_id,)).fetchone()
-        if not row or row["status"]!="active":
-            raise HTTPException(403,"device_not_active")
-        if not row["auth_key_hash"]:
-            raise HTTPException(403,"device_not_provisioned")
         got=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
-        if not secrets.compare_digest(got,row["auth_key_hash"]):
+        with db.connect() as c:
+            rows=c.execute("SELECT hardware_id,device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
+        row=next((item for item in rows if secrets.compare_digest(got,item["auth_key_hash"] or "")),None)
+        if not row:
             raise HTTPException(403,"invalid_device_key")
-        return True
+        if row["status"]!="active":
+            raise HTTPException(403,"device_not_active")
+        if allowed_types and row["device_type"] not in allowed_types:
+            raise HTTPException(403,"device_type_not_allowed")
+        return {"fingerprint":got,"hardware_id":row["hardware_id"],"device_type":row["device_type"]}
+
+    def require_device(device_id: str, device_key: str | None):
+        """Legacy adapter; new endpoints should use require_device_by_key."""
+        identity=require_device_by_key(device_key)
+        with db.connect() as c:
+            row=c.execute("SELECT hardware_id FROM device_registry WHERE device_id=?",(device_id,)).fetchone()
+        if not row or (row["hardware_id"] and identity["hardware_id"] and row["hardware_id"]!=identity["hardware_id"]):
+            raise HTTPException(403,"device_identity_mismatch")
+        return identity
 
 
     def resolve_vending_machine(identifier: str):
@@ -877,27 +889,19 @@ def build_router(db, app_settings=None):
     @r.post("/devices/member-balance")
     def device_member_balance(q: MemberBalanceLookupRequest,
                               x_m_group_device_key: str | None = Header(default=None)):
-        """Read-only balance lookup for authenticated Cashier/Vending devices."""
-        device_id = q.device_id.strip()
+        """Read-only balance lookup authenticated by device key, without a device ID."""
+        identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","esp32-vending","esp32-s3-vending","cashier","vending"})
+        device_fingerprint=identity["fingerprint"]
         card_uid = q.card_uid.strip()
-        if not device_id:
-            raise HTTPException(400, "device_id_required")
         if not card_uid:
             raise HTTPException(400, "card_uid_required")
-        require_device(device_id, x_m_group_device_key)
-        with db.connect() as c:
-            device = c.execute(
-                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
-            ).fetchone()
-            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
-                raise HTTPException(403, "device_type_not_allowed")
-        # Suppress duplicate NFC reads from the same device/card for two seconds.
+        # Suppress duplicate NFC reads per key/card pair; public IDs are irrelevant.
         uid_hash = hashlib.sha256(card_uid.casefold().encode("utf-8")).hexdigest()
         now = time.time()
         with db.connect() as c:
             prior = c.execute(
                 "SELECT last_lookup_at FROM device_balance_lookup_limits WHERE device_id=? AND card_uid_hash=?",
-                (device_id, uid_hash),
+                (device_fingerprint, uid_hash),
             ).fetchone()
             if prior and now - float(prior["last_lookup_at"]) < 2.0:
                 raise HTTPException(429, "balance_lookup_rate_limited", headers={"Retry-After": "2"})
@@ -905,7 +909,7 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_balance_lookup_limits(device_id,card_uid_hash,last_lookup_at)
                    VALUES(?,?,?) ON CONFLICT(device_id,card_uid_hash)
                    DO UPDATE SET last_lookup_at=excluded.last_lookup_at""",
-                (device_id, uid_hash, now),
+                (device_fingerprint, uid_hash, now),
             )
             c.commit()
         member = members.resolve_card(card_uid)
@@ -1342,22 +1346,10 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
-        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_m_group_device_id
-        if not device_id:
-            if not x_m_group_device_key:
-                raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
-            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
-            if not matches:
-                raise HTTPException(403, "invalid_device_key")
-            if matches[0]["status"] != "active":
-                raise HTTPException(403, "device_not_active")
-            device_id = matches[0]["device_id"]
-        require_device(device_id,x_m_group_device_key)
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
+        # Device-key fingerprint is the cashier identity; no device ID header or registry lookup is needed.
+        cashier_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
+        device_id = cashier_identity["fingerprint"]
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1432,12 +1424,12 @@ def build_router(db, app_settings=None):
                     VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
                     (tid,device_id,q.credential_id,account["member_id"],account["account_id"],q.amount,"completed",q.idempotency_key,before,after))
                 c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:device={device_id}"))
+                          ("cashier","cashier_deposit",tid,f"deposit:{q.amount}:member={account['member_id']}:cashier_key={device_id}"))
                 c.commit()
         except ValueError as e:
             code = str(e)
             raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
-        return {"transaction_id":tid,"device_id":device_id,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
