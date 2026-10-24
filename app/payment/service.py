@@ -56,7 +56,7 @@ class PaymentService:
             raise PermissionError("credential_account_mismatch")
         account_id = resolved_account_id
 
-        if method == "NFC" and device_id is not None:
+        if method == "NFC":
             if pin is None:
                 raise PermissionError("pin_required")
             if not self.identity.verify_credential_pin(credential_id, pin):
@@ -78,7 +78,6 @@ class PaymentService:
                     if (
                         row["account_id"] != account_id
                         or row["credential_id"] != credential_id
-                        or row["device_id"] != device_id
                         or row["method"] != method
                         or row["provider"] != provider
                         or row["original_amount"] != original_amount
@@ -95,7 +94,7 @@ class PaymentService:
                         "final_amount": row["final_amount"],
                         "method": row["method"],
                         "provider": row["provider"],
-                        "device_id": device_id,
+                        "device_id": None,
                         "promo_id": row["promo_id"],
                         "balance": row["balance_after"],
                     }
@@ -134,7 +133,7 @@ class PaymentService:
                     method,
                     provider,
                     idempotency_key,
-                    device_id,
+                    None,
                     original_amount,
                     discount_amount,
                     amount,
@@ -151,7 +150,7 @@ class PaymentService:
                     "payment_transaction",
                     tx,
                     f"completed:{method}:{provider}:credential={credential_id}:"
-                    f"device={device_id or '-'}:original={original_amount}:"
+                    f"device_key_authenticated=true:original={original_amount}:"
                     f"discount={discount_amount}:final={amount}:"
                     f"balance_before={balance_before}:balance_after={balance_after}:"
                     f"ledger={ledger_reference or '-'}:promo={promo_id or '-'}",
