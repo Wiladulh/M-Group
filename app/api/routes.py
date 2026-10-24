@@ -776,9 +776,9 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             c.execute(
                 """INSERT INTO device_registry
-                   (device_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
+                   (device_id,device_type,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                   VALUES(? ,?,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
                 (device_id,device_type,digest,key[-6:]),
             )
             c.execute(
@@ -806,8 +806,8 @@ def build_router(db, app_settings=None):
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             existing = c.execute(
-                "SELECT device_id FROM device_registry WHERE device_id=? OR hardware_id=?",
-                (legacy_id, legacy_id),
+                "SELECT device_id FROM device_registry WHERE device_id=?",
+                (legacy_id,),
             ).fetchone()
             if existing:
                 raise HTTPException(409, "legacy_device_id_already_exists_use_key_rotation_workflow")
