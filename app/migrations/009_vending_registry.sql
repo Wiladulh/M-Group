@@ -1,5 +1,5 @@
 CREATE UNIQUE INDEX IF NOT EXISTS ux_vending_machine_device
-ON vending_machines(device_id) WHERE device_id IS NOT NULL;
+ON vending_machines(hardware_id) WHERE hardware_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS ix_vending_machines_status
 ON vending_machines(status);
