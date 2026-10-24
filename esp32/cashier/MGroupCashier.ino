@@ -130,7 +130,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
   savePendingPayment(credential,amount,seq);
-  String body="{\"device_id\":\""+String(DEVICE_ID)+"\",\"credential_id\":\""+credential+
+  String body="{\"credential_id\":\""+credential+
               "\",\"amount\":"+String(amount)+
               ",\"method\":\"NFC\",\"provider\":\"local\",\"idempotency_key\":\""+
               String(DEVICE_ID)+":"+seq+"\",\"pin\":\""+pin+"\"}";
