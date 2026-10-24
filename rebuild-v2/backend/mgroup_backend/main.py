@@ -56,7 +56,40 @@ def health():
 def pin_hash(pin: str) -> str:
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), salt.encode('ascii'), 310_000).hex()
-    return 'pbkdf2_sha256' + '
+    sep = chr(36)
+    return sep.join(('pbkdf2_sha256', '310000', salt, digest))
+
+
+def verify_pin(pin: str, encoded: str | None) -> bool:
+    if not encoded:
+        return False
+    try:
+        algorithm, rounds, salt, expected = encoded.split(chr(36), 3)
+        if algorithm != 'pbkdf2_sha256' or int(rounds) != 310_000:
+            return False
+        actual = hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), salt.encode('ascii'), int(rounds)).hex()
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def card_hash(card_uid: str) -> str:
+    return hash_secret(card_uid.strip().upper(), settings.device_key_pepper)
+
+
+def ensure_system_account(connection: sqlite3.Connection) -> str:
+    row = connection.execute("SELECT account_id FROM accounts WHERE account_type='system' LIMIT 1").fetchone()
+    if row:
+        return row['account_id']
+    account_id = new_id('acct')
+    connection.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'system',0)", (account_id,))
+    return account_id
+
+
+def audit(connection, action, entity_type, entity_id, request_id=None, detail=None):
+    connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,request_id,detail_json) VALUES(?,?,?,?,?,?,?)',
+        (new_id('aud'), 'server', action, entity_type, entity_id, request_id, json.dumps(detail or {}, separators=(',', ':'))))
+
 
 @app.get('/api/v2/ready')
 def readiness(connection: DB):
