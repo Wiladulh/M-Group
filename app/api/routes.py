@@ -439,13 +439,13 @@ def build_router(db, app_settings=None):
         result = device_register(q)
         return {**result, "handshake": "accepted"}
 
-    @r.get("/devices/{device_id}/events")
-    def device_events(request: Request, device_id,limit:int=100):
+    @r.get("/devices/{hardware_id}/events")
+    def device_events(request: Request, hardware_id,limit:int=100):
         require_admin(request)
         limit=max(1,min(limit,500))
         with db.connect() as c:
-            rows=c.execute("SELECT id,device_id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(device_id,limit)).fetchall()
-        return {"device_id":device_id,"events":[dict(x) for x in rows]}
+            rows=c.execute("SELECT id,event_type,payload,created_at FROM device_events WHERE device_id=? ORDER BY id DESC LIMIT ?",(hardware_id,limit)).fetchall()
+        return {"hardware_id":hardware_id,"events":[dict(x) for x in rows]}
 
     @r.get("/dashboard")
     def dashboard(request: Request, period: str = "1w"):
@@ -753,7 +753,7 @@ def build_router(db, app_settings=None):
                 registered_device_id = row["device_id"]
                 c.execute(
                     "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                    (registered_device_id,"registration",q.model_dump_json(exclude={"device_key"})),
+                    (hardware_id,"registration",q.model_dump_json(exclude={"device_key"})),
                 )
                 c.commit()
                 return {"device_id":registered_device_id,"hardware_id":hardware_id,"device_type":device_type,
@@ -854,7 +854,7 @@ def build_router(db, app_settings=None):
                 raise HTTPException(409,"device_type_mismatch")
             c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",(row["device_id"],))
             c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                      (row["device_id"],"heartbeat",q.model_copy(update={"device_type":device_type}).model_dump_json()))
+                      (identity["hardware_id"],"heartbeat",q.model_copy(update={"device_type":device_type}).model_dump_json()))
             c.commit()
         return {"hardware_id":identity["hardware_id"],"device_type":device_type,"status":"active"}
 
