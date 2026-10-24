@@ -187,7 +187,6 @@ class CashierDepositRequest(BaseModel):
     idempotency_key: str
 
 class MemberBalanceLookupRequest(BaseModel):
-    device_id: str
     card_uid: str
 
 class OperatorPinRequest(BaseModel):
@@ -855,21 +854,15 @@ def build_router(db, app_settings=None):
     @r.post("/devices/member-balance")
     def device_member_balance(q: MemberBalanceLookupRequest,
                               x_m_group_device_key: str | None = Header(default=None)):
-        """Read-only balance lookup for authenticated Cashier/Vending devices."""
-        device_id = q.device_id.strip()
+        """Read-only balance lookup authenticated by Device Key only."""
+        device = require_device_key(
+            x_m_group_device_key,
+            {"esp32-cashier", "cashier", "esp32-vending", "esp32-s3-vending", "vending"},
+        )
+        device_id = device["device_id"]  # internal legacy FK/rate-limit key only
         card_uid = q.card_uid.strip()
-        if not device_id:
-            raise HTTPException(400, "device_id_required")
         if not card_uid:
             raise HTTPException(400, "card_uid_required")
-        require_device(device_id, x_m_group_device_key)
-        with db.connect() as c:
-            device = c.execute(
-                "SELECT device_type FROM device_registry WHERE device_id=?", (device_id,)
-            ).fetchone()
-            if not device or device["device_type"] not in {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}:
-                raise HTTPException(403, "device_type_not_allowed")
-        # Suppress duplicate NFC reads from the same device/card for two seconds.
         uid_hash = hashlib.sha256(card_uid.casefold().encode("utf-8")).hexdigest()
         now = time.time()
         with db.connect() as c:
@@ -903,12 +896,8 @@ def build_router(db, app_settings=None):
             balance = financial.balance(account["account_id"])
         except ValueError as e:
             raise HTTPException(404, str(e))
-        return {
-            "member_id": member["member_id"],
-            "member_name": member["name"],
-            "balance": balance,
-            "currency": "IDR",
-        }
+        return {"member_id": member["member_id"], "member_name": member["name"],
+                "balance": balance, "currency": "IDR"}
 
     @r.get("/accounts/{account_id}/ledger")
     def account_ledger(request: Request, account_id,limit:int=100):
