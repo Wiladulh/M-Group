@@ -9,25 +9,25 @@ class DeviceManagementService:
         where = "" if include_deleted else "WHERE deleted_at IS NULL"
         with self.db.connect() as c:
             rows = c.execute(
-                f"""SELECT device_id,device_id,device_type,mac_address,display_name,
+                f"""SELECT hardware_id,hardware_id,device_type,mac_address,display_name,
                            status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
                     FROM device_registry {where}
-                    ORDER BY device_id"""
+                    ORDER BY hardware_id"""
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get(self, device_id):
+    def get(self, hardware_id):
         with self.db.connect() as c:
             row = c.execute(
-                """SELECT device_id,device_id,device_type,mac_address,display_name,
+                """SELECT hardware_id,hardware_id,device_type,mac_address,display_name,
                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
-                   FROM device_registry WHERE device_id=? OR device_id=?""",
-                (device_id,device_id),
+                   FROM device_registry WHERE hardware_id=? OR hardware_id=?""",
+                (hardware_id,hardware_id),
             ).fetchone()
             return dict(row) if row else None
 
-    def update(self, device_id, device_type=None, status=None, display_name=None):
-        current = self.get(device_id)
+    def update(self, hardware_id, device_type=None, status=None, display_name=None):
+        current = self.get(hardware_id)
         if current is None:
             raise ValueError("device_not_found")
         if device_type is not None and device_type not in self.ALLOWED_TYPES:
@@ -43,22 +43,22 @@ class DeviceManagementService:
             c.execute(
                 """UPDATE device_registry
                    SET device_type=?,status=?,display_name=?,updated_at=CURRENT_TIMESTAMP
-                   WHERE device_id=?""",
-                (new_type, new_status, new_name, current["device_id"]),
+                   WHERE hardware_id=?""",
+                (new_type, new_status, new_name, current["hardware_id"]),
             )
             c.commit()
-        return self.get(device_id)
+        return self.get(hardware_id)
 
-    def soft_delete(self, device_id):
-        current = self.get(device_id)
+    def soft_delete(self, hardware_id):
+        current = self.get(hardware_id)
         if current is None:
             raise ValueError("device_not_found")
         with self.db.connect() as c:
             c.execute(
                 """UPDATE device_registry
                    SET status='disabled',deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                   WHERE device_id=?""",
-                (current["device_id"],),
+                   WHERE hardware_id=?""",
+                (current["hardware_id"],),
             )
             c.commit()
-        return self.get(device_id)
+        return self.get(hardware_id)
