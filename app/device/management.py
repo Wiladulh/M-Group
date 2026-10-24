@@ -9,7 +9,7 @@ class DeviceManagementService:
         where = "" if include_deleted else "WHERE deleted_at IS NULL"
         with self.db.connect() as c:
             rows = c.execute(
-                f"""SELECT device_id,hardware_id,device_type,mac_address,display_name,
+                f"""SELECT device_id,device_type,display_name,
                            status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
                     FROM device_registry {where}
                     ORDER BY device_id"""
@@ -19,7 +19,7 @@ class DeviceManagementService:
     def get(self, device_id):
         with self.db.connect() as c:
             row = c.execute(
-                """SELECT device_id,hardware_id,device_type,mac_address,display_name,
+                """SELECT device_id,device_type,display_name,
                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
                    FROM device_registry WHERE device_id=?""",
                 (device_id,),
