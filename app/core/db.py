@@ -94,6 +94,19 @@ class Database:
 
         with self.connect() as c:
             for path in paths:
+                if path.name == "027_hardware_mac_identity_removal.sql":
+                    columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
+                    c.execute("DROP INDEX IF EXISTS ux_device_hardware_id")
+                    c.execute("DROP INDEX IF EXISTS ix_device_mac")
+                    if "hardware_id" in columns:
+                        c.execute("ALTER TABLE device_registry DROP COLUMN hardware_id")
+                    if "mac_address" in columns:
+                        c.execute("ALTER TABLE device_registry DROP COLUMN mac_address")
+                    c.execute(
+                        "INSERT OR IGNORE INTO system_meta(key,value) VALUES('hardware_mac_identity_schema_version','001')"
+                    )
+                    continue
+
                 if path.name == "025_vending_machine_identity_removal.sql":
                     columns = {row[1] for row in c.execute("PRAGMA table_info(vending_machines)")}
                     if "device_id" in columns:
