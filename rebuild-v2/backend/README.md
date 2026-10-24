@@ -8,7 +8,7 @@ python -m venv .venv
 pip install -r requirements.txt
 export MGROUP_ADMIN_TOKEN='replace-with-a-long-random-secret'
 export MGROUP_DEVICE_KEY_PEPPER='set-a-separate-random-secret'
-uvicorn app.main:app --host 127.0.0.1 --port 8080
+uvicorn mgroup_backend.main:app --host 127.0.0.1 --port 8080
 ```
 
 The first run creates the clean v2 database at `rebuild-v2/var/mgroup-v2.sqlite3` unless `MGROUP_DB_PATH` is set. Do not expose the service publicly until TLS/reverse proxy, rate limiting, operational secrets, backup/restore, and security review are configured. `GET /api/v2/health` is a liveness check; `GET /api/v2/ready` also checks database access.
