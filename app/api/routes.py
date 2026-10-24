@@ -835,6 +835,29 @@ def build_router(db, app_settings=None):
         return {"device_id": legacy_id, "device_type": device_type, "device_key": key,
                 "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
 
+    @r.post("/devices/heartbeat")
+    def device_heartbeat_by_key(q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
+        """Key-only heartbeat; the public API does not require a device ID."""
+        identity=require_device_by_key(x_m_group_device_key)
+        if not q.device_type.strip():
+            raise HTTPException(400,"device_type_required")
+        device_type=q.device_type.strip().lower()
+        if device_type=="esp32-vending":
+            device_type="esp32-s3-vending"
+        if device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400,"invalid_device_type")
+        if q.status!="active":
+            raise HTTPException(400,"invalid_heartbeat_status")
+        with db.connect() as c:
+            row=c.execute("SELECT device_id,device_type FROM device_registry WHERE hardware_id=?",(identity["hardware_id"],)).fetchone()
+            if not row or row["device_type"]!=device_type:
+                raise HTTPException(409,"device_type_mismatch")
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",(row["device_id"],))
+            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
+                      (row["device_id"],"heartbeat",q.model_copy(update={"device_type":device_type}).model_dump_json()))
+            c.commit()
+        return {"hardware_id":identity["hardware_id"],"device_type":device_type,"status":"active"}
+
     @r.post("/devices/{device_id}/heartbeat")
     def device_heartbeat(device_id,q:DeviceHeartbeatRequest,x_m_group_device_key: str | None = Header(default=None)):
         if not device_id.strip(): raise HTTPException(400,"device_id_required")
