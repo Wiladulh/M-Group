@@ -128,6 +128,8 @@ class DeviceHeartbeatRequest(BaseModel):
 
 class DeviceRegisterRequest(BaseModel):
     device_type: str
+    hardware_id: str
+    mac_address: str
     device_key: str
 
 class DeviceProvisionRequest(BaseModel):
