@@ -91,3 +91,11 @@ This document is a design and acceptance checklist, not a migration script. Do n
 - Device registration must not accept or validate `hardware_id` or `mac_address`; activation is based on the pre-provisioned server-issued key only.
 - The active implementation still contains legacy registry identifiers and vending associations. Those remain implementation work, not accepted exceptions.
 - No runtime tests or firmware builds are run during the code-change phase, per project instruction.
+
+
+## Implementation progress note (2026-10-24, continued)
+
+- ESP32 registration and heartbeat now send device type plus the server-issued key only. Cashier NFC registration and balance lookup have key-only request paths; cashier payment requests no longer include a device identifier.
+- Vending setup no longer derives its business machine ID from MAC. Setup accepts the configured Machine ID; the server binds the first valid vending key to that machine and enforces that binding for vending transactions.
+- Added migrations to remove the vending-machine device association and the device registry hardware/MAC columns.
+- Remaining before the no-device_id acceptance gate: remove the legacy device_id primary key and all active dependent references in registry/events/rate limits/NFC registration/cashier deposits, update WebUI and administrative APIs, remove compatibility endpoints, and align test contracts. No tests/builds/workflows have been run.
