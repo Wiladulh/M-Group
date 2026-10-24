@@ -1,4 +1,7 @@
 CREATE TABLE IF NOT EXISTS system_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+-- Transitional legacy shape only; migration 024 rebuilds this table into the canonical registry.
+CREATE TABLE IF NOT EXISTS device_registry(device_id TEXT PRIMARY KEY,device_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',last_seen TEXT,hardware_id TEXT,mac_address TEXT,display_name TEXT,auth_key_hash TEXT,auth_key_hint TEXT,created_at TEXT,updated_at TEXT,deleted_at TEXT);
+CREATE TABLE IF NOT EXISTS device_events(id INTEGER PRIMARY KEY AUTOINCREMENT,hardware_id TEXT NOT NULL,event_type TEXT NOT NULL,payload TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS identity_nodes(node_id TEXT PRIMARY KEY,name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS identity_members(member_id TEXT PRIMARY KEY,name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS identity_credentials(credential_id TEXT PRIMARY KEY,member_id TEXT NOT NULL REFERENCES identity_members(member_id),credential_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
