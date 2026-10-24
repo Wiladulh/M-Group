@@ -43,6 +43,22 @@ class TopUpRequest(BaseModel):
     amount_minor: int = Field(gt=0, le=100_000_000)
     description: str = Field(default='Top-up saldo', max_length=200)
 
+class CardEnroll(BaseModel):
+    card_uid: str = Field(min_length=4, max_length=128)
+
+
+class PurchaseRequest(BaseModel):
+    request_id: str = Field(min_length=8, max_length=128)
+    card_uid: str = Field(min_length=4, max_length=128)
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}')
+    product_id: int = Field(ge=1, le=5)
+
+
+class DispenseResult(BaseModel):
+    succeeded: bool
+    reason: str | None = Field(default=None, max_length=200)
+
+
 class ProductUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     price_minor: int = Field(ge=0, le=100_000_000)
@@ -213,6 +229,136 @@ def update_product(registry_id: str, product_id: int, payload: ProductUpdate, co
             raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
         connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps(payload.model_dump())))
     return {'registry_id': registry_id, 'product_id': product_id, **payload.model_dump(), 'nfc_promo_percent': 0, 'qris_promo_percent': 0}
+
+@app.post('/api/v2/members/{member_id}/cards', status_code=201, dependencies=[Depends(require_admin)])
+def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
+    digest = card_hash(payload.card_uid)
+    card_id = new_id('card')
+    try:
+        with transaction(connection):
+            member = connection.execute('SELECT member_id,status FROM members WHERE member_id=?', (member_id,)).fetchone()
+            if not member:
+                raise HTTPException(status_code=404, detail={'code': 'MEMBER_NOT_FOUND'})
+            if member['status'] != 'active':
+                raise HTTPException(status_code=409, detail={'code': 'MEMBER_NOT_ACTIVE'})
+            connection.execute("INSERT INTO member_cards(card_id,member_id,card_uid_hash,status) VALUES(?,?,?,'active')",
+                (card_id, member_id, digest))
+            audit(connection, 'member.card.enroll', 'member', member_id,
+                  detail={'card_id': card_id, 'card_uid_hint': payload.card_uid.strip()[-4:]})
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail={'code': 'CARD_ALREADY_ENROLLED'}) from exc
+    return {'card_id': card_id, 'member_id': member_id, 'status': 'active'}
+
+
+@app.post('/api/v2/vending/purchases', status_code=201)
+def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[str | None, Header()] = None):
+    device = authenticated_device(connection, x_device_key)
+    if device['device_type'] != 'vending':
+        raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
+    digest = card_hash(payload.card_uid)
+    try:
+        with transaction(connection):
+            prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,hardware_id,transaction_type,metadata_json FROM transactions WHERE request_id=?",
+                (payload.request_id,)).fetchone()
+            if prior:
+                meta = json.loads(prior['metadata_json'] or '{}')
+                if (prior['transaction_type'] != 'purchase' or prior['hardware_id'] != device['hardware_id']
+                    or meta.get('product_id') != payload.product_id or meta.get('card_hash') != digest):
+                    raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
+                return {'transaction_id': prior['transaction_id'], 'status': prior['status'],
+                        'amount_minor': prior['amount_minor'], 'idempotent_replay': True}
+            member = connection.execute("SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+                (digest,)).fetchone()
+            if not member or member['status'] != 'active':
+                raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
+            if not verify_pin(payload.pin, member['pin_hash']):
+                raise HTTPException(status_code=401, detail={'code': 'INVALID_PIN'})
+            product = connection.execute('SELECT name,price_minor,stock FROM product_slots WHERE registry_id=? AND product_id=?',
+                (device['registry_id'], payload.product_id)).fetchone()
+            if not product:
+                raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
+            if product['stock'] < 1:
+                raise HTTPException(status_code=409, detail={'code': 'OUT_OF_STOCK'})
+            if product['price_minor'] <= 0:
+                raise HTTPException(status_code=409, detail={'code': 'PRODUCT_PRICE_NOT_CONFIGURED'})
+            account = connection.execute("SELECT account_id,balance_minor,status FROM accounts WHERE member_id=? AND account_type='member'",
+                (member['member_id'],)).fetchone()
+            if not account or account['status'] != 'active':
+                raise HTTPException(status_code=409, detail={'code': 'ACCOUNT_NOT_ACTIVE'})
+            amount = product['price_minor']
+            if account['balance_minor'] < amount:
+                raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
+            system_id = ensure_system_account(connection)
+            transaction_id = new_id('txn')
+            metadata = {'product_id': payload.product_id, 'registry_id': device['registry_id'],
+                        'card_hash': digest, 'product_name': product['name'], 'dispense_status': 'pending'}
+            connection.execute("INSERT INTO transactions(transaction_id,request_id,hardware_id,member_id,transaction_type,amount_minor,status,metadata_json) VALUES(?,?,?,?,'purchase',?,'succeeded',?)",
+                (transaction_id, payload.request_id, device['hardware_id'], member['member_id'], amount, json.dumps(metadata)))
+            debited = connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
+                (amount, account['account_id'], amount))
+            stocked = connection.execute("UPDATE product_slots SET stock=stock-1,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=? AND stock>0",
+                (device['registry_id'], payload.product_id))
+            if debited.rowcount != 1:
+                raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
+            if stocked.rowcount != 1:
+                raise HTTPException(status_code=409, detail={'code': 'OUT_OF_STOCK'})
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
+                (new_id('led'), transaction_id, account['account_id'], amount))
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
+                (new_id('led'), transaction_id, system_id, amount))
+            audit(connection, 'vending.purchase', 'transaction', transaction_id, payload.request_id,
+                  {'registry_id': device['registry_id'], 'product_id': payload.product_id,
+                   'member_id': member['member_id'], 'amount_minor': amount})
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
+    return {'transaction_id': transaction_id, 'status': 'succeeded', 'amount_minor': amount,
+            'dispense_confirmation_required': True, 'idempotent_replay': False}
+
+
+@app.post('/api/v2/vending/transactions/{transaction_id}/dispense-result')
+def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB,
+                    x_device_key: Annotated[str | None, Header()] = None):
+    device = authenticated_device(connection, x_device_key)
+    if device['device_type'] != 'vending':
+        raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
+    with transaction(connection):
+        row = connection.execute("SELECT transaction_id,request_id,hardware_id,member_id,transaction_type,amount_minor,status,metadata_json FROM transactions WHERE transaction_id=?",
+            (transaction_id,)).fetchone()
+        if not row or row['transaction_type'] != 'purchase' or row['hardware_id'] != device['hardware_id']:
+            raise HTTPException(status_code=404, detail={'code': 'PURCHASE_NOT_FOUND'})
+        meta = json.loads(row['metadata_json'] or '{}')
+        if meta.get('dispense_status') in ('succeeded', 'failed'):
+            return {'transaction_id': transaction_id, 'status': row['status'],
+                    'dispense_status': meta['dispense_status'], 'idempotent_replay': True}
+        if payload.succeeded:
+            meta['dispense_status'] = 'succeeded'
+            connection.execute("UPDATE transactions SET metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
+                (json.dumps(meta), transaction_id))
+            audit(connection, 'vending.dispense.succeeded', 'transaction', transaction_id, row['request_id'])
+            return {'transaction_id': transaction_id, 'status': row['status'], 'dispense_status': 'succeeded',
+                    'idempotent_replay': False}
+        account = connection.execute("SELECT account_id FROM accounts WHERE member_id=? AND account_type='member'",
+            (row['member_id'],)).fetchone()
+        if not account:
+            raise HTTPException(status_code=500, detail={'code': 'MEMBER_ACCOUNT_MISSING'})
+        system_id = ensure_system_account(connection)
+        connection.execute("UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?",
+            (row['amount_minor'], account['account_id']))
+        connection.execute("UPDATE product_slots SET stock=stock+1,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?",
+            (meta['registry_id'], meta['product_id']))
+        connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
+            (new_id('led'), transaction_id, account['account_id'], row['amount_minor']))
+        connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
+            (new_id('led'), transaction_id, system_id, row['amount_minor']))
+        meta['dispense_status'] = 'failed'
+        meta['dispense_failure_reason'] = payload.reason or 'dispense_failed'
+        connection.execute("UPDATE transactions SET status='reversed',metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
+            (json.dumps(meta), transaction_id))
+        audit(connection, 'vending.dispense.refund', 'transaction', transaction_id, row['request_id'],
+              {'reason': meta['dispense_failure_reason']})
+    return {'transaction_id': transaction_id, 'status': 'reversed', 'dispense_status': 'failed',
+            'refunded_amount_minor': row['amount_minor'], 'idempotent_replay': False}
+
 
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
 def list_audit(connection: DB, limit: int = 100):
