@@ -10,6 +10,7 @@
 | Area / file | Observed state | Required action |
 |---|---|---|
 | `app/device/management.py` | `DeviceManagementService` still queries `device_registry`; list/get select `hardware_id` twice and use duplicate hardware-ID predicates. | Reconcile service with canonical schema and define the device-management source of truth; remove obsolete registry dependency if schema has retired it. |
+| `app/core/db.py` + `app/migrations/016_hardware_registry.sql` | The migration runner explicitly skips migration 016 when `device_registry` is absent, and migration 013 comments that device-registry lifecycle columns/indexes were removed. The management service nevertheless queries the retired table. | This is a confirmed cross-layer contract break. Decide and implement one canonical source for registered devices/device-key hashes and update route/service/UI/tests together; do not simply recreate the old table to silence failures. |
 | `app/core/db.py` | Migration runner contains special-case migration logic for vending promotion hardening. | Audit all migrations for repeatability, clean-install behavior, foreign-key safety, and preservation of transaction/ledger rows. Do not treat one special-case migration as proof the migration chain is safe. |
 | `app/device/protocol.py` | Device event dataclass now uses `hardware_id`. | Verify whether device-event storage/table is part of the canonical architecture; remove dead code or align schema and tests explicitly. |
 | `app/payment/service.py` | Payment path accepts `hardware_id`, but persisted payment transaction writes `NULL` for that field in the inspected insert. NFC payment requires a PIN; idempotency conflicts are checked. | Decide whether transaction-to-hardware attribution is required. Preserve PIN enforcement, idempotency, and atomic ledger updates while aligning schema and tests. Never trust a client-supplied identity as authentication. |
@@ -20,6 +21,10 @@
 | `esp32/vending/README.md` | Documentation still uses legacy “Device ID” terminology and describes a `device_id` machine registration field, while source uses `hardware_id`. | Rewrite the documentation to the approved identity/key model after the API contract is finalized. |
 | `docs/API-MEMBER-BALANCE.md` | The inspected branch version documents a request body with only `card_uid`, and device-key authentication via header. | Keep aligned with actual route behavior and verify that identity is derived from authenticated key, not client payload. |
 | `docs/REBUILD-READINESS.md` | Existing rebuild gate identifies schema drift, old identity assumptions, device-event assumptions, PIN-contract drift, and firmware-contract drift. | Use its exit gates as acceptance criteria; update it only when evidence changes. |
+
+## Migration inventory snapshot
+
+The branch currently contains ordered SQL migrations `001` through `023` with gaps at `005`; migration files present are `001`, `002`, `003`, `004`, `006`–`023`. The database runner has special-case Python logic for migrations `011`, `013`, `014`, `016`, and `017`, so reviewing SQL files alone is insufficient. In particular, `016_hardware_registry.sql` assumes `device_registry` exists, while `app/core/db.py` deliberately skips it when the table is absent. The current `DeviceManagementService` still depends on that table.
 
 ## Identity and authentication rules
 
