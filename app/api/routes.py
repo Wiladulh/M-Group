@@ -698,7 +698,7 @@ def build_router(db, app_settings=None):
         digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             row = c.execute(
-                """SELECT hardware_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                """SELECT registry_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
                    FROM device_registry WHERE hardware_id=?""",
                 (hardware_id,),
             ).fetchone()
@@ -708,7 +708,7 @@ def build_router(db, app_settings=None):
             matched_by_key = False
             if row is None:
                 row = c.execute(
-                    """SELECT hardware_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                    """SELECT registry_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
                        FROM device_registry WHERE auth_key_hash=? ORDER BY created_at DESC LIMIT 1""",
                     (digest,),
                 ).fetchone()
@@ -729,8 +729,8 @@ def build_router(db, app_settings=None):
                 if matched_by_key:
                     collision = c.execute(
                         """SELECT hardware_id FROM device_registry
-                           WHERE (hardware_id=? OR hardware_id=?) AND hardware_id<>?""",
-                        (hardware_id,hardware_id,row["hardware_id"]),
+                           WHERE hardware_id=? AND registry_id<>?""",
+                        (hardware_id,row["registry_id"]),
                     ).fetchone()
                     if collision:
                         raise HTTPException(409,"hardware_identity_already_registered")
@@ -759,7 +759,7 @@ def build_router(db, app_settings=None):
                     (hardware_id,"registration",q.model_dump_json(exclude={"device_key"})),
                 )
                 c.commit()
-                return {"hardware_id":registered_hardware_id,"hardware_id":hardware_id,"device_type":device_type,
+                return {"registry_id":row["registry_id"],"hardware_id":hardware_id,"device_type":device_type,
                         "mac_address":mac_address,"display_name":hardware_id if matched_by_key else row["display_name"],
                         "status":"active" if matched_by_key else row["status"],"registered":True}
 
@@ -789,10 +789,10 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             c.execute(
                 """INSERT INTO device_registry
-                   (hardware_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
+                   (registry_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (hardware_id,device_type,digest,key[-6:]),
+                   VALUES(?,?,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (uuid4().hex,hardware_id,device_type,digest,key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
@@ -826,9 +826,9 @@ def build_router(db, app_settings=None):
                 raise HTTPException(409, "legacy_hardware_id_already_exists_use_key_rotation_workflow")
             c.execute(
                 """INSERT INTO device_registry
-                   (hardware_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (legacy_id, device_type, digest, key[-6:]),
+                   (registry_id,hardware_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
+                   VALUES(?,?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (uuid4().hex, legacy_id, device_type, digest, key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
