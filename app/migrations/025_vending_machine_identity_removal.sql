@@ -1,0 +1,2 @@
+-- Remove the obsolete device-to-machine identity link.
+-- machine_id remains the business identity of a vending machine.
