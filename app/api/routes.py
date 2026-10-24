@@ -1320,22 +1320,11 @@ def build_router(db, app_settings=None):
         return secrets.compare_digest(got,digest)
 
     @r.post("/cashier/deposits")
-    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None),x_m_group_device_id: str | None = Header(default=None)):
-        # Explicit ID is preferred; otherwise resolve the device from its provisioned key.
-        device_id = x_m_group_device_id
-        if not device_id:
-            if not x_m_group_device_key:
-                raise HTTPException(401, "device_auth_required")
-            digest = hashlib.sha256(x_m_group_device_key.encode("utf-8")).hexdigest()
-            with db.connect() as c:
-                rows = c.execute("SELECT device_id, status, auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
-            matches = [row for row in rows if secrets.compare_digest(digest, row["auth_key_hash"] or "")]
-            if not matches:
-                raise HTTPException(403, "invalid_device_key")
-            if matches[0]["status"] != "active":
-                raise HTTPException(403, "device_not_active")
-            device_id = matches[0]["device_id"]
-        require_device(device_id,x_m_group_device_key)
+    def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
+        device = require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
+        device_id = device["device_id"]  # internal legacy FK; never supplied by firmware
+        key_scope = hashlib.sha256((x_m_group_device_key or "").encode("utf-8")).hexdigest()[:16]
+        q.idempotency_key = "cashier:" + key_scope + ":" + q.idempotency_key
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1423,7 +1412,11 @@ def build_router(db, app_settings=None):
             require_device_key(x_m_group_device_key, {"esp32-cashier", "cashier"})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
-            result=payments.pay(**q.model_dump(), require_pin=True)
+            key_scope = hashlib.sha256((x_m_group_device_key or "").encode("utf-8")).hexdigest()[:16]
+            payload = q.model_dump()
+            if payload.get("idempotency_key"):
+                payload["idempotency_key"] = "cashier:" + key_scope + ":" + payload["idempotency_key"]
+            result=payments.pay(**payload, require_pin=True)
             with db.connect() as c:
                 c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
                 c.commit()
