@@ -90,7 +90,7 @@ bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
   String mac=WiFi.macAddress(); String compact=mac; compact.replace(":",""); compact.toUpperCase();
   compact.toLowerCase();
-  HARDWARE_ID="Cashier_"+compact;
+  HARDWARE_ID="cashier_"+compact;
   String body="{\"device_type\":\"esp32-cashier\",\"hardware_id\":\""+HARDWARE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=postJson("/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
