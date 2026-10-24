@@ -171,6 +171,17 @@ class Database:
                     continue
 
                 if path.name == "016_hardware_registry.sql":
+                    # The rebuilt schema no longer creates device_registry.
+                    # Skip this legacy device-registry migration when that table
+                    # is absent; never recreate removed device identity state.
+                    tables = {
+                        row[0] for row in c.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        )
+                    }
+                    if "device_registry" not in tables:
+                        continue
+
                     device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
                     additions = {
                         "hardware_id": "TEXT",
@@ -230,17 +241,9 @@ class Database:
                         "ON identity_members(status)"
                     )
 
-                    device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
-                    if "deleted_at" not in device_columns:
-                        c.execute("ALTER TABLE device_registry ADD COLUMN deleted_at TEXT")
-                    c.execute(
-                        "CREATE INDEX IF NOT EXISTS ix_device_status "
-                        "ON device_registry(status)"
-                    )
-                    c.execute(
-                        "CREATE INDEX IF NOT EXISTS ix_device_deleted "
-                        "ON device_registry(deleted_at)"
-                    )
+                    # Device registry lifecycle columns/indexes were removed
+                    # from the rebuilt schema. Keep this migration focused on
+                    # member/NFC/promotion tables only.
 
                 if path.name == "011_nfc_payment_hardening.sql":
                     marker = c.execute(
