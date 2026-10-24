@@ -34,7 +34,7 @@ Admin = Annotated[None, Depends(require_admin)]
 
 class MemberCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
-    pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
+    pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 class TopUpRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
@@ -49,7 +49,7 @@ class CardEnroll(BaseModel):
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}')
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
 
 
@@ -379,7 +379,7 @@ class CardEnroll(BaseModel):
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}')
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
 
 
@@ -709,7 +709,7 @@ class CardEnroll(BaseModel):
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}')
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
 
 
@@ -1039,7 +1039,7 @@ class CardEnroll(BaseModel):
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}')
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
 
 
