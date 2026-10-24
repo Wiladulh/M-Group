@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M-Group — Membership & Vending Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body>
+<div id="loginScreen" class="login-screen">
+  <form id="loginForm" class="login-card">
+    <div class="login-logo">M</div>
+    <div class="login-brand">M-Group</div>
+    <h1>Masuk ke Management</h1>
+    <p class="login-muted">Gunakan akun admin untuk melanjutkan.</p>
+    <label>Username<input id="loginUsername" name="username" autocomplete="username" required></label>
+    <label>Password<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="login-submit">Masuk</button>
+    <div id="loginError" class="login-error" role="status"></div>
+  </form>
+</div>
+<div class="layout" id="appShell" hidden>
+  <aside class="sidebar">
+    <div class="brand-wrap">
+      <div class="logo">M</div>
+      <div><div class="brand">M-Group</div><div class="side-sub">Management Platform</div></div>
+    </div>
+    <div class="navlabel">OVERVIEW</div>
+    <button class="tab-btn active" data-tab="dashboard"><span>▦</span> Ringkasan</button>
+    <div class="navlabel">OPERASIONAL</div>
+    <button class="tab-btn" data-tab="member"><span>♙</span> Anggota</button>
+    <button class="tab-btn" data-tab="financial"><span>◈</span> Keuangan</button>
+    <button class="tab-btn" data-tab="payment"><span>⇄</span> Pembayaran</button>
+    <button class="tab-btn" data-tab="vending"><span>▤</span> Vending & Inventory</button>
+    <button class="tab-btn" data-tab="cashier"><span>⇄</span> Cashier</button>
+    <button class="tab-btn" data-tab="devices"><span>⌘</span> Perangkat</button>
+    <button class="tab-btn" data-tab="audit"><span>☷</span> Audit & Backup</button>
+    <div class="navlabel">ADMIN</div>
+    <button class="tab-btn" data-tab="settings"><span>⚙</span> Pengaturan</button>
+    <div class="sidefoot"><strong>M-Group Server</strong><br><span>Data operasional berasal dari server. Demo data tidak digunakan sebagai saldo resmi.</span></div>
+  </aside>
+  <div class="main-shell">
+    <header class="topbar">
+      <div><div class="crumb">M-GROUP / MANAGEMENT</div><div class="top-title">Dashboard Management M-Group</div></div>
+      <div class="top-actions"><span id="activeUsername" class="active-username"></span><button id="logoutButton" type="button" class="logout-button">Keluar</button><div id="status" class="status">Memuat...</div></div>
+    </header>
+    <main class="content">
+      <div id="page-dashboard"></div><div id="page-member"></div><div id="page-financial"></div><div id="page-payment"></div><div id="page-vending"></div><div id="page-cashier"></div><div id="page-devices"></div><div id="page-audit"></div><div id="page-settings"></div>
+    </main>
+  </div>
+</div>
+<script>
+(async()=>{
+ const pages=["dashboard","member","financial","payment","vending","cashier","devices","audit","settings"];
+ await Promise.all(pages.map(async name=>{
+   const r=await fetch('/pages/'+name+'.html');
+   if(!r.ok)throw new Error('Gagal memuat halaman '+name);
+   document.getElementById('page-'+name).outerHTML=await r.text();
+ }));
+ const s=document.createElement('script');s.src='/assets/js/app.js';s.onerror=()=>{document.getElementById('status').textContent='● Gagal memuat JavaScript WebUI';};document.body.appendChild(s);
+})().catch(e=>{document.getElementById('status').textContent='● WebUI gagal dimuat';console.error(e)});
+window.addEventListener('error',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan JavaScript WebUI';console.error('M-Group WebUI error:',e.message,e.filename,e.lineno)});
+window.addEventListener('unhandledrejection',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan proses WebUI';console.error('M-Group WebUI rejected promise:',e.reason)});
+</script>
+</body></html>
