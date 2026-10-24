@@ -94,7 +94,7 @@ class PaymentService:
                         "final_amount": row["final_amount"],
                         "method": row["method"],
                         "provider": row["provider"],
-                        "hardware_id": None,
+                        "hardware_id": row["hardware_id"],
                         "promo_id": row["promo_id"],
                         "balance": row["balance_after"],
                     }
@@ -133,7 +133,7 @@ class PaymentService:
                     method,
                     provider,
                     idempotency_key,
-                    None,
+                    hardware_id,
                     original_amount,
                     discount_amount,
                     amount,
