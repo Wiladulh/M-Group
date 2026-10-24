@@ -14,7 +14,7 @@ class VendingService:
 
     def machines(self):
         with self.db.connect() as c:
-            return [dict(r) for r in c.execute(
+            return [{**dict(r),"hardware_id":r["device_id"]} for r in c.execute(
                 "SELECT machine_id,name,location,device_id,status,created_at,updated_at "
                 "FROM vending_machines ORDER BY name,machine_id"
             ).fetchall()]
@@ -68,7 +68,9 @@ class VendingService:
                 "FROM vending_machines WHERE machine_id=?",(machine_id,)
             ).fetchone()
         if not r: raise ValueError("machine_not_found")
-        return dict(r)
+        result=dict(r)
+        result["hardware_id"]=result.get("device_id")
+        return result
 
     def slots(self,machine_id):
         self.machine(machine_id)
