@@ -84,3 +84,10 @@ This document is a design and acceptance checklist, not a migration script. Do n
 - No deletion of transaction history to simplify the schema.
 - No use of MAC address, serial number, or a client-generated identifier as an authentication substitute.
 - No merge to `main` until all required gates are evidenced as passing.
+
+
+## Implementation progress note (2026-10-24)
+
+- Device registration must not accept or validate `hardware_id` or `mac_address`; activation is based on the pre-provisioned server-issued key only.
+- The active implementation still contains legacy registry identifiers and vending associations. Those remain implementation work, not accepted exceptions.
+- No runtime tests or firmware builds are run during the code-change phase, per project instruction.
