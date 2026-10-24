@@ -128,8 +128,6 @@ class DeviceHeartbeatRequest(BaseModel):
 
 class DeviceRegisterRequest(BaseModel):
     device_type: str
-    hardware_id: str
-    mac_address: str
     device_key: str
 
 class DeviceProvisionRequest(BaseModel):
@@ -240,7 +238,7 @@ def build_router(db, app_settings=None):
         digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             rows = c.execute(
-                "SELECT device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
+                "SELECT device_id,device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash=?",
                 (digest,),
             ).fetchall()
         if len(rows) != 1:
@@ -669,102 +667,67 @@ def build_router(db, app_settings=None):
 
     @r.post("/devices/register")
     def device_register(q: DeviceRegisterRequest):
+        """Activate a server-provisioned device using its one-time key only."""
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
-        hardware_id = q.hardware_id.strip().lower()
-        mac_address = q.mac_address.strip().upper()
         device_key = q.device_key.strip()
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
-            raise HTTPException(400,"invalid_device_type")
-        if not hardware_id:
-            raise HTTPException(400,"hardware_id_required")
-        if not mac_address:
-            raise HTTPException(400,"mac_address_required")
+            raise HTTPException(400, "invalid_device_type")
         if not device_key:
-            raise HTTPException(400,"device_key_required")
-        if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", mac_address):
-            raise HTTPException(400,"invalid_mac_address")
-        mac_hex = mac_address.replace(":", "").lower()
-        prefix = "cashier" if device_type == "esp32-cashier" else "vending"
-        # Normalize the hardware ID and MAC-derived identity consistently.
-        # Use the complete station MAC to avoid collisions between devices that
-        # share only the last three bytes.
-        expected_hardware_id = f"{prefix}_{mac_hex}"
-        if hardware_id != expected_hardware_id:
-            raise HTTPException(400,"hardware_id_mac_mismatch")
-
+            raise HTTPException(400, "device_key_required")
         digest = hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
             row = c.execute(
-                """SELECT device_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
-                   FROM device_registry WHERE hardware_id=?""",
-                (hardware_id,),
-            ).fetchone()
-            # A newly provisioned device has an internal server ID and key but
-            # does not know its hardware ID until its first authenticated boot.
-            # Resolve that first registration by the one-time provisioned key.
-            matched_by_key = False
-            if row is None:
-                row = c.execute(
-                    """SELECT device_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
-                       FROM device_registry WHERE auth_key_hash=? ORDER BY created_at DESC LIMIT 1""",
-                    (digest,),
-                ).fetchone()
-                matched_by_key = row is not None
-            if row:
-                if not row["auth_key_hash"]:
-                    raise HTTPException(403,"device_not_provisioned")
-                if not secrets.compare_digest(digest,row["auth_key_hash"]):
-                    raise HTTPException(403,"invalid_device_key")
-                if row["status"] == "disabled":
-                    raise HTTPException(403,"device_disabled")
-                stored_type = "esp32-s3-vending" if row["device_type"] == "esp32-vending" else row["device_type"]
-                if stored_type != device_type:
-                    raise HTTPException(403,"device_type_mismatch")
-                if matched_by_key and (row["hardware_id"] or row["mac_address"]):
-                    if row["hardware_id"] != hardware_id or row["mac_address"] != mac_address:
-                        raise HTTPException(409,"device_key_already_bound")
-                if matched_by_key:
-                    collision = c.execute(
-                        """SELECT device_id FROM device_registry
-                           WHERE (device_id=? OR hardware_id=?) AND device_id<>?""",
-                        (hardware_id,hardware_id,row["device_id"]),
-                    ).fetchone()
-                    if collision:
-                        raise HTTPException(409,"device_identity_already_registered")
-                    c.execute(
-                        """UPDATE device_registry
-                           SET hardware_id=?,device_type=?,mac_address=?,display_name=?,
-                               status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                           WHERE device_id=?""",
-                        (hardware_id,device_type,mac_address,hardware_id,row["device_id"]),
-                    )
-                else:
-                    if row["mac_address"] and row["mac_address"] != mac_address:
-                        raise HTTPException(409,"device_mac_mismatch")
-                    if row["device_type"] != device_type:
-                        raise HTTPException(409,"device_type_mismatch")
-                    c.execute(
-                        """UPDATE device_registry
-                           SET device_type=?,mac_address=?,last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                           WHERE device_id=?""",
-                        (device_type,mac_address,row["device_id"]),
-                    )
-                # Keep the database primary key stable; hardware_id is the physical identity.
-                registered_device_id = row["device_id"]
-                c.execute(
-                    "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
-                    (registered_device_id,"registration",q.model_dump_json(exclude={"device_key"})),
-                )
-                c.commit()
-                return {"device_id":registered_device_id,"hardware_id":hardware_id,"device_type":device_type,
-                        "mac_address":mac_address,"display_name":hardware_id if matched_by_key else row["display_name"],
-                        "status":"active" if matched_by_key else row["status"],"registered":True}
+                """SELECT device_id,device_type,status,auth_key_hash
+                   FROM device_registry WHERE auth_key_hash=?""",
+                (digest,),
+            ).fetchall()
+            if len(row) != 1:
+                raise HTTPException(403, "device_not_provisioned")
+            device = row[0]
+            stored_type = "esp32-s3-vending" if device["device_type"] == "esp32-vending" else device["device_type"]
+            if stored_type != device_type:
+                raise HTTPException(403, "device_type_mismatch")
+            if device["status"] == "disabled":
+                raise HTTPException(403, "device_disabled")
+            if not secrets.compare_digest(digest, device["auth_key_hash"] or ""):
+                raise HTTPException(403, "invalid_device_key")
+            c.execute(
+                """UPDATE device_registry
+                   SET status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                   WHERE device_id=?""",
+                (device["device_id"],),
+            )
+            c.execute(
+                "INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
+                (device["device_id"], "registration", '{"device_type":"' + device_type + '"}'),
+            )
+            c.commit()
+        return {"device_type": device_type, "status": "active", "registered": True}
 
-            # Registration must consume a key generated by the authenticated server UI.
-            # Do not let an arbitrary key create a device record.
-            raise HTTPException(403,"device_not_provisioned")
+    @r.post("/devices/heartbeat")
+    def device_heartbeat_key_only(q: DeviceHeartbeatRequest,
+                                  x_m_group_device_key: str | None = Header(default=None)):
+        """Key-authenticated heartbeat; device identity is resolved server-side."""
+        device = require_device_key(x_m_group_device_key, DeviceManagementService.ALLOWED_TYPES)
+        device_type = q.device_type.strip().lower()
+        if device_type == "esp32-vending":
+            device_type = "esp32-s3-vending"
+        if device_type not in DeviceManagementService.ALLOWED_TYPES:
+            raise HTTPException(400, "invalid_device_type")
+        if q.status != "active":
+            raise HTTPException(400, "invalid_heartbeat_status")
+        stored_type = "esp32-s3-vending" if device["device_type"] == "esp32-vending" else device["device_type"]
+        if stored_type != device_type:
+            raise HTTPException(409, "device_type_mismatch")
+        with db.connect() as c:
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE device_id=?",
+                      (device["device_id"],))
+            c.execute("INSERT INTO device_events(device_id,event_type,payload) VALUES(?,?,?)",
+                      (device["device_id"], "heartbeat", q.model_copy(update={"device_type": device_type}).model_dump_json()))
+            c.commit()
+        return {"device_type": device_type, "status": "active"}
 
     @r.delete("/devices/{device_id}")
     def device_delete(request: Request, device_id):
