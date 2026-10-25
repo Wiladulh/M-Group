@@ -16,7 +16,7 @@ def _client_with_member(tmp_path):
     client = TestClient(main.create_app())
     with client.app.state.db.connect() as c:
         c.execute(
-            "INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
+            "INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
             ("cashier-01", "esp32-cashier", "active", hashlib.sha256(b"cash-secret").hexdigest()),
         )
         c.execute("INSERT INTO identity_members(member_id,name,status) VALUES('ID-A001','Test Member','active')")
@@ -46,7 +46,7 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
         try:
             response = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"hardware_id": "cashier-01", "card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "cash-secret"},
             )
             assert response.status_code == 200
@@ -58,7 +58,7 @@ def test_device_member_balance_is_read_only_and_uses_official_ledger():
             }
             duplicate = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"hardware_id": "cashier-01", "card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "cash-secret"},
             )
             assert duplicate.status_code == 429
@@ -75,12 +75,12 @@ def test_device_member_balance_requires_valid_device_authentication():
         try:
             response = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"hardware_id": "cashier-01", "card_uid": "04A1B2C3"},
             )
             assert response.status_code == 401
             bad_key = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"hardware_id": "cashier-01", "card_uid": "04A1B2C3"},
                 headers={"X-M-Group-Device-Key": "wrong-key"},
             )
             assert bad_key.status_code == 403
@@ -95,7 +95,7 @@ def test_device_member_balance_rejects_unknown_or_revoked_cards():
             headers = {"X-M-Group-Device-Key": "cash-secret"}
             unknown = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "NO-SUCH-CARD"},
+                json={"hardware_id": "cashier-01", "card_uid": "NO-SUCH-CARD"},
                 headers=headers,
             )
             assert unknown.status_code == 404
@@ -104,7 +104,7 @@ def test_device_member_balance_rejects_unknown_or_revoked_cards():
                 c.commit()
             revoked = client.post(
                 "/api/v1/devices/member-balance",
-                json={"device_id": "cashier-01", "card_uid": "04A1B2C3"},
+                json={"hardware_id": "cashier-01", "card_uid": "04A1B2C3"},
                 headers=headers,
             )
             assert revoked.status_code == 404
@@ -148,7 +148,7 @@ def test_device_provisioning_validates_type_and_returns_one_time_key():
             assert len(key) >= 32
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT auth_key_hash,auth_key_hint FROM device_registry WHERE device_id='vending-02'"
+                    "SELECT auth_key_hash,auth_key_hint FROM device_registry WHERE hardware_id='vending-02'"
                 ).fetchone()
                 assert row["auth_key_hash"] != key
                 assert row["auth_key_hint"] == key[-6:]
