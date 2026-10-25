@@ -29,7 +29,7 @@ def test_cashier_device_registration_and_heartbeat_gate():
             assert provision.status_code == 200
             data = provision.json()
             device_key = data["device_key"]
-            assert data["device_id"] == "cashier-01"
+            assert data["hardware_id"] == "cashier-01"
             assert data["device_type"] == "esp32-cashier"
 
             invalid_key = client.post(
@@ -46,16 +46,16 @@ def test_cashier_device_registration_and_heartbeat_gate():
             )
             assert heartbeat.status_code == 200
             hb = heartbeat.json()
-            assert hb["device_id"] == "cashier-01"
+            assert hb["hardware_id"] == "cashier-01"
             assert hb["device_type"] == "esp32-cashier"
 
             with Database(db_path).connect() as c:
                 row = c.execute(
-                    "SELECT device_id, device_type, status FROM device_registry WHERE device_id=?",
+                    "SELECT hardware_id, device_type, status FROM device_registry WHERE hardware_id=?",
                     ("cashier-01",),
                 ).fetchone()
                 assert row is not None
-                assert row["device_id"] == "cashier-01"
+                assert row["hardware_id"] == "cashier-01"
                 assert row["device_type"] == "esp32-cashier"
                 assert row["status"] == "active"
         finally:
