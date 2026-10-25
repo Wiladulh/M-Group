@@ -45,7 +45,7 @@ def test_device_heartbeat_and_vending_product_sync():
 
             with client.app.state.db.connect() as c:
                 c.execute(
-                    "INSERT INTO vending_machines(machine_id,name,status,device_id) "
+                    "INSERT INTO vending_machines(machine_id,name,status,hardware_id) "
                     "VALUES('vm-01','Vending 01','active','vm-01')"
                 )
                 c.commit()
@@ -71,7 +71,7 @@ def test_device_heartbeat_and_vending_product_sync():
 
             dashboard = client.get("/api/v1/dashboard", headers=login_admin(client))
             assert dashboard.status_code == 200
-            devices = {x["device_id"]: x for x in dashboard.json()["devices"]}
+            devices = {x["hardware_id"]: x for x in dashboard.json()["devices"]}
             assert devices["cashier-01"]["status"] == "active"
             assert devices["vm-01"]["device_type"] == "esp32-s3-vending"
         finally:
