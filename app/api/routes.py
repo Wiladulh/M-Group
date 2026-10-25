@@ -1256,8 +1256,8 @@ def build_router(db, app_settings=None):
 
     @r.get("/cashier/nfc-registration")
     def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None)):
-        identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
-        fingerprint=identity["fingerprint"]
+        device_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
+        fingerprint=device_identity["fingerprint"]
         with db.connect() as c:
             row=c.execute(
                 """SELECT session_id,member_id,status,hardware_id FROM nfc_registration_sessions
@@ -1275,8 +1275,8 @@ def build_router(db, app_settings=None):
     @r.post("/cashier/nfc-registration/complete")
     def cashier_nfc_registration_complete(q:NfcRegistrationCompleteRequest,
                                            x_m_group_device_key: str | None = Header(default=None)):
-        identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
-        cashier_fingerprint=identity["fingerprint"]
+        device_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
+        cashier_fingerprint=device_identity["fingerprint"]
         if not q.pin.isdigit() or len(q.pin)!=4:
             raise HTTPException(400,"registration_pin_must_be_4_digits")
         card_uid=(q.card_uid or "").strip().upper()
