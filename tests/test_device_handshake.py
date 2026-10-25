@@ -21,8 +21,8 @@ def test_cashier_and_vending_identity_handshake():
                 headers=headers,
             )
             assert cashier_key.status_code == 200
-            cashier_device_id = cashier_key.json()["device_id"]
-            assert cashier_device_id.startswith("pending-")
+            cashier_hardware_id = cashier_key.json()["hardware_id"]
+            assert cashier_hardware_id.startswith("pending-")
 
             cashier = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-cashier",
@@ -36,7 +36,7 @@ def test_cashier_and_vending_identity_handshake():
             assert c["status"] == "active"
             assert c["device_type"] == "esp32-cashier"
             assert c["hardware_id"] == "cashier_aabbcc001001"
-            assert c["device_id"] == cashier_device_id
+            assert c["hardware_id"] == cashier_hardware_id
 
             vending_key = client.post(
                 "/api/v1/devices/provision",
@@ -44,8 +44,8 @@ def test_cashier_and_vending_identity_handshake():
                 headers=headers,
             )
             assert vending_key.status_code == 200
-            vending_device_id = vending_key.json()["device_id"]
-            assert vending_device_id.startswith("pending-")
+            vending_hardware_id = vending_key.json()["hardware_id"]
+            assert vending_hardware_id.startswith("pending-")
 
             vending = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-vending",
@@ -59,7 +59,7 @@ def test_cashier_and_vending_identity_handshake():
             assert v["status"] == "active"
             assert v["device_type"] == "esp32-s3-vending"
             assert v["hardware_id"] == "vending_aabbcc004801"
-            assert v["device_id"] == vending_device_id
+            assert v["hardware_id"] == vending_hardware_id
 
             bad = client.post("/api/v1/devices/handshake", json={
                 "device_type": "esp32-s3-vending",
