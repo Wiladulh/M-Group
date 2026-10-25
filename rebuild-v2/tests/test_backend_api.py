@@ -131,5 +131,27 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(next(x for x in members if x['member_id'] == member_id)['balance_minor'], 20000)
 
 
+    def test_product_name_cannot_be_whitespace(self):
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-blank-name-001', 'device_type': 'vending', 'display_name': 'Vending'})
+        self.assertEqual(device.status_code, 201, device.text)
+        registry_id = device.json()['registry_id']
+        response = self.client.put(f'/api/v2/vending/devices/{registry_id}/products/1',
+            headers=self.admin_headers(), json={'name': '   ', 'price_minor': 5000, 'stock': 1})
+        self.assertEqual(response.status_code, 422, response.text)
+        products = self.client.get(f'/api/v2/vending/devices/{registry_id}/products',
+            headers=self.admin_headers()).json()['items']
+        self.assertEqual(products[0]['name'], 'Produk 1')
+
+    def test_cashier_device_cannot_initiate_vending_purchase(self):
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-purchase-denied-001', 'device_type': 'cashier', 'display_name': 'Kasir'})
+        self.assertEqual(device.status_code, 201, device.text)
+        response = self.client.post('/api/v2/vending/purchases',
+            headers={'X-Device-Key': device.json()['device_key']},
+            json={'request_id': 'cashier-purchase-0001', 'card_uid': '04-CA-FE-01',
+                  'pin': '123456', 'product_id': 1})
+        self.assertEqual(response.status_code, 403, response.text)
+
 if __name__ == '__main__':
     unittest.main()
