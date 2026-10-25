@@ -40,7 +40,7 @@ def test_device_authentication_and_provisioning():
             assert type_change.status_code == 409
             with client.app.state.db.connect() as c:
                 row = c.execute(
-                    "SELECT status,device_type FROM device_registry WHERE device_id='cashier-01'"
+                    "SELECT status,device_type FROM device_registry WHERE hardware_id='cashier-01'"
                 ).fetchone()
                 assert row["status"] == "active"
                 assert row["device_type"] == "esp32-cashier"
@@ -59,9 +59,9 @@ def test_vending_requires_device_key():
         try:
             client=TestClient(main.create_app())
             with client.app.state.db.connect() as c:
-                c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
                           ("vm-01","esp32-s3-vending","active",hashlib.sha256(b"vm-secret").hexdigest()))
-                c.execute("INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES(?,?,?,?)",
+                c.execute("INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES(?,?,?,?)",
                           ("v1","Vending","active","vm-01"))
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES(?,?)",("m1","Member"))
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES(?,?,?)",("a1","m1","savings"))
@@ -80,7 +80,7 @@ def test_vending_requires_device_key():
         finally:
             main.get_settings=old
 
-def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
+def test_auto_provision_waits_for_registration_and_keeps_stable_hardware_id():
     with TemporaryDirectory() as d:
         old=main.get_settings
         main.get_settings=lambda: type("S",(),{"db_path":Path(d)/"m-group.db",})()
@@ -93,14 +93,14 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
             )
             assert provision.status_code == 200
             payload=provision.json()
-            assert payload["device_id"].startswith("pending-")
+            assert payload["hardware_id"].startswith("pending-")
             assert payload["status"] == "awaiting_device_registration"
             key=payload["device_key"]
 
             with client.app.state.db.connect() as c:
                 before=c.execute(
-                    "SELECT device_id,status FROM device_registry WHERE device_id=?",
-                    (payload["device_id"],),
+                    "SELECT hardware_id,status FROM device_registry WHERE hardware_id=?",
+                    (payload["hardware_id"],),
                 ).fetchone()
                 assert before["status"] == "awaiting_device_registration"
 
@@ -116,15 +116,15 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_device_id():
             assert registered.status_code == 200, registered.text
             body=registered.json()
             assert body["hardware_id"] == "cashier_aabbcc112233"
-            assert body["device_id"] == payload["device_id"]
+            assert body["hardware_id"] == payload["hardware_id"]
             assert body["status"] == "active"
 
             with client.app.state.db.connect() as c:
                 after=c.execute(
-                    "SELECT device_id,hardware_id,status FROM device_registry WHERE device_id=?",
-                    (payload["device_id"],),
+                    "SELECT hardware_id,hardware_id,status FROM device_registry WHERE hardware_id=?",
+                    (payload["hardware_id"],),
                 ).fetchone()
-                assert after["device_id"] == payload["device_id"]
+                assert after["hardware_id"] == payload["hardware_id"]
                 assert after["hardware_id"] == "cashier_aabbcc112233"
                 assert after["status"] == "active"
         finally:
