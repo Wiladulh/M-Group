@@ -26,8 +26,8 @@ def test_server_key_provisions_mac_derived_hardware_identity():
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT registry_id,hardware_id,auth_key_hash FROM device_registry WHERE registry_id=?"
-                ).fetchone()
+                    "SELECT registry_id,hardware_id,auth_key_hash FROM device_registry WHERE registry_id=?",
+                    (provisioned_id,)).fetchone()
                 assert row["registry_id"] == provisioned_id
                 assert row["hardware_id"] is None
 
