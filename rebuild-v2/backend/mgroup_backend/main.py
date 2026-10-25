@@ -222,12 +222,15 @@ def get_products(registry_id: str, connection: DB):
 def update_product(registry_id: str, product_id: int, payload: ProductUpdate, connection: DB):
     if product_id not in range(1, 6):
         raise HTTPException(status_code=422, detail={'code': 'INVALID_PRODUCT_SLOT'})
+    normalized_name = payload.name.strip()
+    if not normalized_name:
+        raise HTTPException(status_code=422, detail={'code': 'INVALID_PRODUCT_NAME'})
     with transaction(connection):
-        result = connection.execute('UPDATE product_slots SET name=?,price_minor=?,stock=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?', (payload.name.strip(), payload.price_minor, payload.stock, registry_id, product_id))
+        result = connection.execute('UPDATE product_slots SET name=?,price_minor=?,stock=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?', (normalized_name, payload.price_minor, payload.stock, registry_id, product_id))
         if result.rowcount != 1:
             raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
-        connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps(payload.model_dump())))
-    return {'registry_id': registry_id, 'product_id': product_id, **payload.model_dump(), 'nfc_promo_percent': 0, 'qris_promo_percent': 0}
+        connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps({**payload.model_dump(), 'name': normalized_name})))
+    return {'registry_id': registry_id, 'product_id': product_id, **payload.model_dump(), 'name': normalized_name, 'nfc_promo_percent': 0, 'qris_promo_percent': 0}
 
 @app.post('/api/v2/members/{member_id}/cards', status_code=201, dependencies=[Depends(require_admin)])
 def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
