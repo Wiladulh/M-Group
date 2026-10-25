@@ -93,15 +93,17 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_hardware_id():
             )
             assert provision.status_code == 200
             payload=provision.json()
-            assert payload["hardware_id"].startswith("pending-")
+            assert payload["registry_id"].startswith("pending-")
             assert payload["status"] == "awaiting_device_registration"
             key=payload["device_key"]
 
             with client.app.state.db.connect() as c:
                 before=c.execute(
-                    "SELECT hardware_id,status FROM device_registry WHERE hardware_id=?",
-                    (payload["hardware_id"],),
+                     "SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",
+                    (payload["registry_id"],),
                 ).fetchone()
+                assert before["registry_id"] == payload["registry_id"]
+                assert before["hardware_id"] is None
                 assert before["status"] == "awaiting_device_registration"
 
             registered=client.post(
@@ -116,15 +118,15 @@ def test_auto_provision_waits_for_registration_and_keeps_stable_hardware_id():
             assert registered.status_code == 200, registered.text
             body=registered.json()
             assert body["hardware_id"] == "cashier_aabbcc112233"
-            assert body["hardware_id"] == payload["hardware_id"]
+            assert body["registry_id"] == payload["registry_id"]
             assert body["status"] == "active"
 
             with client.app.state.db.connect() as c:
                 after=c.execute(
-                    "SELECT hardware_id,hardware_id,status FROM device_registry WHERE hardware_id=?",
-                    (payload["hardware_id"],),
+                     "SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",
+                    (payload["registry_id"],),
                 ).fetchone()
-                assert after["hardware_id"] == payload["hardware_id"]
+                assert after["registry_id"] == payload["registry_id"]
                 assert after["hardware_id"] == "cashier_aabbcc112233"
                 assert after["status"] == "active"
         finally:
