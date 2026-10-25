@@ -170,7 +170,7 @@ class PaymentService:
             "amount": amount,
             "method": method,
             "provider": provider,
-            "hardware_id": None,
+            "hardware_id": hardware_id,
             "promo_id": promo_id,
             "ledger_reference": ledger_reference,
             "balance_before": balance_before,
