@@ -5,7 +5,7 @@ import app.main as main
 
 
 from tests.auth_helpers import login_admin
-def test_server_key_provisions_mac_derived_device_identity():
+def test_server_key_provisions_mac_derived_hardware_identity():
     with TemporaryDirectory() as d:
         old = main.get_settings
         main.get_settings = lambda: type("S", (), {
@@ -20,15 +20,15 @@ def test_server_key_provisions_mac_derived_device_identity():
             )
             assert provision.status_code == 200
             payload = provision.json()
-            assert payload["device_id"].startswith("pending-")
-            provisioned_id = payload["device_id"]
+            assert payload["hardware_id"].startswith("pending-")
+            provisioned_id = payload["hardware_id"]
             key = payload["device_key"]
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT device_id,hardware_id,auth_key_hash FROM device_registry"
+                    "SELECT hardware_id,hardware_id,auth_key_hash FROM device_registry"
                 ).fetchone()
-                assert row["device_id"].startswith("pending-")
+                assert row["hardware_id"].startswith("pending-")
                 assert row["hardware_id"] is None
 
             registration = {
@@ -40,14 +40,14 @@ def test_server_key_provisions_mac_derived_device_identity():
             first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["device_id"] == provisioned_id
+            assert data["hardware_id"] == provisioned_id
             assert data["hardware_id"] == "cashier_aabbccddee01"
             assert data["status"] == "active"
             assert data["registered"] is True
 
             repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["device_id"] == provisioned_id
+            assert repeat.json()["hardware_id"] == provisioned_id
 
             wrong_key = {**registration, "device_key": "wrong-secret"}
             bad = client.post("/api/v1/devices/register", json=wrong_key)
@@ -68,7 +68,7 @@ def test_server_key_provisions_mac_derived_device_identity():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["device_id"] == provisioned_id)
+            item = next(x for x in listed.json()["devices"] if x["hardware_id"] == provisioned_id)
             assert item["hardware_id"] == "cashier_aabbccddee01"
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
