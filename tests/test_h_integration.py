@@ -53,7 +53,7 @@ def test_h_full_integration_one_by_one():
             session = client.post(
                 f"/api/v1/members/{member_id}/nfc-registration/start",
                 headers=admin,
-                json={"cashier_device_id": "cashier-h"},
+                json={"cashier_hardware_id": "cashier-h"},
             )
             assert session.status_code == 200
             session_id = session.json()["session_id"]
@@ -119,7 +119,7 @@ def test_h_full_integration_one_by_one():
                 "/api/v1/cashier/payments",
                 headers={"X-M-Group-Device-Key": cashier_key},
                 json={
-                    "device_id": "cashier-h",
+                    "hardware_id": "cashier-h",
                     "credential_id": credential_id,
                     "account_id": "acct-h",
                     "amount": 2000,
@@ -130,7 +130,7 @@ def test_h_full_integration_one_by_one():
                 },
             )
             assert cashier_payment.status_code == 200
-            assert cashier_payment.json()["device_id"] == "cashier-h"
+            assert cashier_payment.json()["hardware_id"] == "cashier-h"
 
             # H-07 Vending
             vending = client.post(
@@ -143,7 +143,7 @@ def test_h_full_integration_one_by_one():
 
             with client.app.state.db.connect() as c:
                 c.execute(
-                    "INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES(?,?,?,?)",
+                    "INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES(?,?,?,?)",
                     ("machine-h", "H Vending", "active", "vending-h"),
                 )
                 c.execute(
@@ -184,7 +184,7 @@ def test_h_full_integration_one_by_one():
             # H-08 Devices
             devices = client.get("/api/v1/devices", headers=admin)
             assert devices.status_code == 200
-            ids = {x["device_id"] for x in devices.json()["devices"]}
+            ids = {x["hardware_id"] for x in devices.json()["devices"]}
             assert {"cashier-h", "vending-h"} <= ids
 
             # H-09 WebUI
