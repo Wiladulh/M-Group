@@ -20,7 +20,7 @@ def test_cashier_deposit_is_atomic_and_idempotency_conflicts_are_rejected():
             device_key = "cashier-test-secret"
             with client.app.state.db.connect() as c:
                 c.execute(
-                    "INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
+                    "INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
                     ("cashier-test", "esp32-cashier", "active", hashlib.sha256(device_key.encode()).hexdigest()),
                 )
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('member-1','Test Member')")
