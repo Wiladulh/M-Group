@@ -20,15 +20,15 @@ def test_server_key_provisions_mac_derived_hardware_identity():
             )
             assert provision.status_code == 200
             payload = provision.json()
-            assert payload["hardware_id"].startswith("pending-")
-            provisioned_id = payload["hardware_id"]
+            assert payload["registry_id"].startswith("pending-")
+            provisioned_id = payload["registry_id"]
             key = payload["device_key"]
 
             with client.app.state.db.connect() as conn:
                 row = conn.execute(
-                    "SELECT hardware_id,hardware_id,auth_key_hash FROM device_registry"
+                    "SELECT registry_id,hardware_id,auth_key_hash FROM device_registry WHERE registry_id=?"
                 ).fetchone()
-                assert row["hardware_id"].startswith("pending-")
+                assert row["registry_id"] == provisioned_id
                 assert row["hardware_id"] is None
 
             registration = {
@@ -40,14 +40,14 @@ def test_server_key_provisions_mac_derived_hardware_identity():
             first = client.post("/api/v1/devices/register", json=registration)
             assert first.status_code == 200
             data = first.json()
-            assert data["hardware_id"] == provisioned_id
+            assert data["registry_id"] == provisioned_id
             assert data["hardware_id"] == "cashier_aabbccddee01"
             assert data["status"] == "active"
             assert data["registered"] is True
 
             repeat = client.post("/api/v1/devices/register", json=registration)
             assert repeat.status_code == 200
-            assert repeat.json()["hardware_id"] == provisioned_id
+            assert repeat.json()["registry_id"] == provisioned_id
 
             wrong_key = {**registration, "device_key": "wrong-secret"}
             bad = client.post("/api/v1/devices/register", json=wrong_key)
