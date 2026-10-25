@@ -107,7 +107,7 @@ def test_nfc_replacement_revokes_old_credential():
             start = client.post("/api/v1/members/NTR-00004/nfc-registration/start", headers=admin,
                                 json={"cashier_hardware_id": "cashier-test"})
             assert start.status_code == 200
-            first = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
+            first = client.post("/api/v1/cashier/nfc-registration/complete",
                                 headers={"X-M-Group-Device-Key": "cash-key"},
                                 json={"session_id": start.json()["session_id"], "card_uid": "04:AA:BB:CC:01", "pin": "1234"})
             assert first.status_code == 200
@@ -116,7 +116,7 @@ def test_nfc_replacement_revokes_old_credential():
             replacement = client.post("/api/v1/members/NTR-00004/nfc-replacement/start", headers=admin,
                                       json={"cashier_hardware_id": "cashier-test", "operator_id": "operator-1"})
             assert replacement.status_code == 200
-            second = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
+            second = client.post("/api/v1/cashier/nfc-registration/complete",
                                  headers={"X-M-Group-Device-Key": "cash-key"},
                                  json={"session_id": replacement.json()["session_id"], "card_uid": "04:AA:BB:CC:02", "pin": "1234"})
             assert second.status_code == 200
