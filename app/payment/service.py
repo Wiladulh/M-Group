@@ -24,7 +24,10 @@ class PaymentService:
         original_amount=None,
         discount_amount=0,
         promo_id=None,
+        device_authenticated_vending=False,
     ):
+        if not isinstance(device_authenticated_vending, bool):
+            raise ValueError("invalid_device_authenticated_vending_flag")
         if method not in {"NFC", "QRIS", "CASH"}:
             raise ValueError("unsupported_payment_method")
         if method == "NFC" and provider != "local":
@@ -56,7 +59,7 @@ class PaymentService:
             raise PermissionError("credential_account_mismatch")
         account_id = resolved_account_id
 
-        if method == "NFC":
+        if method == "NFC" and not device_authenticated_vending:
             if pin is None:
                 raise PermissionError("pin_required")
             if not self.identity.verify_credential_pin(credential_id, pin):
