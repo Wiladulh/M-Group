@@ -60,7 +60,7 @@ def test_server_key_provisions_mac_derived_hardware_identity():
             assert client.post("/api/v1/devices/register", json=malformed_mac).status_code == 400
 
             heartbeat = client.post(
-                f"/api/v1/devices/{provisioned_id}/heartbeat",
+                f"/api/v1/devices/cashier_aabbccddee01/heartbeat",
                 json={"device_type": "esp32-cashier"},
                 headers={"X-M-Group-Device-Key": key},
             )
