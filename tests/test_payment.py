@@ -2,6 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from app.core.db import Database
 from app.payment.service import PaymentService
+from app.identity.service import IdentityService
 
 def seed(db):
     with db.connect() as c:
@@ -10,6 +11,7 @@ def seed(db):
         c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('acct-1','member-1','savings')")
         c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('acct-1','credit',100000,'seed')")
         c.commit()
+    IdentityService(db).set_pin("member-1", "1234")
 
 def test_nfc_payment_idempotency():
     with TemporaryDirectory() as d:
@@ -133,9 +135,9 @@ def test_payment_idempotency_rejects_different_credential_for_same_account():
             )
             c.commit()
         p = PaymentService(db)
-        p.pay("cred-1", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+        p.pay("cred-1", "acct-1", 10000, method="NFC", pin="1234", idempotency_key="credential-conflict")
         try:
-            p.pay("cred-2", "acct-1", 10000, method="NFC", idempotency_key="credential-conflict")
+            p.pay("cred-2", "acct-1", 10000, method="NFC", pin="1234", idempotency_key="credential-conflict")
             assert False, "a different credential must not replay the prior payment"
         except ValueError as exc:
             assert str(exc) == "idempotency_key_conflict"
