@@ -24,7 +24,7 @@ def test_daily_audit_report_includes_last_second_of_day():
             with client.app.state.db.connect() as c:
                 c.execute(
                     """INSERT INTO cashier_deposits
-                       (transaction_id,device_id,credential_id,member_id,account_id,
+                       (transaction_id,hardware_id,credential_id,member_id,account_id,
                         amount,status,created_at,completed_at)
                        VALUES(?,?,?,?,?,?,?,?,?)""",
                     (
