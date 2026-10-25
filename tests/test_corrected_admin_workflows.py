@@ -46,7 +46,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
             with client.app.state.db.connect() as c:
                 row = c.execute(
                     "SELECT registry_id,hardware_id,display_name,auth_key_hash FROM device_registry WHERE registry_id=?"
-                ).fetchone()
+                , (registry_id,)).fetchone()
                 assert row["registry_id"] == registry_id
                 assert row["hardware_id"] is None
                 assert row["display_name"] == "Lokasi belum ditentukan"
@@ -62,13 +62,13 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                 },
             )
             assert registered.status_code == 200
-            assert registered.json()["hardware_id"] == provisioned_id
+            assert registered.json()["registry_id"] == registry_id
             assert registered.json()["registered"] is True
             with client.app.state.db.connect() as c:
                 row = c.execute(
                     "SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?"
-                ).fetchone()
-                assert row["hardware_id"] == provisioned_id
+                , (registry_id,)).fetchone()
+                assert row["registry_id"] == registry_id
                 assert row["hardware_id"] == "cashier_aabbccddeeff"
                 assert row["status"] == "active"
                 assert c.execute("SELECT COUNT(*) FROM device_registry").fetchone()[0] == 1
