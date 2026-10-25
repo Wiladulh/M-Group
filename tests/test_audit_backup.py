@@ -17,10 +17,10 @@ def test_cashier_deposit_and_audit_are_separate_from_vending():
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO identity_credentials(credential_id,member_id,credential_type,status,enabled) VALUES('cred1','m1','nfc','active',1)")
-                c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
-                c.execute("INSERT INTO vending_machines(machine_id,name,status,device_id) VALUES('v1','V1','active','vend-01')")
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
+                c.execute("INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES('v1','V1','active','vend-01')")
                 c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock) VALUES('p1','v1','P1',5000,1)")
-                c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('vend-01','esp32-s3-vending','active',?)",(hashlib.sha256(b'vend-key').hexdigest(),))
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('vend-01','esp32-s3-vending','active',?)",(hashlib.sha256(b'vend-key').hexdigest(),))
                 c.commit()
             assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers=login_admin(client)).status_code==200
             dep=client.post("/api/v1/cashier/deposits",
@@ -48,7 +48,7 @@ def test_operator_pin_can_be_changed_by_admin():
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO identity_credentials(credential_id,member_id,credential_type,status,enabled) VALUES('cred1','m1','nfc','active',1)")
-                c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('cash-01','esp32-cashier','active',?)",(hashlib.sha256(b'cash-key').hexdigest(),))
                 c.commit()
             assert client.post("/api/v1/members/m1/pin",json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"},headers=login_admin(client)).status_code==200
             ok=client.post("/api/v1/cashier/deposits",json={"credential_id":"cred1","amount":1000,"operator_pin":"4321","member_pin":"1234","idempotency_key":"dep-2"},headers={"X-M-Group-Device-Key":"cash-key","X-M-Group-Device-Id":"cash-01"})
