@@ -735,8 +735,8 @@ def build_router(db, app_settings=None):
                         """UPDATE device_registry
                            SET hardware_id=?,device_type=?,mac_address=?,display_name=?,
                                status='active',last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                           WHERE hardware_id=?""",
-                        (hardware_id,device_type,mac_address,hardware_id,row["hardware_id"]),
+                           WHERE registry_id=?""",
+                         (hardware_id,device_type,mac_address,hardware_id,row["registry_id"]),
                     )
                 else:
                     if row["mac_address"] and row["mac_address"] != mac_address:
@@ -1370,7 +1370,7 @@ def build_router(db, app_settings=None):
     def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
         # Device-key fingerprint is the cashier identity; no device ID header or registry lookup is needed.
         cashier_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
-        hardware_id = cashier_identity["fingerprint"]
+        hardware_id = cashier_identity["hardware_id"]
         if not verify_operator_pin(q.operator_pin):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
@@ -1448,7 +1448,7 @@ def build_router(db, app_settings=None):
         except ValueError as e:
             code = str(e)
             raise HTTPException(409 if code == "idempotency_key_conflict" else 400, code)
-        return {"transaction_id":tid,"status":"completed","member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
+        return {"transaction_id":tid,"status":"completed","hardware_id":hardware_id,"member_id":account["member_id"],"account_id":account["account_id"],"amount":q.amount,"balance_before":before,"balance_after":after,"financial_transaction_id":fin["transaction_id"]}
 
     @r.post("/cashier/payments")
     def cashier_payment(q:PaymentRequest,x_m_group_device_key: str | None = Header(default=None)):
