@@ -100,12 +100,12 @@ def test_nfc_replacement_revokes_old_credential():
             admin = login_admin(client)
             with client.app.state.db.connect() as c:
                 c.execute("INSERT INTO identity_members(member_id,name) VALUES('NTR-00004','NFC Test')")
-                c.execute("INSERT INTO device_registry(device_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
                           ("cashier-test", "esp32-cashier", "active", hashlib.sha256(b"cash-key").hexdigest()))
                 c.commit()
 
             start = client.post("/api/v1/members/NTR-00004/nfc-registration/start", headers=admin,
-                                json={"cashier_device_id": "cashier-test"})
+                                json={"cashier_hardware_id": "cashier-test"})
             assert start.status_code == 200
             first = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
                                 headers={"X-M-Group-Device-Key": "cash-key"},
@@ -114,7 +114,7 @@ def test_nfc_replacement_revokes_old_credential():
             old_credential = first.json()["credential_id"]
 
             replacement = client.post("/api/v1/members/NTR-00004/nfc-replacement/start", headers=admin,
-                                      json={"cashier_device_id": "cashier-test", "operator_id": "operator-1"})
+                                      json={"cashier_hardware_id": "cashier-test", "operator_id": "operator-1"})
             assert replacement.status_code == 200
             second = client.post("/api/v1/cashier/cashier-test/nfc-registration/complete",
                                  headers={"X-M-Group-Device-Key": "cash-key"},
