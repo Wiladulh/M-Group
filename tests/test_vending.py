@@ -18,6 +18,8 @@ def test_vending_payment_inventory_and_idempotency():
         f=VendingService(db)
         f.payment.financial.credit("vm-acct",10000,idempotency_key="seed-credit")
         tx=f.begin("vm-01","water","vm-nfc","vm-acct","vend-1")
+        # Vending is authorized by the registered machine's device key; this flow
+        # does not have a keypad for the member NFC PIN. General NFC payments still require PIN.
         f.authorize(tx["transaction_id"])
         done=f.dispense(tx["transaction_id"],True)
         assert done["status"]=="completed"
