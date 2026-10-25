@@ -22,8 +22,8 @@ def test_vending_registry_isolates_machine_slots():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
-        f.register("a","A",device_id="dev-a")
-        f.register("b","B",device_id="dev-b")
+        f.register("a","A",hardware_id="dev-a")
+        f.register("b","B",hardware_id="dev-b")
         f.upsert_product("a","water-a","Water A",5000,3,slot=1,capacity=5)
         f.upsert_product("b","water-b","Water B",6000,4,slot=1,capacity=5)
         assert f.products("a")[0]["price"]==5000
@@ -35,8 +35,8 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
-        f.register("a","A",device_id="same")
-        try: f.register("b","B",device_id="same")
+        f.register("a","A",hardware_id="same")
+        try: f.register("b","B",hardware_id="same")
         except ValueError as e: assert str(e)=="device_already_registered"
         else: assert False
         try: f.upsert_product("a","p","P",1000,1,slot=6,capacity=1)
@@ -51,7 +51,7 @@ def test_vending_registry_api():
             client=TestClient(main.create_app())
             admin=login_admin(client)
             created=client.post("/api/v1/vending",headers=admin,json={
-                "machine_id":"api-v1","name":"API Vending","location":"Lobby","device_id":"api-esp32"
+                "machine_id":"api-v1","name":"API Vending","location":"Lobby","hardware_id":"api-esp32"
             })
             assert created.status_code==200
             assert created.json()["status"]=="active"
