@@ -32,7 +32,7 @@ def test_both_firmware_targets_use_existing_provisioning_contract():
     portal = (root / "esp32/common/MGroupConfigPortal.h").read_text()
     for source in (cashier, vending):
         assert '#include "MGroupConfigPortal.h"' in source
-        assert '"/api/v1/devices/"' in source and '"/heartbeat"' in source
+        assert '"/api/v1/devices/register"' in portal and '"/api/v1/devices/heartbeat"' in portal
         assert "X-M-Group-Device-Key" in source
     assert 'server_.on("/",HTTP_GET' in portal and 'server_.on("/save",HTTP_POST' in portal
     assert 'prefs_.putString("device_key",deviceKey)' in portal
