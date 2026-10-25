@@ -155,6 +155,13 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
         # NFC-payment and vending-promotion table rebuilds.
         db.migrate(migrations_dir=legacy_migrations)
         with db.connect() as c:
+            # Model a pre-canonical hardware registry in this legacy database.
+            c.execute("""CREATE TABLE device_registry (
+                hardware_id TEXT PRIMARY KEY, device_type TEXT NOT NULL,
+                status TEXT NOT NULL, last_seen TEXT, auth_key_hash TEXT,
+                mac_address TEXT, display_name TEXT, auth_key_hint TEXT,
+                created_at TEXT, updated_at TEXT, deleted_at TEXT
+            )""")
             c.execute(
                 "INSERT INTO identity_members(member_id,name) VALUES(?,?)",
                 ("member-legacy", "Legacy Member"),
@@ -196,9 +203,9 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
                  "cred-legacy", "acct-legacy", 1250, "completed"),
             )
             c.execute(
-                "INSERT INTO device_registry(device_id,device_type,status,last_seen) "
+                "INSERT INTO device_registry(hardware_id,device_type,status,last_seen) "
                 "VALUES(?,?,?,?)",
-                ("device-legacy", "cashier", "active", "2025-01-02 03:04:05"),
+                ("hardware-legacy", "cashier", "active", "2025-01-02 03:04:05"),
             )
             c.commit()
 
@@ -237,9 +244,9 @@ def test_legacy_database_upgrade_preserves_financial_and_vending_records():
             assert product[:] == (7, 1250)
             device = c.execute(
                 "SELECT device_type,status,last_seen,hardware_id FROM device_registry "
-                "WHERE device_id='device-legacy'"
+                "WHERE hardware_id='hardware-legacy'"
             ).fetchone()
-            assert device[:] == ("cashier", "active", "2025-01-02 03:04:05", "device-legacy")
+            assert device[:] == ("cashier", "active", "2025-01-02 03:04:05", "hardware-legacy")
 
         # A second upgrade must be idempotent and must not duplicate or drop rows.
         db.migrate()
@@ -258,7 +265,7 @@ def test_only_app_migrations_is_the_canonical_migration_source():
     migrations = root / "app" / "migrations"
     assert migrations.is_dir()
     assert (migrations / "001_initial.sql").is_file()
-    assert (migrations / "023_device_balance_lookup_limits.sql").is_file()
+    assert (migrations / "024_canonical_hardware_registry.sql").is_file()
     assert not (root / "database" / "migrations").exists()
     names = sorted(path.name for path in migrations.glob("*.sql"))
     assert names[0] == "001_initial.sql"
