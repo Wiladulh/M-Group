@@ -68,7 +68,7 @@ def test_server_key_provisions_mac_derived_hardware_identity():
 
             listed = client.get("/api/v1/devices", headers=headers)
             assert listed.status_code == 200
-            item = next(x for x in listed.json()["devices"] if x["hardware_id"] == provisioned_id)
+            item = next(x for x in listed.json()["devices"] if x["hardware_id"] == "cashier_aabbccddee01")
             assert item["hardware_id"] == "cashier_aabbccddee01"
             assert item["mac_address"] == "AA:BB:CC:DD:EE:01"
             assert item["status"] == "active"
