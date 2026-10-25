@@ -47,7 +47,7 @@ def test_cashier_replay_after_lost_response_is_idempotent():
             ).status_code == 200
 
             payload = {
-                "device_id": "cashier-01",
+                "hardware_id": "cashier-01",
                 "credential_id": "cred1",
                 "account_id": "a1",
                 "amount": 10000,
@@ -88,7 +88,7 @@ def test_cashier_firmware_keeps_ambiguous_payment_pending_offline():
     assert 'if(code<=0 || code>=500)' in source
     assert 'lcdShow("HASIL BELUM ADA","Ulangi PIN")' in source
     assert 'savePendingPayment(credential,amount,seq)' in source
-    assert 'String(DEVICE_ID)+":"+seq' in source
+    assert 'String(HARDWARE_ID)+":"+seq' in source
     assert 'if(pendingPayment)' in source
     assert 'cashierPrefs.putString("pay_seq",seq)' in source
     assert 'cashierPrefs.putString("pay_pin"' not in source
