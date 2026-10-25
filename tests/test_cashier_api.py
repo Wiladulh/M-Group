@@ -35,13 +35,13 @@ def test_cashier_heartbeat_and_nfc_payment():
             assert h.status_code == 200
 
             q = {
-                "device_id": "cashier-01", "credential_id": "cred1", "account_id": "a1",
+                "hardware_id": "cashier-01", "credential_id": "cred1", "account_id": "a1",
                 "amount": 10000, "method": "NFC", "provider": "local",
                 "idempotency_key": "cashier-01:1", "pin": "1234"
             }
             p = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert p.status_code == 200
-            assert p.json()["device_id"] == "cashier-01"
+            assert p.json()["hardware_id"] == "cashier-01"
 
             again = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert again.status_code == 200
@@ -49,6 +49,6 @@ def test_cashier_heartbeat_and_nfc_payment():
 
             with client.app.state.db.connect() as c:
                 assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 1
-                assert c.execute("SELECT device_id FROM payment_transactions").fetchone()[0] == "cashier-01"
+                assert c.execute("SELECT hardware_id FROM payment_transactions").fetchone()[0] == "cashier-01"
         finally:
             main.get_settings = old
