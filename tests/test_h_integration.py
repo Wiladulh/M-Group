@@ -66,14 +66,14 @@ def test_h_full_integration_one_by_one():
             assert pending.json()["status"] == "scan_pending"
 
             cashier_pending = client.get(
-                "/api/v1/cashier/cashier-h/nfc-registration",
+                "/api/v1/cashier/nfc-registration",
                 headers={"X-M-Group-Device-Key": cashier_key},
             )
             assert cashier_pending.status_code == 200
             assert cashier_pending.json()["session_id"] == session_id
 
             complete = client.post(
-                "/api/v1/cashier/cashier-h/nfc-registration/complete",
+                "/api/v1/cashier/nfc-registration/complete",
                 headers={"X-M-Group-Device-Key": cashier_key},
                 json={"session_id": session_id, "card_uid": "04:A1:B2:C3:D4", "pin": "1234"},
             )
@@ -203,7 +203,7 @@ def test_h_full_integration_one_by_one():
             client.cookies.clear()
             admin = login_admin(client)
             assert client.get(
-                "/api/v1/cashier/cashier-h/nfc-registration",
+                "/api/v1/cashier/nfc-registration",
                 headers={"X-M-Group-Device-Key": "wrong"},
             ).status_code == 403
             assert client.post(
