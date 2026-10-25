@@ -32,7 +32,7 @@ def test_cashier_payment_requires_active_registered_device():
             assert client.post("/api/v1/members/member-1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
 
             q = {
-                "device_id": "cashier-01",
+                "hardware_id": "cashier-01",
                 "credential_id": "test-credential-01",
                 "account_id": "member-account-01",
                 "amount": 1000,
@@ -65,6 +65,6 @@ def test_cashier_payment_requires_active_registered_device():
             )
             assert payment.status_code == 200
             assert payment.json()["status"] == "completed"
-            assert payment.json()["device_id"] == "cashier-01"
+            assert payment.json()["hardware_id"] == "cashier-01"
         finally:
             main.get_settings = old
