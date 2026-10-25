@@ -264,7 +264,8 @@ class VendingService:
                 idempotency_key="vending-payment:"+transaction_id,
                 original_amount=tx["base_amount"],
                 discount_amount=tx["discount_amount"],
-                promo_id=tx.get("promo_id")
+                promo_id=tx.get("promo_id"),
+                device_authenticated_vending=True,
             )
         except Exception as exc:
             # A payment can commit while the caller loses the response or
