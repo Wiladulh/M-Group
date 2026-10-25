@@ -13,7 +13,7 @@ def test_audit_and_device_indexes_exist():
             assert "ix_audit_events_created" in indexes
             assert "ix_audit_events_entity" in indexes
             indexes={r[1] for r in c.execute("PRAGMA index_list(device_events)").fetchall()}
-            assert "ix_device_events_device_created" in indexes
+            assert "ix_device_events_hardware_created" in indexes
 
 def test_sqlite_backup_restore_roundtrip():
     with TemporaryDirectory() as d:
