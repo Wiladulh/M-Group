@@ -226,5 +226,30 @@ class FinancialIdempotencyTests(unittest.TestCase):
             db.close()
 
 
+    def test_finance_reconciliation_endpoint_reports_pending_purchases_and_balances(self):
+        member_id, card_uid = self.create_member_with_balance('RECONCILEPENDING')
+        vending = self.create_vending('vending-reconcile-pending-01')
+        self.client.put(
+            f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
+            headers=self.admin_headers(),
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 1},
+        )
+        purchase = self.client.post('/api/v2/vending/purchases',
+            headers={'X-Device-Key': vending['device_key']},
+            json={'request_id': 'purchase-reconcile-pending-01', 'card_uid': card_uid,
+                  'pin': '123456', 'product_id': 1})
+        self.assertEqual(purchase.status_code, 201, purchase.text)
+
+        report = self.client.get('/api/v2/admin/finance/reconciliation', headers=self.admin_headers())
+        self.assertEqual(report.status_code, 200, report.text)
+        body = report.json()
+        self.assertEqual(body['status'], 'ok')
+        self.assertEqual(body['transaction_imbalances'], [])
+        self.assertEqual(body['account_mismatches'], [])
+        self.assertTrue(body['pending_purchases_require_review'])
+        self.assertIn(purchase.json()['transaction_id'],
+                      [row['transaction_id'] for row in body['pending_purchases']])
+
+
 if __name__ == '__main__':
     unittest.main()
