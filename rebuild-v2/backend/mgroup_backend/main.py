@@ -436,7 +436,7 @@ def cashier_payment_v2(payload: CashierPaymentRequest, connection: DB,
                   json.dumps({'card_hash': digest, 'settlement_account_id': settlement['account_id'],
                               'operator_id': config['operator_id'], 'source': 'cashier'}, separators=(',', ':'))))
             debit = connection.execute(
-                'UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status=\\'active\\' AND balance_minor>=?',
+                "UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
                 (payload.amount_minor, account['account_id'], payload.amount_minor))
             if debit.rowcount != 1:
                 raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
