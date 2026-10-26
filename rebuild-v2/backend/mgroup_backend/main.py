@@ -359,7 +359,7 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                    'member_id': member['member_id'], 'amount_minor': amount})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
-    return {'transaction_id': transaction_id, 'status': 'succeeded', 'amount_minor': amount,
+    return {'transaction_id': transaction_id, 'status': 'pending', 'amount_minor': amount,
             'dispense_confirmation_required': True, 'idempotent_replay': False}
 
 
@@ -383,7 +383,7 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
             connection.execute("UPDATE transactions SET status='succeeded',metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
                 (json.dumps(meta), transaction_id))
             audit(connection, 'vending.dispense.succeeded', 'transaction', transaction_id, row['request_id'])
-            return {'transaction_id': transaction_id, 'status': row['status'], 'dispense_status': 'succeeded',
+            return {'transaction_id': transaction_id, 'status': 'succeeded', 'dispense_status': 'succeeded',
                     'idempotent_replay': False}
         account = connection.execute("SELECT account_id FROM accounts WHERE member_id=? AND account_type='member'",
             (row['member_id'],)).fetchone()
