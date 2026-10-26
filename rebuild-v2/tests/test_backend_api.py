@@ -131,6 +131,30 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(next(x for x in members if x['member_id'] == member_id)['balance_minor'], 20000)
 
 
+    def test_repeated_invalid_pin_locks_card_for_device(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Pin Limit', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
+            json={'card_uid': '04-LOCK-0001'})
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-pin-lock-001', 'device_type': 'vending', 'display_name': 'Vending Lock'})
+        headers = {'X-Device-Key': device.json()['device_key']}
+        for attempt in range(4):
+            response = self.client.post('/api/v2/vending/purchases', headers=headers,
+                json={'request_id': f'bad-pin-request-{attempt:02d}', 'card_uid': '04-LOCK-0001',
+                      'pin': '999999', 'product_id': 1})
+            self.assertEqual(response.status_code, 401, response.text)
+        locked = self.client.post('/api/v2/vending/purchases', headers=headers,
+            json={'request_id': 'bad-pin-request-04', 'card_uid': '04-LOCK-0001',
+                  'pin': '999999', 'product_id': 1})
+        self.assertEqual(locked.status_code, 429, locked.text)
+        valid_while_locked = self.client.post('/api/v2/vending/purchases', headers=headers,
+            json={'request_id': 'valid-pin-locked-01', 'card_uid': '04-LOCK-0001',
+                  'pin': '123456', 'product_id': 1})
+        self.assertEqual(valid_while_locked.status_code, 429, valid_while_locked.text)
+
     def test_product_name_cannot_be_whitespace(self):
         device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-blank-name-001', 'device_type': 'vending', 'display_name': 'Vending'})
