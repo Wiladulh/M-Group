@@ -49,8 +49,13 @@ class TopUpRequest(BaseModel):
 class CashierDeviceConfigure(BaseModel):
     operator_id: str = Field(min_length=1, max_length=128)
     operator_name: str = Field(min_length=1, max_length=120)
-    operator_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
+    operator_pin: str = Field(min_length=6, max_length=12, pattern="^[0-9]{6,12}$")
+    settlement_account_id: str = Field(min_length=1, max_length=128)
+
+
+class CardEnroll(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
+
 
 class MemberBalanceLookup(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
