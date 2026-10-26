@@ -76,6 +76,52 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(auth.json()['hardware_id'], 'cashier-unit-001')
         self.assertEqual(self.client.get('/api/v2/device/me', headers={'X-Device-Key': 'wrong-key'}).status_code, 401)
 
+    def test_device_member_balance_is_read_only_and_requires_active_enrollment(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Balance Lookup'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        card = self.client.post(f"/api/v2/members/{member_id}/cards",
+            headers=self.admin_headers(), json={'card_uid': '04-BALANCE-LOOKUP'})
+        self.assertEqual(card.status_code, 201, card.text)
+        topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'balance-lookup-topup-01', 'member_id': member_id,
+                  'amount_minor': 12500})
+        self.assertEqual(topup.status_code, 200, topup.text)
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-balance-lookup-01', 'device_type': 'cashier',
+                  'display_name': 'Balance Lookup Cashier'})
+        self.assertEqual(device.status_code, 201, device.text)
+        headers = {'X-Device-Key': device.json()['device_key']}
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            before_transactions = db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            before_entries = db.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0]
+        finally:
+            db.close()
+
+        response = self.client.post('/api/v2/devices/member-balance', headers=headers,
+            json={'card_uid': '04-BALANCE-LOOKUP'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['member_id'], member_id)
+        self.assertEqual(response.json()['balance_minor'], 12500)
+        self.assertEqual(response.json()['currency'], 'IDR')
+        self.assertNotIn('card_uid', response.json())
+        self.assertEqual(self.client.post('/api/v2/devices/member-balance',
+            headers=headers, json={'card_uid': '04-UNKNOWN-BALANCE'}).status_code, 401)
+        self.assertEqual(self.client.post('/api/v2/devices/member-balance',
+            json={'card_uid': '04-BALANCE-LOOKUP'}).status_code, 401)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0],
+                             before_transactions)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0],
+                             before_entries)
+        finally:
+            db.close()
+
     def test_member_top_up_is_idempotent(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(), json={'display_name': 'Sari'})
         self.assertEqual(member.status_code, 201, member.text)
