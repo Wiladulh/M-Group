@@ -46,6 +46,10 @@ class TopUpRequest(BaseModel):
     amount_minor: int = Field(gt=0, le=100_000_000)
     description: str = Field(default='Top-up saldo', max_length=200)
 
+class MerchantAccountCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=120)
+
+
 class CashierDeviceConfigure(BaseModel):
     operator_id: str = Field(min_length=1, max_length=128)
     operator_name: str = Field(min_length=1, max_length=120)
@@ -269,6 +273,19 @@ def top_up(payload: TopUpRequest, connection: DB):
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
     return {'transaction_id': transaction_id, 'status': 'succeeded', 'idempotent_replay': False}
+
+
+@app.post('/api/v2/admin/merchant-accounts', status_code=201, dependencies=[Depends(require_admin)])
+def create_merchant_account(payload: MerchantAccountCreate, connection: DB):
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=422, detail={'code': 'INVALID_MERCHANT_LABEL'})
+    account_id = new_id('merchant')
+    with transaction(connection):
+        connection.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'merchant',0)",
+                           (account_id,))
+        audit(connection, 'merchant.account.create', 'account', account_id, detail={'label': label})
+    return {'account_id': account_id, 'label': label, 'account_type': 'merchant', 'currency': 'IDR', 'balance_minor': 0}
 
 
 @app.put('/api/v2/admin/cashier-devices/{registry_id}/configuration', dependencies=[Depends(require_admin)])
