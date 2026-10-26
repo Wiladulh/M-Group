@@ -269,27 +269,34 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
         attempt = connection.execute(
             'SELECT failed_attempts,locked_until FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
             (digest, device['hardware_id'])).fetchone()
+        card_attempt = connection.execute(
+            'SELECT failed_attempts,locked_until FROM pin_card_attempts WHERE card_hash=?',
+            (digest,)).fetchone()
         locked = connection.execute(
-            "SELECT CASE WHEN ? IS NOT NULL AND julianday(?) > julianday('now') THEN 1 ELSE 0 END",
-            (attempt['locked_until'] if attempt else None, attempt['locked_until'] if attempt else None)).fetchone()[0]
+            "SELECT CASE WHEN (? IS NOT NULL AND julianday(?) > julianday('now')) OR (? IS NOT NULL AND julianday(?) > julianday('now')) THEN 1 ELSE 0 END",
+            (attempt['locked_until'] if attempt else None, attempt['locked_until'] if attempt else None,
+             card_attempt['locked_until'] if card_attempt else None, card_attempt['locked_until'] if card_attempt else None)).fetchone()[0]
         if locked:
             raise HTTPException(status_code=429, detail={'code': 'PIN_TEMPORARILY_LOCKED'})
         if not verify_pin(payload.pin, pin_member['pin_hash']):
-            failures = (attempt['failed_attempts'] if attempt else 0) + 1
-            locked_until = "datetime('now', '+5 minutes')" if failures >= 5 else 'NULL'
-            if failures >= 5:
-                connection.execute(
-                    "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,datetime('now','+5 minutes'),CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
-                    (digest, device['hardware_id'], failures))
-            else:
-                connection.execute(
-                    "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,NULL,CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,updated_at=CURRENT_TIMESTAMP",
-                    (digest, device['hardware_id'], failures))
-            pin_error = {'code': 'PIN_TEMPORARILY_LOCKED'} if failures >= 5 else {'code': 'INVALID_PIN'}
+            device_failures = (attempt['failed_attempts'] if attempt else 0) + 1
+            card_failures = (card_attempt['failed_attempts'] if card_attempt else 0) + 1
+            device_lock = device_failures >= 5
+            card_lock = card_failures >= 5
+            connection.execute(
+                "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
+                (digest, device['hardware_id'], device_failures, int(device_lock)))
+            connection.execute(
+                "INSERT INTO pin_card_attempts(card_hash,failed_attempts,locked_until,updated_at) VALUES(?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
+                (digest, card_failures, int(card_lock)))
+            pin_error = {'code': 'PIN_TEMPORARILY_LOCKED'} if card_lock or device_lock else {'code': 'INVALID_PIN'}
         else:
             connection.execute(
                 'DELETE FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
                 (digest, device['hardware_id']))
+            connection.execute(
+                'DELETE FROM pin_card_attempts WHERE card_hash=?',
+                (digest,))
             pin_error = None
     if pin_error:
         raise HTTPException(status_code=429 if pin_error['code'] == 'PIN_TEMPORARILY_LOCKED' else 401, detail=pin_error)
