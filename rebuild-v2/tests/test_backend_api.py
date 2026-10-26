@@ -130,6 +130,46 @@ class ServerApiTests(unittest.TestCase):
         members = self.client.get('/api/v2/members', headers=self.admin_headers()).json()['items']
         self.assertEqual(next(x for x in members if x['member_id'] == member_id)['balance_minor'], 20000)
 
+        # Independently audit the persisted ledger: top-up, purchase and refund
+        # must each balance, and the member account must reconcile to its ledger.
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            rows = db.execute(
+                "SELECT t.transaction_type, t.status, "
+                "SUM(CASE WHEN l.direction='debit' THEN l.amount_minor ELSE 0 END) AS debits, "
+                "SUM(CASE WHEN l.direction='credit' THEN l.amount_minor ELSE 0 END) AS credits, "
+                "COUNT(l.entry_id) AS entry_count "
+                "FROM transactions t LEFT JOIN ledger_entries l ON l.transaction_id=t.transaction_id "
+                "WHERE t.request_id IN ('purchase-test-topup-01','purchase-request-0001') "
+                "GROUP BY t.transaction_id ORDER BY t.transaction_type"
+            ).fetchall()
+            self.assertEqual(len(rows), 2)
+            for row in rows:
+                self.assertEqual(row['debits'], row['credits'], dict(row))
+                self.assertEqual(row['entry_count'], 2, dict(row))
+
+            refund_rows = db.execute(
+                "SELECT SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) AS debits, "
+                "SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) AS credits, "
+                "COUNT(*) AS entry_count FROM ledger_entries WHERE transaction_id=?",
+                (transaction_id,),
+            ).fetchone()
+            self.assertEqual(refund_rows['debits'], 5000)
+            self.assertEqual(refund_rows['credits'], 5000)
+            self.assertEqual(refund_rows['entry_count'], 4)
+
+            account = db.execute(
+                "SELECT a.account_id, a.balance_minor FROM accounts a "
+                "WHERE a.member_id=? AND a.account_type='member'", (member_id,)
+            ).fetchone()
+            net_ledger = db.execute(
+                "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount_minor ELSE -amount_minor END),0) "
+                "FROM ledger_entries WHERE account_id=?", (account['account_id'],)
+            ).fetchone()[0]
+            self.assertEqual(account['balance_minor'], net_ledger)
+        finally:
+            db.close()
+
 
     def test_repeated_invalid_pin_locks_card_for_device(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
