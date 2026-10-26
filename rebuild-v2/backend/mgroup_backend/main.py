@@ -16,6 +16,10 @@ from .security import hash_secret, new_id, require_admin, verify_secret
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail closed: without these secrets, admin auth is unavailable and card UID
+    # hashes/device-key hashes would be stored without the configured pepper.
+    if not settings.admin_token or not settings.device_key_pepper:
+        raise RuntimeError('MGROUP_ADMIN_TOKEN and MGROUP_DEVICE_KEY_PEPPER must be configured')
     initialize(settings.database_path)
     yield
 
