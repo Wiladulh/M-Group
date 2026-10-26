@@ -2,6 +2,7 @@ import importlib
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import sys
 
@@ -249,6 +250,86 @@ class FinancialIdempotencyTests(unittest.TestCase):
         self.assertTrue(body['pending_purchases_require_review'])
         self.assertIn(purchase.json()['transaction_id'],
                       [row['transaction_id'] for row in body['pending_purchases']])
+
+
+    def test_concurrent_duplicate_purchase_creates_only_one_debit_and_stock_decrement(self):
+        member_id, card_uid = self.create_member_with_balance('CONCURRENTBUY')
+        vending = self.create_vending('vending-concurrent-buy-01')
+        headers = {'X-Device-Key': vending['device_key']}
+        self.client.put(f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
+            headers=self.admin_headers(),
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 3})
+        payload = {'request_id': 'purchase-concurrent-request-01', 'card_uid': card_uid,
+                   'pin': '123456', 'product_id': 1}
+
+        def send_purchase(_):
+            return self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            responses = list(pool.map(send_purchase, range(6)))
+        self.assertTrue(all(response.status_code == 201 for response in responses),
+                        [response.text for response in responses])
+        transaction_ids = {response.json()['transaction_id'] for response in responses}
+        self.assertEqual(len(transaction_ids), 1)
+        self.assertEqual(sum(not response.json()['idempotent_replay'] for response in responses), 1)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            balance = db.execute("SELECT balance_minor FROM accounts WHERE member_id=? AND account_type='member'",
+                                 (member_id,)).fetchone()['balance_minor']
+            stock = db.execute("SELECT stock FROM product_slots WHERE registry_id=? AND product_id=1",
+                               (vending['registry_id'],)).fetchone()['stock']
+            txn_count = db.execute("SELECT COUNT(*) FROM transactions WHERE request_id=?",
+                                   ('purchase-concurrent-request-01',)).fetchone()[0]
+            entries = db.execute("SELECT COUNT(*) FROM ledger_entries WHERE transaction_id=?",
+                                 (next(iter(transaction_ids)),)).fetchone()[0]
+            self.assertEqual(balance, 15000)
+            self.assertEqual(stock, 2)
+            self.assertEqual(txn_count, 1)
+            self.assertEqual(entries, 2)
+        finally:
+            db.close()
+
+    def test_concurrent_failed_dispense_reports_refund_and_restore_stock_once(self):
+        member_id, card_uid = self.create_member_with_balance('CONCURRENTREFUND')
+        vending = self.create_vending('vending-concurrent-refund-01')
+        headers = {'X-Device-Key': vending['device_key']}
+        self.client.put(f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
+            headers=self.admin_headers(),
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+        purchase = self.client.post('/api/v2/vending/purchases', headers=headers,
+            json={'request_id': 'purchase-concurrent-refund-01', 'card_uid': card_uid,
+                  'pin': '123456', 'product_id': 1})
+        self.assertEqual(purchase.status_code, 201, purchase.text)
+        transaction_id = purchase.json()['transaction_id']
+
+        def report_failure(_):
+            return self.client.post(f'/api/v2/vending/transactions/{transaction_id}/dispense-result',
+                headers=headers, json={'succeeded': False, 'reason': 'concurrent_test'})
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            responses = list(pool.map(report_failure, range(6)))
+        self.assertTrue(all(response.status_code == 200 for response in responses),
+                        [response.text for response in responses])
+        self.assertEqual(sum(not response.json()['idempotent_replay'] for response in responses), 1)
+        self.assertTrue(all(response.json()['status'] == 'reversed' for response in responses))
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            balance = db.execute("SELECT balance_minor FROM accounts WHERE member_id=? AND account_type='member'",
+                                 (member_id,)).fetchone()['balance_minor']
+            stock = db.execute("SELECT stock FROM product_slots WHERE registry_id=? AND product_id=1",
+                               (vending['registry_id'],)).fetchone()['stock']
+            entries = db.execute("SELECT COUNT(*) FROM ledger_entries WHERE transaction_id=?",
+                                 (transaction_id,)).fetchone()[0]
+            refunds = db.execute("SELECT COUNT(*) FROM audit_events WHERE entity_id=? AND action='vending.dispense.refund'",
+                                 (transaction_id,)).fetchone()[0]
+            self.assertEqual(balance, 20000)
+            self.assertEqual(stock, 2)
+            self.assertEqual(entries, 4)
+            self.assertEqual(refunds, 1)
+        finally:
+            db.close()
 
 
 if __name__ == '__main__':
