@@ -56,7 +56,7 @@ class CashierDeviceConfigure(BaseModel):
 class CashierPaymentRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}class CardEnroll(BaseModel):
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
     card_uid: str = Field(min_length=4, max_length=128)
 
 
@@ -784,7 +784,7 @@ def list_audit(connection: DB, limit: int = 100):
 class CashierTopUpRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    operator_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}class CardEnroll(BaseModel):
+    operator_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
     card_uid: str = Field(min_length=4, max_length=128)
 
 
@@ -1292,7 +1292,7 @@ def list_audit(connection: DB, limit: int = 100):
     rows = connection.execute('SELECT audit_id,actor_type,actor_id,action,entity_type,entity_id,request_id,detail_json,created_at FROM audit_events ORDER BY created_at DESC LIMIT ?', (limit,)).fetchall()
     return {'items': [dict(row) for row in rows]}
 )
-    member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}class CardEnroll(BaseModel):
+    member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
     card_uid: str = Field(min_length=4, max_length=128)
 
 
