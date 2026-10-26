@@ -21,6 +21,24 @@ def test_cashier_pin_payment_debits_and_returns_balance():
             assert client.post("/api/v1/members/m1/pin", json={"pin":"1234","operator_id":"test-admin","identity_verified":True,"reason":"test identity verified"}, headers=login_admin(client)).status_code == 200
             assert client.post("/api/v1/devices/cashier-01/heartbeat",
                                json={"device_type":"esp32-cashier","status":"active"}, headers={"X-M-Group-Device-Key":"cash-secret"}).status_code == 200
+            payment_headers = {"X-M-Group-Device-Key": "cash-secret"}
+            payment_request = {
+                "hardware_id": "cashier-01", "credential_id": "cred1",
+                "amount": 10000, "method": "NFC", "pin": "1234",
+                "idempotency_key": "ok",
+            }
+            missing_key = client.post("/api/v1/cashier/payments", json=payment_request)
+            assert missing_key.status_code == 401, missing_key.text
+            invalid_key = client.post(
+                "/api/v1/cashier/payments",
+                json=payment_request,
+                headers={"X-M-Group-Device-Key": "invalid-key"},
+            )
+            assert invalid_key.status_code == 403, invalid_key.text
+            with client.app.state.db.connect() as c:
+                assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 0
+                assert c.execute("SELECT COUNT(*) FROM financial_ledger WHERE account_id='a1'").fetchone()[0] == 1
+
             bad = client.post("/api/v1/cashier/payments", json={
                 "hardware_id":"cashier-01","credential_id":"cred1",
                 "amount":10000,"method":"NFC","pin":"9999","idempotency_key":"bad"}, headers={"X-M-Group-Device-Key":"cash-secret"})
@@ -30,6 +48,30 @@ def test_cashier_pin_payment_debits_and_returns_balance():
                 "amount":10000,"method":"NFC","pin":"1234","idempotency_key":"ok"}, headers={"X-M-Group-Device-Key":"cash-secret"})
             assert ok.status_code == 200
             assert ok.json()["balance"] == 40000
+
+            replay = client.post(
+                "/api/v1/cashier/payments",
+                json=payment_request,
+                headers=payment_headers,
+            )
+            assert replay.status_code == 200, replay.text
+            assert replay.json()["transaction_id"] == ok.json()["transaction_id"]
+
+            conflict = client.post(
+                "/api/v1/cashier/payments",
+                json={**payment_request, "amount": 11000},
+                headers=payment_headers,
+            )
+            assert conflict.status_code == 409, conflict.text
+            assert conflict.json()["detail"] == "idempotency_key_conflict"
+            with client.app.state.db.connect() as c:
+                assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 1
+                assert c.execute("SELECT COUNT(*) FROM financial_ledger WHERE account_id='a1'").fetchone()[0] == 2
+                balance = c.execute(
+                    "SELECT SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END) "
+                    "FROM financial_ledger WHERE account_id='a1'"
+                ).fetchone()[0]
+                assert balance == 40000
             audit = client.get(
                 "/api/v1/audit/report?source=CASHIER&period=day",
                 headers=login_admin(client),
