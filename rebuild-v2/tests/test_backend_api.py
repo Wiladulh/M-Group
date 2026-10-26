@@ -334,14 +334,10 @@ class ServerApiTests(unittest.TestCase):
         registry_id = device.json()['registry_id']
         headers = {'X-Device-Key': device.json()['device_key']}
 
-        db = self.main.connect(self.main.settings.database_path)
-        try:
-            merchant_id = 'merchant-cashier-v2-0001'
-            db.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'merchant',0)",
-                       (merchant_id,))
-            db.commit()
-        finally:
-            db.close()
+        merchant = self.client.post('/api/v2/admin/merchant-accounts', headers=self.admin_headers(),
+            json={'label': 'Cashier v2 settlement'})
+        self.assertEqual(merchant.status_code, 201, merchant.text)
+        merchant_id = merchant.json()['account_id']
         configured = self.client.put(f'/api/v2/admin/cashier-devices/{registry_id}/configuration',
             headers=self.admin_headers(), json={'operator_id': 'operator-v2-001',
                 'operator_name': 'Operator V2', 'operator_pin': '654321',
