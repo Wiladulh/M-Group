@@ -246,9 +246,12 @@ def top_up(payload: TopUpRequest, connection: DB):
     transaction_id = new_id('txn')
     try:
         with transaction(connection):
-            prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,transaction_type FROM transactions WHERE request_id=?", (payload.request_id,)).fetchone()
+            prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,transaction_type,metadata_json FROM transactions WHERE request_id=?", (payload.request_id,)).fetchone()
             if prior:
-                if prior['member_id'] != payload.member_id or prior['amount_minor'] != payload.amount_minor or prior['transaction_type'] != 'top_up' or prior['status'] != 'succeeded':
+                prior_metadata = json.loads(prior['metadata_json'] or '{}')
+                if (prior['member_id'] != payload.member_id or prior['amount_minor'] != payload.amount_minor
+                    or prior['transaction_type'] != 'top_up' or prior['status'] != 'succeeded'
+                    or prior_metadata.get('source') == 'cashier'):
                     raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
                 return {'transaction_id': prior['transaction_id'], 'status': prior['status'], 'idempotent_replay': True}
             account = connection.execute("SELECT account_id,balance_minor,status FROM accounts WHERE member_id=? AND account_type='member'", (payload.member_id,)).fetchone()
