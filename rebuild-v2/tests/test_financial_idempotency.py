@@ -332,5 +332,49 @@ class FinancialIdempotencyTests(unittest.TestCase):
             db.close()
 
 
+    def test_cashier_configuration_binds_operator_and_merchant_account_server_side(self):
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-config-test-01', 'device_type': 'cashier',
+                  'display_name': 'Cashier Config Test'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        vending = self.create_vending('vending-cashier-config-test-01')
+
+        db = self.main.connect(self.main.settings.database_path)
+        merchant_account_id = 'merchant-settlement-config-test-01'
+        try:
+            db.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'merchant',0)",
+                       (merchant_account_id,))
+        finally:
+            db.close()
+
+        config = self.client.put(
+            f"/api/v2/admin/cashier-devices/{cashier.json()['registry_id']}/configuration",
+            headers=self.admin_headers(),
+            json={'operator_id': 'operator-config-test-01', 'operator_name': 'Operator Test',
+                  'operator_pin': '654321', 'settlement_account_id': merchant_account_id})
+        self.assertEqual(config.status_code, 200, config.text)
+        self.assertEqual(config.json()['settlement_account_id'], merchant_account_id)
+        self.assertEqual(config.json()['operator_id'], 'operator-config-test-01')
+
+        wrong_device = self.client.put(
+            f"/api/v2/admin/cashier-devices/{vending.json()['registry_id']}/configuration",
+            headers=self.admin_headers(),
+            json={'operator_id': 'operator-config-test-02', 'operator_name': 'Operator Test',
+                  'operator_pin': '654321', 'settlement_account_id': merchant_account_id})
+        self.assertEqual(wrong_device.status_code, 404, wrong_device.text)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            row = db.execute("SELECT operator_id,operator_pin_hash,settlement_account_id FROM cashier_device_config WHERE registry_id=?",
+                             (cashier.json()['registry_id'],)).fetchone()
+            self.assertEqual(row['operator_id'], 'operator-config-test-01')
+            self.assertNotEqual(row['operator_pin_hash'], '654321')
+            self.assertEqual(row['settlement_account_id'], merchant_account_id)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_events WHERE action='cashier.device.configure' AND entity_id=?",
+                                        (cashier.json()['registry_id'],)).fetchone()[0], 1)
+        finally:
+            db.close()
+
+
 if __name__ == '__main__':
     unittest.main()
