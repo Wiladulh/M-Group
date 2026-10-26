@@ -187,7 +187,13 @@ class ServerApiTests(unittest.TestCase):
                 json={'request_id': f'bad-pin-request-{attempt:02d}', 'card_uid': '04-LOCK-0001',
                       'pin': '999999', 'product_id': 1})
             self.assertEqual(response.status_code, 401, response.text)
-        locked = self.client.post('/api/v2/vending/purchases', headers=headers,
+        # Switching to another registered vending unit must not reset the
+        # card-wide counter and bypass the lockout.
+        second_device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-pin-lock-002', 'device_type': 'vending', 'display_name': 'Vending Lock 2'})
+        self.assertEqual(second_device.status_code, 201, second_device.text)
+        second_headers = {'X-Device-Key': second_device.json()['device_key']}
+        locked = self.client.post('/api/v2/vending/purchases', headers=second_headers,
             json={'request_id': 'bad-pin-request-04', 'card_uid': '04-LOCK-0001',
                   'pin': '999999', 'product_id': 1})
         self.assertEqual(locked.status_code, 429, locked.text)
