@@ -46,6 +46,24 @@ class ServerApiTests(unittest.TestCase):
         response = self.client.post('/api/v2/members', json={'display_name': 'Ayu'})
         self.assertEqual(response.status_code, 401)
 
+    def test_admin_read_and_write_routes_reject_missing_or_invalid_tokens(self):
+        protected_reads = (
+            '/api/v2/members',
+            '/api/v2/vending/devices',
+            '/api/v2/admin/audit',
+        )
+        for path in protected_reads:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 401)
+                self.assertEqual(self.client.get(path, headers={'Authorization': 'Bearer wrong-token'}).status_code, 401)
+
+        denied = self.client.post('/api/v2/admin/devices',
+            json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'})
+        self.assertEqual(denied.status_code, 401, denied.text)
+        self.assertEqual(self.client.post('/api/v2/admin/devices',
+            headers={'Authorization': 'Bearer wrong-token'},
+            json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'}).status_code, 401)
+
     def test_device_provisioning_and_authentication(self):
         response = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'cashier-unit-001', 'device_type': 'cashier', 'display_name': 'Kasir 1'})
