@@ -417,6 +417,55 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
             'refunded_amount_minor': row['amount_minor'], 'idempotent_replay': False}
 
 
+@app.get('/api/v2/admin/finance/reconciliation', dependencies=[Depends(require_admin)])
+def finance_reconciliation(connection: DB):
+    transaction_rows = connection.execute("""
+        SELECT transaction_id, request_id,
+               SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) AS debit_total,
+               SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) AS credit_total
+        FROM transactions t
+        LEFT JOIN ledger_entries l ON l.transaction_id=t.transaction_id
+        GROUP BY transaction_id, request_id
+        HAVING debit_total != credit_total
+        ORDER BY transaction_id
+        LIMIT 500
+    """).fetchall()
+    account_rows = connection.execute("""
+        SELECT a.account_id, a.account_type, a.balance_minor,
+               COALESCE(SUM(CASE
+                   WHEN a.account_type='system' AND l.direction='debit' THEN l.amount_minor
+                   WHEN a.account_type!='system' AND l.direction='credit' THEN l.amount_minor
+                   ELSE 0 END), 0)
+               - COALESCE(SUM(CASE
+                   WHEN a.account_type='system' AND l.direction='credit' THEN l.amount_minor
+                   WHEN a.account_type!='system' AND l.direction='debit' THEN l.amount_minor
+                   ELSE 0 END), 0) AS ledger_balance
+        FROM accounts a
+        LEFT JOIN ledger_entries l ON l.account_id=a.account_id
+        GROUP BY a.account_id, a.account_type, a.balance_minor
+        HAVING balance_minor != ledger_balance
+        ORDER BY a.account_id
+        LIMIT 500
+    """).fetchall()
+    pending_rows = connection.execute("""
+        SELECT transaction_id, request_id, hardware_id, member_id, amount_minor, created_at
+        FROM transactions
+        WHERE transaction_type='purchase' AND status='pending'
+        ORDER BY created_at
+        LIMIT 500
+    """).fetchall()
+    transaction_imbalances = [dict(row) for row in transaction_rows]
+    account_mismatches = [dict(row) for row in account_rows]
+    pending_purchases = [dict(row) for row in pending_rows]
+    return {
+        'status': 'attention_required' if transaction_imbalances or account_mismatches else 'ok',
+        'transaction_imbalances': transaction_imbalances,
+        'account_mismatches': account_mismatches,
+        'pending_purchases': pending_purchases,
+        'pending_purchases_require_review': bool(pending_purchases),
+    }
+
+
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
 def list_audit(connection: DB, limit: int = 100):
     limit = max(1, min(limit, 500))
