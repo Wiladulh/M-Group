@@ -29,6 +29,7 @@ The string `device_id` is prohibited in all v2 runtime contracts, schema, tests,
 3. Idempotency keys are scoped and unique; retries must not create duplicate charges or ledger entries.
 4. A payment must atomically validate authorization, balance, and transaction state before committing.
 5. Failed/declined transactions must not partially mutate balances.
+8. A vending purchase remains `pending` after debit/stock reservation until the originating vending device confirms dispense success; only then becomes `succeeded`. A failed dispense becomes `reversed` exactly once.
 6. Transaction records retain the authenticated hardware identity when a device initiates the transaction.
 7. Financial corrections use explicit reversal/adjustment entries; historical rows are not silently rewritten.
 
