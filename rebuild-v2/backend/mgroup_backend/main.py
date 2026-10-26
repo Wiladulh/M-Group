@@ -427,7 +427,7 @@ def finance_reconciliation(connection: DB):
         LEFT JOIN ledger_entries l ON l.transaction_id=t.transaction_id
         GROUP BY t.transaction_id, t.request_id
         HAVING debit_total != credit_total
-        ORDER BY transaction_id
+        ORDER BY t.transaction_id
         LIMIT 500
     """).fetchall()
     account_rows = connection.execute("""
