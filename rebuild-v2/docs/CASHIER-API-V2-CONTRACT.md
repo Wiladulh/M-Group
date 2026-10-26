@@ -74,13 +74,13 @@ Request:
 - Replays return the original transaction. Reusing the request ID with a changed amount/card/device returns a conflict.
 - The API implementation now uses the existing server-side operator-to-device binding and settlement-account assignment. Remaining release work is to connect the firmware/UI, validate operator reset/revocation procedures, and run the final integration suite.
 
-## Required schema work before implementation
+## Implementation controls and remaining gaps
 
-1. Add an operator credential verifier and status lifecycle to the existing cashier/operator model.
-2. Define an explicit, auditable cashier-device-to-operator binding and merchant/settlement account assignment. Do not infer either from display names or client payloads.
-3. Add appropriate uniqueness and foreign-key constraints, including idempotency scope.
-4. Keep card hashes peppered; keep PINs as salted slow hashes; keep raw secrets out of audit and transaction metadata.
-5. Add migration tests for clean install and upgrade from the previous v2 schema.
+1. Cashier device-to-operator binding and merchant settlement assignment are stored server-side; admin endpoints provision merchant settlement accounts and configure the cashier binding.
+2. Operator PINs and member PINs use salted PBKDF2 verifiers. Persisted failed-attempt counters apply a five-minute lock after five failures.
+3. Payment and top-up transactions write transaction rows, balanced ledger entries, balance changes, and audit events atomically; request IDs are scoped globally and conflicting payloads return `409`.
+4. Card UIDs are pepper-hashed before lookup and are not stored in transaction metadata or audit detail. PIN values are never written to logs or transaction metadata.
+5. Remaining: add operator disable/reset lifecycle, connect v2 firmware and WebUI, and complete clean-install/upgrade and end-to-end validation before release.
 
 ## Required tests
 
