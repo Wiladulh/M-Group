@@ -336,7 +336,7 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
             transaction_id = new_id('txn')
             metadata = {'product_id': payload.product_id, 'registry_id': device['registry_id'],
                         'card_hash': digest, 'product_name': product['name'], 'dispense_status': 'pending'}
-            connection.execute("INSERT INTO transactions(transaction_id,request_id,hardware_id,member_id,transaction_type,amount_minor,status,metadata_json) VALUES(?,?,?,?,'purchase',?,'succeeded',?)",
+            connection.execute("INSERT INTO transactions(transaction_id,request_id,hardware_id,member_id,transaction_type,amount_minor,status,metadata_json) VALUES(?,?,?,?,'purchase',?,'pending',?)",
                 (transaction_id, payload.request_id, device['hardware_id'], member['member_id'], amount, json.dumps(metadata)))
             debited = connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
                 (amount, account['account_id'], amount))
@@ -376,7 +376,7 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
                     'dispense_status': meta['dispense_status'], 'idempotent_replay': True}
         if payload.succeeded:
             meta['dispense_status'] = 'succeeded'
-            connection.execute("UPDATE transactions SET metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
+            connection.execute("UPDATE transactions SET status='succeeded',metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
                 (json.dumps(meta), transaction_id))
             audit(connection, 'vending.dispense.succeeded', 'transaction', transaction_id, row['request_id'])
             return {'transaction_id': transaction_id, 'status': row['status'], 'dispense_status': 'succeeded',
