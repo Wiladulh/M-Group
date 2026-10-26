@@ -1,6 +1,6 @@
 # Cashier API v2 — contract and implementation gate
 
-Status: design contract for the next implementation slice. These routes are proposed v2 contracts; they are not implemented until matching backend tests pass.
+Status: read-only member-balance lookup is implemented and covered by backend tests. Cashier payment and top-up below remain proposed contracts and are not implemented until the schema, authorization model, and matching backend tests are complete.
 
 ## Shared rules
 
@@ -29,7 +29,7 @@ Response:
 
 - Valid only for an active, authenticated cashier or vending device and active member/card/account.
 - Card UID alone is not payment authorization.
-- Must not create a transaction, debit, credit, or ledger entry.
+- Must not create a transaction, debit, credit, or ledger entry. Regression tests verify the endpoint leaves transaction and ledger counts unchanged.
 - Unknown or inactive card returns a stable authorization error without revealing whether a card UID is enrolled.
 
 ## Cashier payment
