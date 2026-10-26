@@ -4,19 +4,19 @@ Scope: source review of the clean-room v2 backend on `rebuild/clean-room-v2`. Th
 
 ## Controls now present
 
-- Vending purchases and dispense-result transitions use `BEGIN IMMEDIATE` transactions.
+- Vending purchases and dispense-result transitions use `BEGIN IMMEDIATE` transactions. Request-scoped SQLite connections permit worker-thread handoff safely while each connection remains scoped to one request.
 - Purchase request IDs are unique; replay checks compare the authenticated device, product, and card hash.
 - Failed dispense restores member balance and product stock and appends compensating ledger entries atomically.
 - Device-role checks reject cashier devices at vending purchase and dispense endpoints.
 - Persisted PIN throttling tracks failures by device and card, applies a card-wide lockout, and rejects valid PINs while the lock is active.
 - The finance reconciliation endpoint reports transaction debit/credit imbalances, account-to-ledger balance mismatches, and pending purchases requiring review.
-- Regression tests verify account balances against ledger entries after top-up, purchase, and failed-dispense reversal.
+- Regression tests verify account balances against ledger entries after top-up, purchase, and failed-dispense reversal. Concurrent duplicate purchase and concurrent failed-dispense reports are covered by regression tests; the latest Test and Rebuild v2 workflows passed on commit `728a1bcc32254607cb902fbf5c0f474fe6306334`.
 - Product updates reject whitespace-only names and constrain slot IDs to 1–5. Promo columns are constrained to zero in the clean-install schema.
 
 ## Blocking findings before merge/release acceptance
 
-1. **Concurrency coverage is incomplete.** Add concurrent duplicate purchase requests and concurrent dispense-result requests. Evidence must show one purchase debit, one stock decrement, one refund, one stock restoration, and one pair of compensating ledger entries.
-2. **Firmware v2 is not implemented yet.** `rebuild-v2/firmware/README.md` currently specifies the target contract but contains no firmware implementation. The existing `esp32/cashier` and `esp32/vending` sketches still call `/api/v1` routes and use the legacy request/response contract. Do not claim end-to-end v2 readiness until firmware is migrated and contract-tested, or firmware migration is explicitly separated from this release.
+1. **Concurrency behavior now has regression coverage, but production load testing remains open.** CI verifies concurrent duplicate purchase requests and concurrent failed-dispense reports create one purchase debit, one stock decrement, one refund, one stock restoration, and one pair of compensating ledger entries. Add stress tests under realistic request volume before production use.
+2. **The v2 cashier API and firmware are not implemented yet.** The backend currently supports admin top-ups and vending purchases, but does not yet provide a secure cashier payment/top-up/member-balance workflow with cashier operator authorization. `rebuild-v2/firmware/README.md` `rebuild-v2/firmware/README.md` currently specifies the target contract but contains no firmware implementation. The existing `esp32/cashier` and `esp32/vending` sketches still call `/api/v1` routes and use the legacy request/response contract. Do not claim end-to-end v2 readiness until firmware is migrated and contract-tested, or firmware migration is explicitly separated from this release.
 3. **Admin authorization remains a shared bearer token.** Define the admin identity/session model, role matrix, revocation, audit actor identity, and CSRF protections if browser sessions are introduced before production use.
 4. **Operational recovery is not proven.** Run and record a backup/restore drill, SQLite integrity and foreign-key checks, ledger reconciliation on the restored copy, secret rotation/re-enrollment, and database-aware rollback rehearsal.
 5. **Pending dispense recovery is only surfaced, not automated.** The reconciliation report lists pending purchases for manual review; define age thresholds, operator procedures, and safe handling of ambiguous physical outcomes. Never auto-refund an uncertain dispense without a documented decision rule.
