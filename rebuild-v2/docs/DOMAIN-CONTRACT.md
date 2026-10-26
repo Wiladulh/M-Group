@@ -33,6 +33,13 @@ The string `device_id` is prohibited in all v2 runtime contracts, schema, tests,
 7. Financial corrections use explicit reversal/adjustment entries; historical rows are not silently rewritten.
 8. A vending purchase remains `pending` after debit/stock reservation until the originating vending device confirms dispense success; only then becomes `succeeded`. A failed dispense becomes `reversed` exactly once.
 
+## Ledger balance convention
+
+- Member-account balance is reconciled as ledger credits minus ledger debits.
+- The system account represents the pooled value backing member balances; its stored balance is reconciled as ledger debits minus ledger credits. Top-ups increase both the member balance and this pool; purchases reduce both; a failed-dispense reversal restores both.
+- A purchase must not proceed if either the member account or the backing system pool cannot cover the amount. These checks and all balance, stock, transaction, and ledger mutations happen in the same database transaction.
+- Reconciliation tests must cover top-up, pending purchase, successful dispense, failed dispense, and repeated dispense-result requests.
+
 ## Security invariants
 
 - Do not store raw device keys, member PINs, or other authentication secrets.
