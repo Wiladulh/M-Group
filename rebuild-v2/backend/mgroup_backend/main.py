@@ -201,6 +201,7 @@ def top_up(payload: TopUpRequest, connection: DB):
             system_account_id = ensure_system_account(connection)
             connection.execute("INSERT INTO transactions(transaction_id,request_id,member_id,transaction_type,amount_minor,status,metadata_json,completed_at) VALUES(?,?,?,'top_up',?,'succeeded',?,CURRENT_TIMESTAMP)", (transaction_id, payload.request_id, payload.member_id, payload.amount_minor, json.dumps({'description': payload.description})))
             connection.execute('UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?', (payload.amount_minor, account['account_id']))
+            connection.execute('UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?', (payload.amount_minor, system_account_id))
             connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)", (new_id('led'), transaction_id, account['account_id'], payload.amount_minor))
             connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)", (new_id('led'), transaction_id, system_account_id, payload.amount_minor))
             audit(connection, 'finance.top_up', 'transaction', transaction_id, payload.request_id, {'member_id': payload.member_id, 'amount_minor': payload.amount_minor})
@@ -337,6 +338,9 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
             if account['balance_minor'] < amount:
                 raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
             system_id = ensure_system_account(connection)
+            system_account = connection.execute("SELECT balance_minor FROM accounts WHERE account_id=? AND account_type='system'", (system_id,)).fetchone()
+            if not system_account or system_account['balance_minor'] < amount:
+                raise HTTPException(status_code=409, detail={'code': 'SYSTEM_ACCOUNT_INSUFFICIENT_BALANCE'})
             transaction_id = new_id('txn')
             metadata = {'product_id': payload.product_id, 'registry_id': device['registry_id'],
                         'card_hash': digest, 'product_name': product['name'], 'dispense_status': 'pending'}
@@ -350,6 +354,9 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                 raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
             if stocked.rowcount != 1:
                 raise HTTPException(status_code=409, detail={'code': 'OUT_OF_STOCK'})
+            system_debited = connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND account_type='system' AND balance_minor>=?", (amount, system_id, amount))
+            if system_debited.rowcount != 1:
+                raise HTTPException(status_code=409, detail={'code': 'SYSTEM_ACCOUNT_INSUFFICIENT_BALANCE'})
             connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
                 (new_id('led'), transaction_id, account['account_id'], amount))
             connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
@@ -392,6 +399,8 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
         system_id = ensure_system_account(connection)
         connection.execute("UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?",
             (row['amount_minor'], account['account_id']))
+        connection.execute("UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND account_type='system'",
+            (row['amount_minor'], system_id))
         connection.execute("UPDATE product_slots SET stock=stock+1,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?",
             (meta['registry_id'], meta['product_id']))
         connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
