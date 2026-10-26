@@ -357,7 +357,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         self.assertEqual(config.json()['operator_id'], 'operator-config-test-01')
 
         wrong_device = self.client.put(
-            f"/api/v2/admin/cashier-devices/{vending.json()['registry_id']}/configuration",
+            f"/api/v2/admin/cashier-devices/{vending['registry_id']}/configuration",
             headers=self.admin_headers(),
             json={'operator_id': 'operator-config-test-02', 'operator_name': 'Operator Test',
                   'operator_pin': '654321', 'settlement_account_id': merchant_account_id})
