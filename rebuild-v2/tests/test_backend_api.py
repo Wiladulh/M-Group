@@ -314,5 +314,99 @@ class ServerApiTests(unittest.TestCase):
                   'pin': '123456', 'product_id': 1})
         self.assertEqual(response.status_code, 403, response.text)
 
+
+    def test_v2_cashier_payment_and_topup_are_authenticated_idempotent_and_ledgered(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Cashier Member', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        card = self.client.post(f'/api/v2/members/{member_id}/cards',
+            headers=self.admin_headers(), json={'card_uid': '04-CASHIER-V2-0001'})
+        self.assertEqual(card.status_code, 201, card.text)
+        initial_topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'cashier-v2-seed-0001', 'member_id': member_id, 'amount_minor': 30000})
+        self.assertEqual(initial_topup.status_code, 200, initial_topup.text)
+
+        device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-v2-unit-0001', 'device_type': 'cashier',
+                  'display_name': 'Cashier v2'})
+        self.assertEqual(device.status_code, 201, device.text)
+        registry_id = device.json()['registry_id']
+        headers = {'X-Device-Key': device.json()['device_key']}
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            merchant_id = 'merchant-cashier-v2-0001'
+            db.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'merchant',0)",
+                       (merchant_id,))
+            db.commit()
+        finally:
+            db.close()
+        configured = self.client.put(f'/api/v2/admin/cashier-devices/{registry_id}/configuration',
+            headers=self.admin_headers(), json={'operator_id': 'operator-v2-001',
+                'operator_name': 'Operator V2', 'operator_pin': '654321',
+                'settlement_account_id': merchant_id})
+        self.assertEqual(configured.status_code, 200, configured.text)
+
+        payment_payload = {'request_id': 'cashier-v2-payment-0001', 'card_uid': '04-CASHIER-V2-0001',
+                           'pin': '123456', 'amount_minor': 5000}
+        payment = self.client.post('/api/v2/cashier/payments', headers=headers, json=payment_payload)
+        self.assertEqual(payment.status_code, 201, payment.text)
+        self.assertEqual(payment.json()['balance_after_minor'], 25000)
+        replay = self.client.post('/api/v2/cashier/payments', headers=headers, json=payment_payload)
+        self.assertEqual(replay.status_code, 201, replay.text)
+        self.assertTrue(replay.json()['idempotent_replay'])
+        conflict = self.client.post('/api/v2/cashier/payments', headers=headers,
+            json={**payment_payload, 'amount_minor': 6000})
+        self.assertEqual(conflict.status_code, 409, conflict.text)
+
+        topup_payload = {'request_id': 'cashier-v2-topup-0001', 'card_uid': '04-CASHIER-V2-0001',
+                         'operator_pin': '654321', 'member_pin': '123456', 'amount_minor': 7000}
+        topup = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
+        self.assertEqual(topup.status_code, 201, topup.text)
+        topup_replay = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
+        self.assertEqual(topup_replay.status_code, 201, topup_replay.text)
+        self.assertTrue(topup_replay.json()['idempotent_replay'])
+        bad_operator = self.client.post('/api/v2/cashier/top-ups', headers=headers,
+            json={**topup_payload, 'request_id': 'cashier-v2-topup-bad-01', 'operator_pin': '000000'})
+        self.assertEqual(bad_operator.status_code, 401, bad_operator.text)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            payment_row = db.execute("SELECT transaction_id FROM transactions WHERE request_id=?",
+                                     (payment_payload['request_id'],)).fetchone()
+            topup_row = db.execute("SELECT transaction_id FROM transactions WHERE request_id=?",
+                                   (topup_payload['request_id'],)).fetchone()
+            self.assertIsNotNone(payment_row)
+            self.assertIsNotNone(topup_row)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM transactions WHERE request_id IN (?,?)",
+                (payment_payload['request_id'], topup_payload['request_id'])).fetchone()[0], 2)
+            for transaction_id in (payment_row['transaction_id'], topup_row['transaction_id']):
+                totals = db.execute("SELECT SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) debits, SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) credits, COUNT(*) entries FROM ledger_entries WHERE transaction_id=?",
+                                    (transaction_id,)).fetchone()
+                self.assertEqual(totals['debits'], totals['credits'])
+                self.assertEqual(totals['entries'], 2)
+            member_balance = db.execute("SELECT balance_minor FROM accounts WHERE member_id=? AND account_type='member'",
+                                        (member_id,)).fetchone()[0]
+            merchant_balance = db.execute("SELECT balance_minor FROM accounts WHERE account_id=?", (merchant_id,)).fetchone()[0]
+            self.assertEqual(member_balance, 32000)
+            self.assertEqual(merchant_balance, 5000)
+        finally:
+            db.close()
+
+    def test_v2_cashier_endpoints_reject_missing_and_wrong_device_credentials(self):
+        self.assertEqual(self.client.post('/api/v2/cashier/payments',
+            json={'request_id': 'cashier-no-key-0001', 'card_uid': '04-UNKNOWN', 'pin': '123456',
+                  'amount_minor': 5000}).status_code, 401)
+        vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-cashier-endpoint-001', 'device_type': 'vending',
+                  'display_name': 'Wrong device'})
+        self.assertEqual(vending.status_code, 201, vending.text)
+        response = self.client.post('/api/v2/cashier/payments',
+            headers={'X-Device-Key': vending.json()['device_key']},
+            json={'request_id': 'cashier-wrong-type-0001', 'card_uid': '04-UNKNOWN',
+                  'pin': '123456', 'amount_minor': 5000})
+        self.assertEqual(response.status_code, 403, response.text)
+
 if __name__ == '__main__':
     unittest.main()
