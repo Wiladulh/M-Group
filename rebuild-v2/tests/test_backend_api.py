@@ -155,6 +155,31 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 422)
 
 
+    def test_vending_device_can_read_its_own_product_catalog_only(self):
+        vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-catalog-01', 'device_type': 'vending',
+                  'display_name': 'Vending Catalog'})
+        self.assertEqual(vending.status_code, 201, vending.text)
+        self.client.put(f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
+            headers=self.admin_headers(),
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7})
+        response = self.client.get('/api/v2/device/products',
+            headers={'X-Device-Key': vending.json()['device_key']})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['registry_id'], vending.json()['registry_id'])
+        self.assertEqual(len(response.json()['items']), 5)
+        self.assertEqual(response.json()['items'][0],
+            {'product_id': 1, 'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7})
+        self.assertEqual(self.client.get('/api/v2/device/products').status_code, 401)
+
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-catalog-denied-01', 'device_type': 'cashier',
+                  'display_name': 'Cashier Catalog Denied'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        denied = self.client.get('/api/v2/device/products',
+            headers={'X-Device-Key': cashier.json()['device_key']})
+        self.assertEqual(denied.status_code, 403, denied.text)
+
     def test_nfc_purchase_is_atomic_and_failed_dispense_refunds_once(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
             json={'display_name': 'Budi', 'pin': '123456'})
