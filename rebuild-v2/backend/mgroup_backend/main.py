@@ -420,12 +420,12 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
 @app.get('/api/v2/admin/finance/reconciliation', dependencies=[Depends(require_admin)])
 def finance_reconciliation(connection: DB):
     transaction_rows = connection.execute("""
-        SELECT transaction_id, request_id,
-               SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) AS debit_total,
-               SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) AS credit_total
+        SELECT t.transaction_id, t.request_id,
+               SUM(CASE WHEN l.direction='debit' THEN l.amount_minor ELSE 0 END) AS debit_total,
+               SUM(CASE WHEN l.direction='credit' THEN l.amount_minor ELSE 0 END) AS credit_total
         FROM transactions t
         LEFT JOIN ledger_entries l ON l.transaction_id=t.transaction_id
-        GROUP BY transaction_id, request_id
+        GROUP BY t.transaction_id, t.request_id
         HAVING debit_total != credit_total
         ORDER BY transaction_id
         LIMIT 500
