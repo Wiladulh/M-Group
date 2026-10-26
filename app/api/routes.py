@@ -1379,18 +1379,6 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"amount_must_be_positive_integer")
 
         financial_key = "cashier-deposit:" + q.idempotency_key
-        with db.connect() as c:
-            old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
-            if old:
-                if (old["credential_id"] != q.credential_id or old["amount"] != q.amount):
-                    raise HTTPException(409,"idempotency_key_conflict")
-                fin = c.execute(
-                    "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
-                    (financial_key,),
-                ).fetchone()
-                result = dict(old)
-                result["financial_transaction_id"] = fin["transaction_id"] if fin else None
-                return result
 
         auth=identity.authorize_credential(q.credential_id)
         if not auth["authorized"]:
