@@ -258,6 +258,41 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
     if device['device_type'] != 'vending':
         raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
     digest = card_hash(payload.card_uid)
+    # Persist throttling in its own transaction so a rejected PIN does not roll
+    # back the security counter with the purchase transaction.
+    with transaction(connection):
+        pin_member = connection.execute(
+            "SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+            (digest,)).fetchone()
+        if not pin_member or pin_member['status'] != 'active':
+            raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
+        attempt = connection.execute(
+            'SELECT failed_attempts,locked_until FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
+            (digest, device['hardware_id'])).fetchone()
+        locked = connection.execute(
+            "SELECT CASE WHEN ? IS NOT NULL AND julianday(?) > julianday('now') THEN 1 ELSE 0 END",
+            (attempt['locked_until'] if attempt else None, attempt['locked_until'] if attempt else None)).fetchone()[0]
+        if locked:
+            raise HTTPException(status_code=429, detail={'code': 'PIN_TEMPORARILY_LOCKED'})
+        if not verify_pin(payload.pin, pin_member['pin_hash']):
+            failures = (attempt['failed_attempts'] if attempt else 0) + 1
+            locked_until = "datetime('now', '+5 minutes')" if failures >= 5 else 'NULL'
+            if failures >= 5:
+                connection.execute(
+                    "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,datetime('now','+5 minutes'),CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
+                    (digest, device['hardware_id'], failures))
+            else:
+                connection.execute(
+                    "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,NULL,CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,updated_at=CURRENT_TIMESTAMP",
+                    (digest, device['hardware_id'], failures))
+            pin_error = {'code': 'PIN_TEMPORARILY_LOCKED'} if failures >= 5 else {'code': 'INVALID_PIN'}
+        else:
+            connection.execute(
+                'DELETE FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
+                (digest, device['hardware_id']))
+            pin_error = None
+    if pin_error:
+        raise HTTPException(status_code=429 if pin_error['code'] == 'PIN_TEMPORARILY_LOCKED' else 401, detail=pin_error)
     try:
         with transaction(connection):
             prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,hardware_id,transaction_type,metadata_json FROM transactions WHERE request_id=?",
