@@ -1,6 +1,6 @@
 # Cashier API v2 — contract and implementation gate
 
-Status: read-only member-balance lookup is implemented and covered by backend tests. Cashier payment and top-up below remain proposed contracts and are not implemented until the schema, authorization model, and matching backend tests are complete.
+Status: read-only member-balance lookup and authenticated vending product catalog are implemented and covered by backend tests. Cashier payment and top-up below remain proposed contracts and are not implemented until the schema, authorization model, and matching backend tests are complete.
 
 ## Shared rules
 
@@ -12,6 +12,14 @@ Status: read-only member-balance lookup is implemented and covered by backend te
 - Card UIDs and PINs are never written to logs, audit detail, transaction metadata, or responses. Store only the peppered card hash and a salted PIN verifier.
 - Balance changes, transaction record, ledger entries, stock changes (where applicable), and audit event commit atomically.
 - Responses use `transaction_id`, `request_id`, `status`, and `idempotent_replay`; no v1 compatibility aliases.
+
+## Authenticated vending product catalog
+
+`GET /api/v2/device/products`
+
+- Requires a valid active vending device key and returns only that device's five product slots.
+- Cashier devices and unauthenticated requests are rejected. Product reads do not require an admin bearer token.
+- Regression tests cover the returned catalog, device ownership, missing credentials, and wrong device type.
 
 ## Read-only member balance
 
