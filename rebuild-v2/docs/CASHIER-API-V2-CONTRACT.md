@@ -72,7 +72,7 @@ Request:
 - Verify both operator PIN and member PIN, with throttling and audit of the outcome but never the secret values.
 - Atomically credit the member account and the backing system account, create balanced ledger entries, transaction, and audit event.
 - Replays return the original transaction. Reusing the request ID with a changed amount/card/device returns a conflict.
-- The API must not be implemented until the operator-to-device binding and secure operator enrollment/reset process exist.
+- The API implementation now uses the existing server-side operator-to-device binding and settlement-account assignment. Remaining release work is to connect the firmware/UI, validate operator reset/revocation procedures, and run the final integration suite.
 
 ## Required schema work before implementation
 
