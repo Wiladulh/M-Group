@@ -51,6 +51,7 @@ class ServerApiTests(unittest.TestCase):
             '/api/v2/members',
             '/api/v2/vending/devices',
             '/api/v2/admin/audit',
+            '/api/v2/admin/finance/reconciliation',
         )
         for path in protected_reads:
             with self.subTest(path=path):
