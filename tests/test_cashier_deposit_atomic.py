@@ -45,6 +45,19 @@ def test_cashier_deposit_is_atomic_and_idempotency_conflicts_are_rejected():
                 "credential_id": "credential-1", "amount": 10000,
                 "operator_pin": "6789", "member_pin": "1234", "idempotency_key": "cashier-deposit-1",
             }
+            # A registered cashier key is mandatory; failed authentication must not post money.
+            missing_key = client.post("/api/v1/cashier/deposits", json=request)
+            assert missing_key.status_code == 401, missing_key.text
+            invalid_key = client.post(
+                "/api/v1/cashier/deposits",
+                headers={"X-M-Group-Device-Key": "not-the-cashier-key"},
+                json=request,
+            )
+            assert invalid_key.status_code == 403, invalid_key.text
+            with client.app.state.db.connect() as c:
+                assert c.execute("SELECT COUNT(*) FROM cashier_deposits").fetchone()[0] == 0
+                assert c.execute("SELECT COUNT(*) FROM financial_transactions").fetchone()[0] == 0
+
             first = client.post("/api/v1/cashier/deposits", headers=headers, json=request)
             assert first.status_code == 200, first.text
             assert first.json()["balance_before"] == 50000
