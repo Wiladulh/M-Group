@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     hardware_id TEXT,
     member_id TEXT,
     transaction_type TEXT NOT NULL
-        CHECK (transaction_type IN ('purchase', 'top_up', 'refund', 'adjustment', 'transfer')),
+        CHECK (transaction_type IN ('purchase', 'cashier_payment', 'top_up', 'refund', 'adjustment', 'transfer')),
     amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
     currency TEXT NOT NULL DEFAULT 'IDR',
     status TEXT NOT NULL
