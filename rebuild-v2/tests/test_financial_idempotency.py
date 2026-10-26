@@ -100,6 +100,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
                    'pin': '123456', 'product_id': 1}
         first = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
         self.assertEqual(first.status_code, 201, first.text)
+        self.assertEqual(first.json()['status'], 'pending', 'purchase must not be final before dispense confirmation')
         replay = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
         self.assertEqual(replay.status_code, 201, replay.text)
         self.assertTrue(replay.json()['idempotent_replay'])
@@ -115,6 +116,14 @@ class FinancialIdempotencyTests(unittest.TestCase):
             headers=self.admin_headers(),
         ).json()['items']
         self.assertEqual(products[0]['stock'], 1)
+        transaction_id = first.json()['transaction_id']
+        success = self.client.post(
+            '/api/v2/vending/transactions/' + transaction_id + '/dispense-result',
+            headers=headers,
+            json={'succeeded': True},
+        )
+        self.assertEqual(success.status_code, 200, success.text)
+        self.assertEqual(success.json()['status'], 'succeeded')
         db = self.main.connect(self.main.settings.database_path)
         try:
             count = db.execute(
