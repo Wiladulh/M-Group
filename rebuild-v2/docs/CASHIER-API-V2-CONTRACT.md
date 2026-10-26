@@ -1,6 +1,6 @@
 # Cashier API v2 — contract and implementation gate
 
-Status: read-only member-balance lookup and authenticated vending product catalog are implemented and covered by backend tests. Cashier payment and top-up below remain proposed contracts and are not implemented until the schema, authorization model, and matching backend tests are complete.
+Status: read-only member-balance lookup, authenticated vending product catalog, cashier payment, and cashier top-up routes are now implemented in the v2 backend. The cashier routes bind operator and settlement configuration to the authenticated device, validate member PINs with persisted lockout, and use atomic ledger transactions. The added cashier regression tests and full validation matrix still need to be run after the rebuild work is complete.
 
 ## Shared rules
 
@@ -44,6 +44,8 @@ Response:
 
 `POST /api/v2/cashier/payments`
 
+Implementation status: implemented in `rebuild-v2/backend/mgroup_backend/main.py`; regression coverage has been added but not yet run in the final full-suite pass.
+
 Request:
 ```json
 {"request_id":"cashier-payment-0001","card_uid":"04A1B2C3","pin":"123456","amount_minor":5000}
@@ -58,6 +60,8 @@ Request:
 ## Cashier top-up
 
 `POST /api/v2/cashier/top-ups`
+
+Implementation status: implemented in `rebuild-v2/backend/mgroup_backend/main.py`; regression coverage has been added but not yet run in the final full-suite pass.
 
 Request:
 ```json
