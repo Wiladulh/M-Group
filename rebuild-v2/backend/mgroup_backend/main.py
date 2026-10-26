@@ -49,6 +49,9 @@ class TopUpRequest(BaseModel):
 class CardEnroll(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
 
+class MemberBalanceLookup(BaseModel):
+    card_uid: str = Field(min_length=4, max_length=128)
+
 
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
@@ -157,6 +160,26 @@ def authenticated_device(connection: sqlite3.Connection, device_key: str | None)
 def device_me(connection: DB, x_device_key: Annotated[str | None, Header()] = None):
     device = authenticated_device(connection, x_device_key)
     return {'registry_id': device['registry_id'], 'hardware_id': device['hardware_id'], 'device_type': device['device_type']}
+
+@app.post('/api/v2/devices/member-balance')
+def device_member_balance(payload: MemberBalanceLookup, connection: DB,
+                          x_device_key: Annotated[str | None, Header()] = None):
+    device = authenticated_device(connection, x_device_key)
+    if device['device_type'] not in ('cashier', 'vending'):
+        raise HTTPException(status_code=403, detail={'code': 'DEVICE_TYPE_NOT_ALLOWED'})
+    row = connection.execute("""
+        SELECT m.member_id, m.display_name, m.status AS member_status,
+               a.balance_minor, a.currency, a.status AS account_status
+        FROM member_cards c
+        JOIN members m ON m.member_id=c.member_id
+        JOIN accounts a ON a.member_id=m.member_id AND a.account_type='member'
+        WHERE c.card_uid_hash=? AND c.status='active'
+    """, (card_hash(payload.card_uid),)).fetchone()
+    if not row or row['member_status'] != 'active' or row['account_status'] != 'active':
+        raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
+    return {'member_id': row['member_id'], 'display_name': row['display_name'],
+            'balance_minor': row['balance_minor'], 'currency': row['currency']}
+
 
 @app.post('/api/v2/members', status_code=201, dependencies=[Depends(require_admin)])
 def create_member(payload: MemberCreate, connection: DB):
