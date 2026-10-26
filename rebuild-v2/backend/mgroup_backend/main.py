@@ -161,6 +161,18 @@ def device_me(connection: DB, x_device_key: Annotated[str | None, Header()] = No
     device = authenticated_device(connection, x_device_key)
     return {'registry_id': device['registry_id'], 'hardware_id': device['hardware_id'], 'device_type': device['device_type']}
 
+@app.get('/api/v2/device/products')
+def device_products(connection: DB, x_device_key: Annotated[str | None, Header()] = None):
+    device = authenticated_device(connection, x_device_key)
+    if device['device_type'] != 'vending':
+        raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
+    rows = connection.execute(
+        'SELECT product_id,name,price_minor,stock FROM product_slots WHERE registry_id=? ORDER BY product_id',
+        (device['registry_id'],),
+    ).fetchall()
+    return {'registry_id': device['registry_id'], 'items': [dict(row) for row in rows]}
+
+
 @app.post('/api/v2/devices/member-balance')
 def device_member_balance(payload: MemberBalanceLookup, connection: DB,
                           x_device_key: Annotated[str | None, Header()] = None):
