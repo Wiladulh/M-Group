@@ -36,4 +36,4 @@ This directory is the new implementation boundary for M-Group. Everything outsid
 
 ## Status
 
-Clean-room workspace created. Feature implementation and acceptance testing are not yet complete.
+Clean-room workspace is under active implementation. Device authentication, member/card management, vending purchase/dispense recovery, financial ledger/reconciliation, and cashier v2 payment/top-up routes exist. Firmware migration, product-image upload, full WebUI API wiring, backup/restore drill, and final acceptance validation remain open. Do not treat this status as release-ready.
