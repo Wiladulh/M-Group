@@ -1,32 +1,38 @@
-# Security and financial audit — next gates
+# Security and financial audit — remaining acceptance gates
 
-Scope: source review of the clean-room v2 backend at the time of this commit. This is a review record, not a production-readiness approval.
+Scope: source review of the clean-room v2 backend on `rebuild/clean-room-v2`. This is an engineering audit record, not a production-readiness approval.
 
-## Confirmed strengths
+## Controls now present
 
-- Vending purchase and dispense-result transitions use `BEGIN IMMEDIATE` transactions.
-- Purchase request IDs are unique and replay checks compare device, product, and card hash.
-- Failed dispense restores the member balance and product stock and records compensating ledger entries in the same database transaction.
-- Device role checks reject cashier devices at vending purchase and dispense endpoints.
-- Product updates normalize whitespace-only names and constrain slot IDs to 1–5.
-- NFC and QRIS promo columns are constrained to zero in the clean-install schema.
+- Vending purchases and dispense-result transitions use `BEGIN IMMEDIATE` transactions.
+- Purchase request IDs are unique; replay checks compare the authenticated device, product, and card hash.
+- Failed dispense restores member balance and product stock and appends compensating ledger entries atomically.
+- Device-role checks reject cashier devices at vending purchase and dispense endpoints.
+- Persisted PIN throttling tracks failures by device and card, applies a card-wide lockout, and rejects valid PINs while the lock is active.
+- The finance reconciliation endpoint reports transaction debit/credit imbalances, account-to-ledger balance mismatches, and pending purchases requiring review.
+- Regression tests verify account balances against ledger entries after top-up, purchase, and failed-dispense reversal.
+- Product updates reject whitespace-only names and constrain slot IDs to 1–5. Promo columns are constrained to zero in the clean-install schema.
 
-## Blocking findings to close before acceptance
+## Blocking findings before merge/release acceptance
 
-1. **PIN throttling / lockout is not implemented in the purchase path.** Each request verifies the PIN but there is no persisted per-member/card/device failure counter, cooldown, or security event for repeated failures. Add a concurrency-safe persisted policy and tests for threshold, cooldown expiry, successful reset, and concurrent requests.
-2. **Admin authorization is a single bearer token in this v2 snapshot.** `require_admin` compares a configured token; there are no granular roles or session lifecycle in this module. Before production, define the admin identity/session model, role matrix, revocation, audit actor identity, and CSRF protections for browser sessions.
-3. **Ledger integrity is not independently asserted by the API tests.** Existing tests check balance and stock after refund, but do not verify balanced debit/credit sums, exact ledger row counts, or behavior under concurrent duplicate dispense reports. Add invariants and concurrency tests.
-4. **Operational recovery remains unproven.** Clean-install schema tests do not demonstrate backup restoration, crash recovery, secret rotation, deployment rollback, or reconciliation of ambiguous physical dispense outcomes. Add repeatable acceptance procedures and evidence.
+1. **Concurrency coverage is incomplete.** Add concurrent duplicate purchase requests and concurrent dispense-result requests. Evidence must show one purchase debit, one stock decrement, one refund, one stock restoration, and one pair of compensating ledger entries.
+2. **Firmware v2 is not implemented yet.** `rebuild-v2/firmware/README.md` currently specifies the target contract but contains no firmware implementation. The existing `esp32/cashier` and `esp32/vending` sketches still call `/api/v1` routes and use the legacy request/response contract. Do not claim end-to-end v2 readiness until firmware is migrated and contract-tested, or firmware migration is explicitly separated from this release.
+3. **Admin authorization remains a shared bearer token.** Define the admin identity/session model, role matrix, revocation, audit actor identity, and CSRF protections if browser sessions are introduced before production use.
+4. **Operational recovery is not proven.** Run and record a backup/restore drill, SQLite integrity and foreign-key checks, ledger reconciliation on the restored copy, secret rotation/re-enrollment, and database-aware rollback rehearsal.
+5. **Pending dispense recovery is only surfaced, not automated.** The reconciliation report lists pending purchases for manual review; define age thresholds, operator procedures, and safe handling of ambiguous physical outcomes. Never auto-refund an uncertain dispense without a documented decision rule.
+6. **Legacy feature parity and cutover inventory remain open.** Compare the clean-room API, web UI, cashier workflow, vending workflow, and operational procedures against the legacy project. Document any intentionally excluded feature and migration/cutover plan before deciding the rebuild can replace the old system.
 
 ## Required regression cases
 
-- More than the allowed number of invalid PIN attempts must be throttled without charging or decrementing stock; a valid PIN must not bypass an active lock.
-- Concurrent purchase replays with the same request ID produce one debit, one stock decrement, and one transaction.
+- Invalid PIN attempts reach the configured threshold; cooldown and successful reset behave as documented, including requests across different vending devices.
+- Concurrent purchase replays with the same request ID produce one transaction, one debit, and one stock decrement.
 - Concurrent failed dispense reports produce one refund, one stock restoration, and one pair of compensating ledger entries.
 - Reusing a request ID for a different member/card/device/product/amount is rejected.
-- For every financial transaction, ledger debits equal credits and compensating entries are unique and auditable.
-- Admin permissions are tested per operation; unauthenticated and unauthorized requests fail closed.
+- Every transaction has equal debit and credit totals; member and system account balances reconcile to the documented ledger direction convention.
+- Pending purchases are visible in reconciliation and remain pending until the originating vending device confirms the result.
+- Unauthenticated and unauthorized requests fail closed; no device can report a dispense result for another device's transaction.
+- Firmware request/response contracts match the v2 API and survive network timeout/reboot without repeating a physical dispense.
 
 ## Gate
 
-Do not merge to `main`, deploy, or treat the rebuild as production-ready until the blocking findings are implemented, tested, and reviewed. Keep all work isolated to `rebuild/clean-room-v2`.
+Do not merge to `main`, deploy, or treat the rebuild as production-ready until the blocking findings are implemented, tested, and reviewed. Keep work isolated to `rebuild/clean-room-v2`.
