@@ -6,7 +6,9 @@ This runbook is an acceptance checklist, not evidence that a backup or restore h
 
 - Every successful top-up has one member credit and one system debit for the same positive amount.
 - Every purchase has one member debit and one system credit for the same amount.
+- A purchase remains `pending` until the originating vending device confirms the physical dispense; it becomes `succeeded` only after success confirmation.
 - A failed dispense reverses the account balance and product stock exactly once. Repeated dispense-result requests must not create extra ledger entries or extra stock.
+- Pending purchases without a dispense result require operational monitoring/reconciliation; do not silently classify them as completed.
 - For every transaction, total debits equal total credits.
 - For every account, the stored balance reconciles with its ledger under the chosen direction convention.
 - Request IDs are unique and retries with different payloads must fail with an idempotency conflict.
