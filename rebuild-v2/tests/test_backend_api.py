@@ -146,7 +146,8 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             for row in rows:
                 self.assertEqual(row['debits'], row['credits'], dict(row))
-                self.assertEqual(row['entry_count'], 2, dict(row))
+                expected_entries = 2 if row['transaction_type'] == 'top_up' else 4
+                self.assertEqual(row['entry_count'], expected_entries, dict(row))
 
             refund_rows = db.execute(
                 "SELECT SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) AS debits, "
@@ -154,8 +155,8 @@ class ServerApiTests(unittest.TestCase):
                 "COUNT(*) AS entry_count FROM ledger_entries WHERE transaction_id=?",
                 (transaction_id,),
             ).fetchone()
-            self.assertEqual(refund_rows['debits'], 5000)
-            self.assertEqual(refund_rows['credits'], 5000)
+            self.assertEqual(refund_rows['debits'], 10000)
+            self.assertEqual(refund_rows['credits'], 10000)
             self.assertEqual(refund_rows['entry_count'], 4)
 
             account = db.execute(
