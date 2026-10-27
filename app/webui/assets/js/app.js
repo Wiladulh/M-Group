@@ -361,11 +361,13 @@ $('financialForm').onsubmit=async e=>{
   const memberLabel=selectedAccount?.member_name||accountId;
   if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
   const signature=JSON.stringify({accountId,amount,direction,reference});
-  if(!financialPending||financialPending.signature!==signature){
+  if(!financialPending){
     const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
     financialPending={signature,key:'webui-financial:'+nonce};
-    try{sessionStorage.setItem('mgroup-financial-pending',JSON.stringify(financialPending))}catch(_){}
+  }else{
+    financialPending.signature=signature;
   }
+  try{sessionStorage.setItem('mgroup-financial-pending',JSON.stringify(financialPending))}catch(_){}
   try{
     const q={amount,reference,idempotency_key:financialPending.key};
     const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
@@ -377,6 +379,11 @@ $('financialForm').onsubmit=async e=>{
   }catch(err){
     $('financialResult').textContent='Hasil transaksi belum dapat dipastikan. Ulangi dengan data yang sama; key idempotensi tetap disimpan. '+err.message;
   }
+};
+$('financialClearPending').onclick=()=>{
+  if(!confirm('Gunakan hanya setelah memeriksa ledger dan memastikan transaksi sebelumnya tidak berhasil. Buat key baru?'))return;
+  financialPending=null;try{sessionStorage.removeItem('mgroup-financial-pending')}catch(_){}
+  $('financialResult').textContent='Key tertunda dihapus. Periksa ledger sebelum mengulang transaksi.';
 };
 async function loadPaymentMemberData(memberId){
   const credentialSelect=$('credential'),accountSelect=$('payaccount');
@@ -403,16 +410,11 @@ $('paymentMethodFilter').onchange=renderPaymentTransactions;
 $('paymentStatusFilter').onchange=renderPaymentTransactions;
 let paymentPendingKey=null;
 try{paymentPendingKey=sessionStorage.getItem('mgroup-payment-pending-key');if(paymentPendingKey&&!$('idem').value)$('idem').value=paymentPendingKey}catch(_){}
-['payMember','credential','payaccount','payamount','paypin','method','provider'].forEach(id=>{
-  const el=$(id);if(!el)return;
-  el.addEventListener('input',clearPendingPaymentKey);
-  el.addEventListener('change',clearPendingPaymentKey);
-});
-function clearPendingPaymentKey(){
-  if(paymentPendingKey&&$('idem').value===paymentPendingKey)$('idem').value='';
-  paymentPendingKey=null;
-  try{sessionStorage.removeItem('mgroup-payment-pending-key')}catch(_){}
-}
+$('paymentClearPending').onclick=()=>{
+  if(!confirm('Gunakan hanya setelah memeriksa riwayat transaksi dan memastikan pembayaran sebelumnya tidak berhasil. Buat key baru?'))return;
+  paymentPendingKey=null;$('idem').value='';try{sessionStorage.removeItem('mgroup-payment-pending-key')}catch(_){}
+  $('paymentResult').textContent='Key tertunda dihapus. Periksa riwayat sebelum mengulang pembayaran.';
+};
 $('paymentForm').onsubmit=async e=>{
   e.preventDefault();
   const method=$('method').value,pin=$('paypin').value;
