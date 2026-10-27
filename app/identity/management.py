@@ -158,16 +158,43 @@ class MemberManagementService:
         card_id = "nfc-" + uuid4().hex
         with self.db.connect() as c:
             try:
+                c.execute("BEGIN IMMEDIATE")
+                existing = c.execute(
+                    "SELECT card_id,member_id,status FROM member_nfc_cards WHERE card_uid=?",
+                    (card_uid,),
+                ).fetchone()
+                if existing and existing["member_id"] != member_id:
+                    raise ValueError("nfc_card_previously_bound")
+                # A member has one active NFC card. Replacement revokes the prior
+                # card in the same transaction as binding the replacement.
                 c.execute(
-                    """
-                    INSERT INTO member_nfc_cards
-                    (card_id,member_id,credential_id,card_uid,status)
-                    VALUES(?,?,?,?, 'active')
-                    """,
-                    (card_id, member_id, credential_id, card_uid),
+                    "UPDATE member_nfc_cards SET status='revoked',revoked_at=CURRENT_TIMESTAMP "
+                    "WHERE member_id=? AND status='active' AND card_uid<>?",
+                    (member_id, card_uid),
+                )
+                if existing:
+                    c.execute(
+                        "UPDATE member_nfc_cards SET credential_id=?,status='active',revoked_at=NULL "
+                        "WHERE card_id=? AND member_id=?",
+                        (credential_id, existing["card_id"], member_id),
+                    )
+                    card_id = existing["card_id"]
+                else:
+                    c.execute(
+                        "INSERT INTO member_nfc_cards(card_id,member_id,credential_id,card_uid,status) "
+                        "VALUES(?,?,?,?, 'active')",
+                        (card_id, member_id, credential_id, card_uid),
+                    )
+                c.execute(
+                    "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                    ("identity", "member", member_id, "nfc_card_bound"),
                 )
                 c.commit()
+            except ValueError:
+                c.rollback()
+                raise
             except Exception as exc:
+                c.rollback()
                 if "UNIQUE" in str(exc).upper():
                     raise ValueError("nfc_card_already_registered") from exc
                 raise
