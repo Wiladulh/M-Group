@@ -1852,7 +1852,7 @@ def build_router(db, app_settings=None):
             except FileExistsError:
                 sequence+=1
         try:
-            export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"],"timezone":"Asia/Jakarta"})
+            export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"],"status":data["status"],"transaction_type":data["transaction_type"],"member_id":data["member_id"],"transaction_id_filter":data["transaction_id"],"hardware_id":data["hardware_id"],"timezone":"Asia/Jakarta"})
         except Exception:
             path.unlink(missing_ok=True)
             raise
