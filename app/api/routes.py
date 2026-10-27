@@ -1471,25 +1471,40 @@ def build_router(db, app_settings=None):
             raise HTTPException(409 if code in {"insufficient_balance", "idempotency_key_conflict"} else 400,code)
 
     @r.get("/audit/report")
-    def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL"):
+    def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
+                     start_date:str|None=None,end_date:str|None=None):
         require_admin(request)
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING"}: raise HTTPException(400,"invalid_source")
-        if period not in {"day","week","month"}: raise HTTPException(400,"invalid_period")
+        if period not in {"day","week","month","custom"}: raise HTTPException(400,"invalid_period")
         method=method.upper()
         if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
         import datetime as dt
         date=date or dt.date.today().isoformat()
-        if period=="day":
-            selected_day=dt.date.fromisoformat(date)
-            start=selected_day.isoformat()
-            end=(selected_day+dt.timedelta(days=1)).isoformat()
-        elif period=="month":
-            y,m=map(int,date[:7].split("-")); start=f"{y:04d}-{m:02d}-01"
-            end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
-        else:
-            d=dt.date.fromisoformat(date); monday=d-dt.timedelta(days=d.weekday())
-            start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
+        try:
+            if period=="custom":
+                if not start_date or not end_date:
+                    raise ValueError("custom_date_range_required")
+                selected_start=dt.date.fromisoformat(start_date)
+                selected_end=dt.date.fromisoformat(end_date)
+                if selected_start > selected_end:
+                    raise ValueError("start_date_after_end_date")
+                start=selected_start.isoformat()
+                end=(selected_end+dt.timedelta(days=1)).isoformat()
+            elif period=="day":
+                selected_day=dt.date.fromisoformat(date)
+                start=selected_day.isoformat()
+                end=(selected_day+dt.timedelta(days=1)).isoformat()
+            elif period=="month":
+                selected_month=dt.date.fromisoformat(date)
+                y,m=selected_month.year,selected_month.month
+                start=f"{y:04d}-{m:02d}-01"
+                end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
+            else:
+                d=dt.date.fromisoformat(date); monday=d-dt.timedelta(days=d.weekday())
+                start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
+        except ValueError as exc:
+            raise HTTPException(400,str(exc) or "invalid_date")
         queries=[]
         if source in {"ALL","CASHIER"}:
             queries.append("""SELECT transaction_id,created_at,'CASHIER' source,hardware_id,member_id,account_id,
@@ -1516,11 +1531,11 @@ def build_router(db, app_settings=None):
         return {"source":source,"period":period,"method":method,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
 
     @r.get("/audit/export.xlsx")
-    def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL"):
+    def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
+                     start_date:str|None=None,end_date:str|None=None):
         require_admin(request)
-        # Reuse the endpoint's authorization and parameter validation, passing
-        # the already-validated token explicitly because this is a direct call.
-        data=audit_report(request, source, period, date, method)
+        # Reuse the endpoint's authorization and parameter validation.
+        data=audit_report(request, source, period, date, method, start_date, end_date)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
