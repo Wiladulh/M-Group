@@ -50,7 +50,7 @@ def db_conn():
         connection.close()
 
 DB = Annotated[sqlite3.Connection, Depends(db_conn)]
-Admin = Annotated[None, Depends(require_admin)]
+Admin = Annotated[dict, Depends(require_admin_session)]
 
 class AdminLogin(BaseModel):
     username: str = Field(min_length=1, max_length=64)
@@ -383,7 +383,7 @@ def readiness(connection: DB):
         raise HTTPException(status_code=503, detail={'code': 'DATABASE_NOT_READY'}) from exc
     return {'status': 'ready', 'database': 'ok'}
 
-@app.post('/api/v2/admin/devices', status_code=201, dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/devices', status_code=201, dependencies=[Depends(require_admin_session)])
 def register_device(payload: DeviceProvision, connection: DB):
     device_type=payload.device_type
     display_name=payload.display_name.strip() or ('Cashier' if device_type=='cashier' else 'Vending')
@@ -434,14 +434,14 @@ def enroll_device(payload: DeviceEnrollment, connection: DB,
     return {'registry_id':row['registry_id'],'hardware_id':hardware_id,'device_type':row['device_type'],'status':'active','idempotent_replay':False}
 
 
-@app.get('/api/v2/admin/devices', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/devices', dependencies=[Depends(require_admin_session)])
 def admin_devices(connection: DB):
     rows=connection.execute("""SELECT registry_id,hardware_id,device_type,display_name,status,mac_address,
         device_key_hint,created_at,updated_at,last_seen_at,revoked_at FROM device_registry
         ORDER BY created_at DESC""").fetchall()
     return {'items':[dict(row) for row in rows]}
 
-@app.post('/api/v2/admin/devices/{registry_id}/rotate-key', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/devices/{registry_id}/rotate-key', dependencies=[Depends(require_admin_session)])
 def rotate_device_key(registry_id: str, connection: DB):
     key=secrets.token_urlsafe(32)
     with transaction(connection):
@@ -455,7 +455,7 @@ def rotate_device_key(registry_id: str, connection: DB):
         audit(connection,'device.key.rotate','device',registry_id,detail={'key_shown_once':True})
     return {'registry_id':registry_id,'device_key':key,'key_shown_once':True,'status':'rotated'}
 
-@app.post('/api/v2/admin/devices/{registry_id}/revoke', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/devices/{registry_id}/revoke', dependencies=[Depends(require_admin_session)])
 def revoke_device_key(registry_id: str, connection: DB):
     with transaction(connection):
         row=connection.execute("SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",(registry_id,)).fetchone()
@@ -518,7 +518,7 @@ def device_member_balance(payload: MemberBalanceLookup, connection: DB,
             'balance_minor': row['balance_minor'], 'currency': row['currency']}
 
 
-@app.post('/api/v2/members', status_code=201, dependencies=[Depends(require_admin)])
+@app.post('/api/v2/members', status_code=201, dependencies=[Depends(require_admin_session)])
 def create_member(payload: MemberCreate, connection: DB):
     display_name = payload.display_name.strip()
     if not display_name:
@@ -541,7 +541,7 @@ def create_member(payload: MemberCreate, connection: DB):
             'nik': payload.nik, 'phone': payload.phone, 'email': payload.email,
             'balance_minor': 0, 'status': payload.status, 'pin_configured': bool(payload.pin)}
 
-@app.get('/api/v2/members', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/members', dependencies=[Depends(require_admin_session)])
 def list_members(connection: DB):
     rows = connection.execute("SELECT m.member_id,m.display_name,m.nik,m.phone,m.email,m.profile_json,m.status,a.account_id,a.balance_minor,(SELECT COUNT(*) FROM member_cards c WHERE c.member_id=m.member_id AND c.status='active') AS active_cards FROM members m JOIN accounts a ON a.member_id=m.member_id ORDER BY m.created_at DESC").fetchall()
     items=[]
@@ -552,7 +552,7 @@ def list_members(connection: DB):
         items.append(item)
     return {'items': items}
 
-@app.patch('/api/v2/admin/members/{member_id}', dependencies=[Depends(require_admin)])
+@app.patch('/api/v2/admin/members/{member_id}', dependencies=[Depends(require_admin_session)])
 def update_member(member_id: str, payload: MemberUpdate, connection: DB):
     fields=payload.model_dump(exclude_unset=True)
     if not fields:
@@ -572,7 +572,7 @@ def update_member(member_id: str, payload: MemberUpdate, connection: DB):
         audit(connection,'member.update','member',member_id,detail={'fields':sorted(payload.model_fields_set)})
     return {'member_id':member_id,'status':'updated'}
 
-@app.post('/api/v2/admin/members/{member_id}/reset-pin', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/members/{member_id}/reset-pin', dependencies=[Depends(require_admin_session)])
 def reset_member_pin(member_id: str, payload: MemberPinReset, connection: DB):
     with transaction(connection):
         row=connection.execute("SELECT status FROM members WHERE member_id=?",(member_id,)).fetchone()
@@ -583,14 +583,14 @@ def reset_member_pin(member_id: str, payload: MemberPinReset, connection: DB):
         audit(connection,'member.pin.reset','member',member_id,detail={'reason':payload.reason})
     return {'member_id':member_id,'pin_configured':True}
 
-@app.get('/api/v2/admin/members/{member_id}/cards', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/members/{member_id}/cards', dependencies=[Depends(require_admin_session)])
 def list_member_cards(member_id: str, connection: DB):
     if not connection.execute("SELECT 1 FROM members WHERE member_id=?",(member_id,)).fetchone():
         raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
     rows=connection.execute("SELECT card_id,status,substr(card_uid_hash,1,8) AS card_fingerprint,created_at FROM member_cards WHERE member_id=? ORDER BY created_at DESC",(member_id,)).fetchall()
     return {'items':[dict(row) for row in rows]}
 
-@app.post('/api/v2/admin/members/{member_id}/cards/{card_id}/revoke', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/members/{member_id}/cards/{card_id}/revoke', dependencies=[Depends(require_admin_session)])
 def revoke_member_card(member_id: str, card_id: str, connection: DB):
     with transaction(connection):
         row=connection.execute("SELECT card_id,status FROM member_cards WHERE card_id=? AND member_id=?",(card_id,member_id)).fetchone()
@@ -600,7 +600,7 @@ def revoke_member_card(member_id: str, card_id: str, connection: DB):
         audit(connection,'member.card.revoke','member',member_id,detail={'card_id':card_id})
     return {'member_id':member_id,'card_id':card_id,'status':'revoked'}
 
-@app.post('/api/v2/finance/top-ups', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/finance/top-ups', dependencies=[Depends(require_admin_session)])
 def top_up(payload: TopUpRequest, connection: DB):
     transaction_id = new_id('txn')
     try:
@@ -630,7 +630,7 @@ def top_up(payload: TopUpRequest, connection: DB):
     return {'transaction_id': transaction_id, 'status': 'succeeded', 'idempotent_replay': False}
 
 
-@app.post('/api/v2/admin/merchant-accounts', status_code=201, dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/merchant-accounts', status_code=201, dependencies=[Depends(require_admin_session)])
 def create_merchant_account(payload: MerchantAccountCreate, connection: DB):
     label = payload.label.strip()
     if not label:
@@ -643,7 +643,7 @@ def create_merchant_account(payload: MerchantAccountCreate, connection: DB):
     return {'account_id': account_id, 'label': label, 'account_type': 'merchant', 'currency': 'IDR', 'balance_minor': 0}
 
 
-@app.put('/api/v2/admin/cashier-devices/{registry_id}/configuration', dependencies=[Depends(require_admin)])
+@app.put('/api/v2/admin/cashier-devices/{registry_id}/configuration', dependencies=[Depends(require_admin_session)])
 def configure_cashier_device(registry_id: str, payload: CashierDeviceConfigure, connection: DB):
     operator_id = payload.operator_id.strip()
     operator_name = payload.operator_name.strip()
@@ -903,12 +903,12 @@ def cashier_top_up_v2(payload: CashierTopUpRequest, connection: DB,
             'amount_minor': payload.amount_minor, 'balance_after_minor': balance_after, 'idempotent_replay': False}
 
 
-@app.get('/api/v2/vending/devices', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/vending/devices', dependencies=[Depends(require_admin_session)])
 def vending_devices(connection: DB):
     rows = connection.execute("SELECT registry_id,hardware_id,display_name,status,mac_address,last_seen_at FROM device_registry WHERE device_type='vending' ORDER BY created_at DESC").fetchall()
     return {'items': [dict(row) for row in rows]}
 
-@app.get('/api/v2/vending/devices/{registry_id}/products', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/vending/devices/{registry_id}/products', dependencies=[Depends(require_admin_session)])
 def get_products(registry_id: str, connection: DB):
     device = connection.execute("SELECT registry_id FROM device_registry WHERE registry_id=? AND device_type='vending'", (registry_id,)).fetchone()
     if not device:
@@ -924,7 +924,7 @@ def get_products(registry_id: str, connection: DB):
         items.append(item)
     return {'registry_id': registry_id, 'items': items}
 
-@app.put('/api/v2/vending/devices/{registry_id}/products/{product_id}', dependencies=[Depends(require_admin)])
+@app.put('/api/v2/vending/devices/{registry_id}/products/{product_id}', dependencies=[Depends(require_admin_session)])
 def update_product(registry_id: str, product_id: int, payload: ProductUpdate, connection: DB):
     if product_id not in range(1, 6):
         raise HTTPException(status_code=422, detail={'code': 'INVALID_PRODUCT_SLOT'})
@@ -945,7 +945,7 @@ def update_product(registry_id: str, product_id: int, payload: ProductUpdate, co
         connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps({**payload.model_dump(), 'capacity':capacity,'enabled':bool(enabled),'name': normalized_name})))
     return {'registry_id': registry_id, 'product_id': product_id, 'name': normalized_name,'price_minor':payload.price_minor,'stock':payload.stock,'capacity':capacity,'enabled':bool(enabled),'nfc_promo_percent': 0, 'qris_promo_percent': 0}
 
-@app.post('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin_session)])
 async def upload_product_image(registry_id: str, product_id: int, connection: DB, file: UploadFile = File(...)):
     if product_id not in range(1,6):
         raise HTTPException(status_code=422,detail={'code':'INVALID_PRODUCT_SLOT'})
@@ -986,14 +986,14 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
               detail={'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'})
     return {'registry_id':registry_id,'product_id':product_id,'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'}
 
-@app.get('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin_session)])
 def get_product_image(registry_id: str, product_id: int, connection: DB):
     row=connection.execute("SELECT image_data,sha256,content_type FROM product_images WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
     if not row:
         raise HTTPException(status_code=404,detail={'code':'PRODUCT_IMAGE_NOT_FOUND'})
     return Response(content=bytes(row['image_data']),media_type=row['content_type'],headers={'ETag':'"'+row['sha256']+'"','Cache-Control':'private, max-age=300'})
 
-@app.post('/api/v2/members/{member_id}/cards', status_code=201, dependencies=[Depends(require_admin)])
+@app.post('/api/v2/members/{member_id}/cards', status_code=201, dependencies=[Depends(require_admin_session)])
 def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
     digest = card_hash(payload.card_uid)
     card_id = new_id('card')
@@ -1013,7 +1013,7 @@ def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
     return {'card_id': card_id, 'member_id': member_id, 'status': 'active'}
 
 
-@app.post('/api/v2/admin/members/{member_id}/nfc-registration', status_code=201, dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/members/{member_id}/nfc-registration', status_code=201, dependencies=[Depends(require_admin_session)])
 def start_nfc_registration(member_id: str, payload: NfcRegistrationStart, connection: DB):
     with transaction(connection):
         member=connection.execute("SELECT member_id,status FROM members WHERE member_id=?",(member_id,)).fetchone()
@@ -1039,7 +1039,7 @@ def start_nfc_registration(member_id: str, payload: NfcRegistrationStart, connec
     return {'session_id':session_id,'member_id':member_id,'registry_id':payload.registry_id,
             'status':'scan_pending','expires_in_seconds':300}
 
-@app.get('/api/v2/admin/nfc-registration/{session_id}', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/nfc-registration/{session_id}', dependencies=[Depends(require_admin_session)])
 def nfc_registration_status(session_id: str, connection: DB):
     with transaction(connection):
         row=connection.execute("""SELECT s.session_id,s.member_id,s.registry_id,s.status,s.created_at,s.expires_at,
@@ -1316,7 +1316,7 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
             'refunded_amount_minor': row['amount_minor'], 'idempotent_replay': False}
 
 
-@app.get('/api/v2/admin/finance/reconciliation', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/finance/reconciliation', dependencies=[Depends(require_admin_session)])
 def finance_reconciliation(connection: DB):
     transaction_rows = connection.execute("""
         SELECT t.transaction_id, t.request_id,
@@ -1365,14 +1365,14 @@ def finance_reconciliation(connection: DB):
     }
 
 
-@app.get('/api/v2/admin/accounts', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/accounts', dependencies=[Depends(require_admin_session)])
 def admin_accounts(connection: DB):
     rows=connection.execute("""SELECT a.account_id,a.member_id,m.display_name AS member_name,a.account_type,a.label,
         a.currency,a.balance_minor,a.status,a.updated_at FROM accounts a
         LEFT JOIN members m ON m.member_id=a.member_id ORDER BY a.account_type,a.created_at DESC""").fetchall()
     return {'items':[dict(row) for row in rows]}
 
-@app.get('/api/v2/admin/accounts/{account_id}/ledger', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/accounts/{account_id}/ledger', dependencies=[Depends(require_admin_session)])
 def account_ledger(account_id: str, connection: DB, limit: int = 100):
     limit=max(1,min(limit,500))
     if not connection.execute("SELECT 1 FROM accounts WHERE account_id=?",(account_id,)).fetchone():
@@ -1383,7 +1383,7 @@ def account_ledger(account_id: str, connection: DB, limit: int = 100):
         WHERE l.account_id=? ORDER BY l.created_at DESC LIMIT ?""",(account_id,limit)).fetchall()
     return {'account_id':account_id,'items':[dict(row) for row in rows]}
 
-@app.post('/api/v2/finance/withdrawals', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/finance/withdrawals', dependencies=[Depends(require_admin_session)])
 def withdraw(payload: TopUpRequest, connection: DB):
     transaction_id=new_id('txn')
     try:
@@ -1457,7 +1457,7 @@ def _transaction_window(period: str, date: str | None, start_date: str | None, e
     utc_end=dt.datetime.combine(end,dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     return utc_start,utc_end
 
-@app.get('/api/v2/admin/transactions', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/transactions', dependencies=[Depends(require_admin_session)])
 def admin_transactions(connection: DB, period: str = 'week', date: str | None = None,
                        start_date: str | None = None, end_date: str | None = None,
                        source: str = 'ALL', status: str = 'ALL', transaction_type: str = 'ALL',
@@ -1496,7 +1496,7 @@ def admin_transactions(connection: DB, period: str = 'week', date: str | None = 
     return {'items':items,'period':period,'source':source,'status':status,'transaction_type':transaction_type,
             'start_utc':start,'end_utc_exclusive':end,'timezone':'Asia/Jakarta'}
 
-@app.get('/api/v2/admin/dashboard', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/dashboard', dependencies=[Depends(require_admin_session)])
 def admin_dashboard(connection: DB, period: str = 'week'):
     start,end=_transaction_window(period,None,None,None)
     member_count=connection.execute("SELECT COUNT(*) FROM members").fetchone()[0]
@@ -1556,7 +1556,7 @@ def admin_dashboard(connection: DB, period: str = 'week'):
         'payment_channels':sorted(channels.values(),key=lambda x:x['transactions'],reverse=True),
         'recent_transactions':[dict(r) for r in recent]}
 
-@app.get('/api/v2/admin/reports/transactions.xlsx', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/reports/transactions.xlsx', dependencies=[Depends(require_admin_session)])
 def export_transactions_xlsx(connection: DB, period: str = 'week', date: str | None = None,
                              start_date: str | None = None, end_date: str | None = None,
                              source: str = 'ALL', status: str = 'ALL', transaction_type: str = 'ALL',
@@ -1593,7 +1593,7 @@ def export_transactions_xlsx(connection: DB, period: str = 'week', date: str | N
     return StreamingResponse(stream,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition':f'attachment; filename="{filename}"'})
 
-@app.post('/api/v2/admin/backup', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/backup', dependencies=[Depends(require_admin_session)])
 def create_backup(connection: DB):
     from datetime import datetime, timezone
     database_bytes=connection.serialize()
@@ -1609,7 +1609,7 @@ def create_backup(connection: DB):
     filename='M-Group_BACKUP_'+datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')+'.mgroup.zip'
     return StreamingResponse(stream,media_type='application/zip',headers={'Content-Disposition':f'attachment; filename="{filename}"'})
 
-@app.post('/api/v2/admin/backup/restore', dependencies=[Depends(require_admin)])
+@app.post('/api/v2/admin/backup/restore', dependencies=[Depends(require_admin_session)])
 async def restore_backup(connection: DB, file: UploadFile = File(...)):
     max_bytes=100*1024*1024
     raw=await file.read(max_bytes+1)
@@ -1672,7 +1672,7 @@ async def restore_backup(connection: DB, file: UploadFile = File(...)):
     return {'status':'restored','integrity_check':'ok','foreign_key_errors':0,'backup_sha256':manifest['sha256'],
             'warning':'Database replaced atomically after all existing shared-lock connections completed.'}
 
-@app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
+@app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin_session)])
 def list_audit(connection: DB, limit: int = 100, action: str = '', entity_type: str = '',
                entity_id: str = '', request_id: str = ''):
     limit=max(1,min(limit,500))
