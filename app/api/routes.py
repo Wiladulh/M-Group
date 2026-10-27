@@ -1420,7 +1420,13 @@ def build_router(db, app_settings=None):
             if source.width<1 or source.height<1 or source.width*source.height>20_000_000:
                 raise HTTPException(413,"product_image_dimensions_too_large")
             source.verify()
-            source=Image.open(io.BytesIO(raw)).convert("RGB")
+            decoded=Image.open(io.BytesIO(raw))
+            if "A" in decoded.getbands():
+                rgba=decoded.convert("RGBA")
+                source=Image.new("RGB",rgba.size,(255,255,255))
+                source.paste(rgba,mask=rgba.getchannel("A"))
+            else:
+                source=decoded.convert("RGB")
             source.thumbnail((480,480))
             out=io.BytesIO()
             try:
