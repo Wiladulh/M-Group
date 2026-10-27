@@ -508,10 +508,24 @@ def build_router(db, app_settings=None):
                 GROUP BY bucket ORDER BY bucket
             """,(date_modifier,)).fetchall()
             most_used_rows=c.execute("""
-                SELECT m.machine_id,m.name,COUNT(v.transaction_id) AS transactions
+                SELECT m.machine_id,m.name,m.location,COUNT(v.transaction_id) AS transactions
                 FROM vending_machines m LEFT JOIN vending_transactions v
                   ON v.machine_id=m.machine_id AND v.status='completed' AND v.created_at>=datetime('now',?)
-                GROUP BY m.machine_id,m.name ORDER BY transactions DESC,m.name LIMIT 5
+                GROUP BY m.machine_id,m.name,m.location ORDER BY transactions DESC,m.name LIMIT 5
+            """,(date_modifier,)).fetchall()
+            best_selling_rows=c.execute("""
+                SELECT CAST(v.product_id AS TEXT) AS product_id,
+                       COALESCE(p.name,'Produk ' || v.product_id) AS product_name,
+                       v.machine_id, m.name AS vending_name, m.location,
+                       COUNT(v.transaction_id) AS units_sold,
+                       COALESCE(SUM(v.amount),0) AS revenue
+                FROM vending_transactions v
+                LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
+                LEFT JOIN vending_products p
+                  ON p.machine_id=v.machine_id AND CAST(p.slot AS TEXT)=CAST(v.product_id AS TEXT)
+                WHERE v.status='completed' AND v.created_at>=datetime('now',?)
+                GROUP BY v.machine_id,v.product_id,p.name,m.name,m.location
+                ORDER BY units_sold DESC,revenue DESC,product_name LIMIT 10
             """,(date_modifier,)).fetchall()
             payment_channel_rows=c.execute("""
                 SELECT COALESCE(method,'Unknown') AS method,COUNT(*) AS transactions,
@@ -524,7 +538,7 @@ def build_router(db, app_settings=None):
                 "payments":[dict(x) for x in payments_rows],"vending_transactions":[dict(x) for x in vending_rows],"loans":[dict(x) for x in loans],
                 "machines":[dict(x) for x in machines],"products":[dict(x) for x in products],
                 "devices":[dict(x) for x in devices],
-                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],"most_used_vending":[dict(x) for x in most_used_rows],"payment_channels":[dict(x) for x in payment_channel_rows],
+                "analytics_period":period,"analytics":[dict(x) for x in analytics_rows],"most_used_vending":[dict(x) for x in most_used_rows],"best_selling_products":[dict(x) for x in best_selling_rows],"payment_channels":[dict(x) for x in payment_channel_rows],
                 "stats":{
                     "cashier_transactions":cashier_count,
                     "cashier_money_in_today":cashier_in,
