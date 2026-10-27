@@ -326,7 +326,10 @@ def device_products(connection: DB, x_device_key: Annotated[str | None, Header()
     if device['device_type'] != 'vending':
         raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
     rows = connection.execute(
-        'SELECT product_id,name,price_minor,stock FROM product_slots WHERE registry_id=? ORDER BY product_id',
+        """SELECT p.product_id,p.name,p.price_minor,p.stock,p.capacity,i.sha256 AS image_sha256
+           FROM product_slots p LEFT JOIN product_images i
+             ON i.registry_id=p.registry_id AND i.product_id=p.product_id
+           WHERE p.registry_id=? ORDER BY p.product_id""",
         (device['registry_id'],),
     ).fetchall()
     return {'registry_id': device['registry_id'], 'items': [dict(row) for row in rows]}
