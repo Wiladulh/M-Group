@@ -35,8 +35,8 @@ class MGroupConfigPortal {
     String out;out.reserve(value.length()+8);
     for(size_t i=0;i<value.length();i++){
       const char c=value[i];
-      if(c=='"')out+="\\"";
-      else if(c=='\\\\')out+="\\\\";
+      if(c=='"')out+="\\\"";
+      else if(c=='\\')out+="\\\\";
       else if(c=='\n')out+="\\n";
       else if(c=='\r')out+="\\r";
       else if(c=='\t')out+="\\t";
@@ -102,7 +102,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
     });
     server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       time_t now=time(nullptr);struct tm localInfo;char localTime[24]="Belum sinkron";if(now>1700000000&&localtime_r(&now,&localInfo))strftime(localTime,sizeof(localTime),"%Y-%m-%d %H:%M:%S",&localInfo);
-      String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"local_time\":\""+String(localTime)+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+",\"tls_ca_configured\":"+String(!prefs_.getString("tls_ca","").isEmpty()?"true":"false")+statusExtra_+"}";
+      String body="{\"device_type\":\""+jsonEscape(String(label_))+"\",\"device_id\":\""+jsonEscape(*id_)+"\",\"local_time\":\""+jsonEscape(String(localTime))+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+jsonEscape(WiFi.localIP().toString())+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+jsonEscape(*url_)+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+",\"tls_ca_configured\":"+String(!prefs_.getString("tls_ca","").isEmpty()?"true":"false")+statusExtra_+"}";
       req->send(200,"application/json; charset=utf-8",body);
     });
     server_.on("/test",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
