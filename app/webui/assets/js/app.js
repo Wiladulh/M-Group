@@ -89,8 +89,8 @@ async function load(){
  try{
   const h=await fetch('/api/v1/health').then(r=>{if(!r.ok)throw new Error('health_http_'+r.status);return r.json()});
   $('status').textContent='● '+(h.status||'online');
+  await loadNfcCashiers();
   await loadDashboard(selectedAnalyticsPeriod);
-   await loadNfcCashiers();
  }catch(e){
   console.error('M-Group WebUI load failed:',e);
   $('status').textContent='● Gagal memuat WebUI/API';
