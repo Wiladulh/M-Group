@@ -1504,7 +1504,7 @@ def build_router(db, app_settings=None):
                 ).fetchone()
                 if not locked_session or locked_session["member_id"] != session["member_id"] or locked_session["hardware_id"] != cashier_fingerprint:
                     raise HTTPException(404,"registration_session_not_found")
-                if locked_session["status"] != session["status"] or locked_session["status"] not in {"scan_pending","processing"}:
+                if locked_session["status"] not in {"scan_pending","processing"}:
                     raise HTTPException(409,"registration_session_not_pending")
                 if locked_session["expires_at"] <= __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
                     c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=? AND status IN ('scan_pending','processing')",(q.session_id,))
