@@ -49,7 +49,7 @@ Set Wi-Fi/server defaults and `M_GROUP_DEVICE_KEY` in `esp32/vending/MGroupVendi
 - M-Group defaults to `M_GROUP_HOST=127.0.0.1`, which is loopback-only. For LAN device access, start the server with `M_GROUP_HOST=0.0.0.0 M_GROUP_PORT=8011` (or bind to the server's LAN interface) and allow TCP 8011 only from the trusted LAN in the firewall.
 - Generate a Device Key for type `esp32-s3-vending` in the server dashboard and enter it in the mini WebUI. Register a vending machine in M-Group with its `hardware_id` pointing to the MAC-derived device ID; the machine ID may be different from the device ID.
 - Each machine exposes fixed public Product IDs `1`–`5`; Product ID determines the physical slot and servo channel. The server keeps internal database product keys private so the same public Product ID can exist on different machines.
-- The product API returns `enabled` as a JSON boolean. The firmware uses Product ID, name, price, stock, enabled state, and server-derived servo channel from that response.
+- The product API returns `enabled` as a JSON boolean. The firmware uses Product ID, name, price, stock, enabled state, and server-derived servo channel from that response. Product image assets are fetched only when their SHA-256 changes, streamed to a temporary LittleFS file, hash-verified, and atomically swapped into the cache; failed downloads leave the prior valid asset in place. The local portal reports image-cache status/count.
 
 Firmware CI validates compilation only; NFC reads, Wi-Fi reachability, servo behavior, dispensing feedback, and real transaction reconciliation still require physical-device tests.
 
