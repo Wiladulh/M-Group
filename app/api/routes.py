@@ -234,7 +234,7 @@ def build_router(db, app_settings=None):
             raise HTTPException(401,"device_auth_required")
         got=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            rows=c.execute("SELECT hardware_id,device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL").fetchall()
+            rows=c.execute("SELECT hardware_id,device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL AND status<>'disabled' AND deleted_at IS NULL").fetchall()
         row=next((item for item in rows if secrets.compare_digest(got,item["auth_key_hash"] or "")),None)
         if not row:
             raise HTTPException(403,"invalid_device_key")
@@ -824,6 +824,25 @@ def build_router(db, app_settings=None):
         return {"registry_id":registry_id,"display_name":location,"location":location,
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
+
+    @r.post("/devices/{device_ref}/rotate-key")
+    def device_rotate_key(request: Request, device_ref: str):
+        require_admin(request)
+        with db.connect() as c:
+            row=c.execute("SELECT registry_id,hardware_id,device_type,status FROM device_registry WHERE (hardware_id=? OR registry_id=?) AND deleted_at IS NULL",(device_ref,device_ref)).fetchone()
+            if not row:
+                raise HTTPException(404,"device_not_found")
+            if row["status"]=="disabled":
+                raise HTTPException(409,"device_disabled")
+            key=secrets.token_urlsafe(32)
+            digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
+            c.execute("UPDATE device_registry SET auth_key_hash=?,auth_key_hint=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",
+                      (digest,key[-6:],row["registry_id"]))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                      ("device","key_rotated",row["registry_id"],"new_key_shown_once=true"))
+            c.commit()
+        return {"registry_id":row["registry_id"],"hardware_id":row["hardware_id"],"device_type":row["device_type"],
+                "device_key":key,"key_shown_once":True,"status":"rotated"}
 
     @r.post("/devices/{hardware_id}/provision")
     def device_provision_legacy(request: Request, hardware_id,q:DeviceProvisionRequest):
