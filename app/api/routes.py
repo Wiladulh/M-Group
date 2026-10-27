@@ -235,6 +235,16 @@ class AdminUserStatusRequest(BaseModel):
 class AdminUserPasswordRequest(BaseModel):
     password: str
 
+class AdminUserRoleRequest(BaseModel):
+    role: str
+
+    @__import__("pydantic").field_validator("role")
+    @classmethod
+    def validate_role(cls, value):
+        if value not in {"super_admin", "operator", "auditor"}:
+            raise ValueError("invalid_admin_role")
+        return value
+
 def request_is_https(request: Request) -> bool:
     return request.url.scheme.lower() == "https"
 
@@ -366,6 +376,32 @@ def build_router(db, app_settings=None):
             )
             c.commit()
         return {"updated": True, "username": username, "sessions_revoked": True}
+
+    @r.patch("/admin/users/{username}/role")
+    def set_admin_user_role(username: str, q: AdminUserRoleRequest, request: Request):
+        require_super_admin(request)
+        actor = getattr(request.state, "admin_username", "")
+        if username == actor:
+            raise HTTPException(409, "cannot_change_current_admin_role")
+        now = int(time.time())
+        with db.connect() as c:
+            target = c.execute("SELECT username,role,is_active FROM admin_users WHERE username=?", (username,)).fetchone()
+            if not target:
+                raise HTTPException(404, "admin_user_not_found")
+            if target["role"] == q.role:
+                return {"updated": False, "username": username, "role": q.role}
+            if target["role"] == "super_admin" and target["is_active"] and q.role != "super_admin":
+                active = c.execute("SELECT COUNT(*) FROM admin_users WHERE role='super_admin' AND is_active=1").fetchone()[0]
+                if active <= 1:
+                    raise HTTPException(409, "cannot_demote_last_super_admin")
+            c.execute("UPDATE admin_users SET role=?,updated_at=? WHERE username=?", (q.role, now, username))
+            c.execute("UPDATE webui_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL", (now, username))
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (actor, "admin_role_changed", username, "role="+q.role+";sessions_revoked=1", now),
+            )
+            c.commit()
+        return {"updated": True, "username": username, "role": q.role, "sessions_revoked": True}
 
     @r.patch("/admin/users/{username}/status")
     def set_admin_user_status(username: str, q: AdminUserStatusRequest, request: Request):
