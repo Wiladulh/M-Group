@@ -219,7 +219,14 @@ class FinancialService:
             raise ValueError("idempotency_key_required")
         if not isinstance(operator_id, str) or not operator_id.strip():
             raise ValueError("operator_id_required")
+        # Canonicalize keys before both lookup and insert, and serialize the
+        # replay check, one-correction-per-original check, balance check, and
+        # adjustment writes as a single SQLite write transaction.
+        idempotency_key = idempotency_key.strip()
+        reason = reason.strip()
+        operator_id = operator_id.strip()
         with self.db.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
             prior = c.execute("SELECT correction_id,original_transaction_id,member_id,account_id,original_amount,corrected_amount,adjustment_amount,reason,operator_id,created_at FROM financial_corrections WHERE idempotency_key=?", (idempotency_key,)).fetchone()
             if prior:
                 prior_original = prior["original_transaction_id"]
@@ -282,16 +289,16 @@ class FinancialService:
                    original_amount,corrected_amount,adjustment_amount,reason,idempotency_key,operator_id)
                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (correction_id, original_transaction_id, member_id, original["account_id"],
-                 original_amount, corrected_amount, delta, reason.strip(), idempotency_key.strip(), operator_id.strip())
+                 original_amount, corrected_amount, delta, reason, idempotency_key, operator_id)
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
                 ("financial_correction", "member", member_id,
-                 f"correction_id={correction_id};original_transaction_id={original_transaction_id};before={original_amount};after={corrected_amount};adjustment={delta};operator={operator_id.strip()};reason={reason.strip()}")
+                 f"correction_id={correction_id};original_transaction_id={original_transaction_id};before={original_amount};after={corrected_amount};adjustment={delta};operator={operator_id};reason={reason}")
             )
             c.commit()
             return {"correction_id": correction_id, "original_transaction_id": original_transaction_id,
                     "member_id": member_id, "account_id": original["account_id"],
                     "original_amount": original_amount, "corrected_amount": corrected_amount,
-                    "adjustment_amount": delta, "reason": reason.strip(), "operator_id": operator_id.strip(),
+                    "adjustment_amount": delta, "reason": reason, "operator_id": operator_id,
                     "replayed": False}
