@@ -75,5 +75,5 @@ Do not merge while any P1 is unresolved, any financial invariant lacks test evid
 
 ## Remaining implementation gap before the final test phase
 
-- The server/WebUI product image upload path validates and optimizes images and provides SHA-256 versioned URLs, and the vending firmware caches the catalog JSON by hash. However, the current vending firmware does not yet download and atomically cache the image assets themselves. This remains open and must not be marked complete.
+- The server/WebUI product image upload path validates and optimizes images and provides SHA-256 versioned URLs. The vending firmware now downloads changed assets only, verifies SHA-256, and uses temporary-file/backup renames for replacement; failed downloads retain the previous asset. This source change is not yet built or tested, and image-cache behavior must be confirmed in the final firmware validation phase.
 - Finish the remaining source-level integration review and implementation items before any test/build run. Physical NFC, DHCP/LAN portal, transaction recovery, key revocation, and image sync still require their later acceptance tests.
