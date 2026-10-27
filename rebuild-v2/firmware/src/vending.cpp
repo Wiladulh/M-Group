@@ -49,6 +49,7 @@ void persistCreateRequest(int productId,long amount) {
   pendingRequestId=mgroup.nextRequestId("vending-purchase");pendingProduct=productId;pendingAmount=amount;pendingStage="create";
   Preferences& p=mgroup.prefs();p.putString("purchase_req",pendingRequestId);p.putInt("purchase_product",productId);p.putLong("purchase_amount",amount);p.putString("purchase_stage",pendingStage);
 }
+String maskPin(const String& pin) {String mask;for(size_t i=0;i<pin.length();i++)mask+='*';return mask;}
 String responseCode(const String& body) {
   JsonDocument doc;if(deserializeJson(doc,body)==DeserializationError::Ok) {
     if(doc["detail"]["code"].is<const char*>())return doc["detail"]["code"].as<String>();
@@ -77,6 +78,7 @@ void loadCache() {
   productCount=SERVO_COUNT;
 }
 bool refreshCatalog() {
+  lastCatalogAt=millis();
   String response;int status=0;
   if(!mgroup.apiGet("/api/v2/device/products",response,status)) {
     catalogOnline=false;mgroup.setRuntimeStatus("catalog_offline","Katalog cache hanya untuk display; transaksi dinonaktifkan.");
@@ -141,6 +143,7 @@ bool waitForProduct(uint32_t timeoutMs=4000) {
 }
 void actuateAndVerify() {
   if(pendingStage!="dispensing"||pendingTransactionId.isEmpty())return;
+  flow=MANUAL_REVIEW;
   if(pendingProduct<1||pendingProduct>SERVO_COUNT){flow=MANUAL_REVIEW;draw("MANUAL REVIEW","Slot tidak valid","Jangan dispense");return;}
   // Persist "dispensing" before touching hardware. On reboot this stage is
   // never replayed automatically because the physical outcome is uncertain.
@@ -187,6 +190,7 @@ void sendPurchase() {
   pendingTransactionId=result["transaction_id"].as<String>();
   String statusText=result["status"]|String("pending");
   if(statusText=="succeeded") {clearPending();flow=SELECT_PRODUCT;draw("SUDAH SELESAI","Replay idempoten");return;}
+  if(statusText=="reversed"||statusText=="declined") {clearPending();flow=SELECT_PRODUCT;draw("TRANSAKSI REFUND","Servo tidak diulang");return;}
   pendingStage="dispensing";
   Preferences& prefs=mgroup.prefs();prefs.putString("purchase_txn",pendingTransactionId);prefs.putString("purchase_stage",pendingStage);
   prefs.putString("purchase_req",pendingRequestId);prefs.putInt("purchase_product",pendingProduct);prefs.putLong("purchase_amount",pendingAmount);
@@ -222,7 +226,7 @@ void handleButtons() {
       currentDigit=0;lastButtonAt=now;
       if(pinDigits.length()>=6)sendPurchase();
     }
-    draw("MASUKKAN PIN",String("PIN: ")+String(String(pinDigits.length(),'*')),"UP/DN digit SEL");
+    draw("MASUKKAN PIN",String("PIN: ")+maskPin(pinDigits),"UP/DN digit SEL");
   }
   previousUp=up;previousDown=down;previousSelect=select;
 }
