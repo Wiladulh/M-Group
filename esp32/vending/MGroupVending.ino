@@ -149,7 +149,7 @@ int countCachedProductImages(const String&catalog){
   if(!productImageFsReady||catalog.isEmpty())return 0;
   int pos=0,count=0;
   while(true){
-    int idPos=catalog.indexOf("\\"product_id\\":\\"",pos);if(idPos<0)break;
+    int idPos=catalog.indexOf("\"product_id\":\"",pos);if(idPos<0)break;
     int objectStart=catalog.lastIndexOf('{',idPos);int objectEnd=catalog.indexOf('}',idPos);
     if(objectStart<0||objectEnd<0)break;
     String id=jsonStringBetween(catalog,"product_id",objectStart,objectEnd);
@@ -266,7 +266,7 @@ bool products(){
     int cachedImages=countCachedProductImages(reply);
     configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
   }else{
-    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
+    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");String cachedCatalog=vendingPrefs.getString("catalog_json","");int cachedImages=countCachedProductImages(cachedCatalog);configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
     reply=vendingPrefs.getString("catalog_json","");
     fromCache=true;
     if(!reply.length()){showMessage("SERVER OFFLINE","No saved catalog","Payment unavailable");return false;}
