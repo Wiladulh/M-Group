@@ -1597,7 +1597,7 @@ def build_router(db, app_settings=None):
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier={cashier_hardware_id}")
+                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier={cashier_hardware_id}:actor={actor}")
             )
             c.commit()
         return {"session_id":session_id,"member_id":member_id,"status":"scan_pending"}
