@@ -14,6 +14,7 @@ String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
 String HARDWARE_ID="";
+String DEVICE_LOCATION="";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
@@ -353,7 +354,7 @@ void setup(){
   cashierPrefs.begin("M_GROUP-cashier",false);
   bool forceConfigPortal=false; const unsigned long configCheckStarted=millis();
   while(millis()-configCheckStarted<900UL){char setupKey=M_GROUPKeypad.getKey();if(setupKey==68)forceConfigPortal=true;delay(5);}
-  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal);
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal,&DEVICE_LOCATION);
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
