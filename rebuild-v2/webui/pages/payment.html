@@ -1,31 +1,15 @@
 <div id="tab-payment" class="tab-pane">
   <section class="section">
-    <h2>Pembayaran NFC / QRIS</h2>
-    <div class="hint">Pembayaran manual memerlukan sesi admin yang aktif. Transaksi NFC juga memerlukan PIN anggota; QRIS belum diaktifkan sebagai jalur pembayaran mandiri.</div>
+    <h2>Riwayat Pembayaran</h2>
+    <p class="hint">Pembayaran aktual dibuat oleh terminal Cashier/Vending yang terautentikasi. Dashboard admin hanya menelusuri transaksi; halaman ini tidak dapat mendebit kartu secara manual.</p>
     <form id="paymentForm">
-      <label>Member<select id="payMember" required><option value="">Muat member setelah login</option></select></label>
-      <label>Kartu NFC aktif<select id="credential" required><option value="">Pilih member terlebih dahulu</option></select></label>
-      <label>Rekening<select id="payaccount" required><option value="">Pilih member terlebih dahulu</option></select></label>
-      <input id="payamount" type="number" min="1" placeholder="Jumlah" required>
-      <input id="paypin" type="password" inputmode="numeric" minlength="4" maxlength="6" placeholder="PIN anggota (NFC)" autocomplete="off">
-      <select id="method">
-        <option>NFC</option>
-        <option>QRIS</option>
-        <option>CASH</option>
-      </select>
-      <input id="provider" placeholder="Provider" value="local">
-      <input id="idem" placeholder="Idempotency key (otomatis jika kosong)">
-      <button>Bayar</button>
+      <label>Periode<select id="paymentPeriod"><option value="week">Minggu ini</option><option value="day">Hari ini</option><option value="month">Bulan ini</option><option value="all">Semua waktu</option></select></label>
+      <label>Status<select id="paymentStatusFilter"><option value="ALL">Semua status</option><option value="succeeded">Berhasil</option><option value="pending">Menunggu</option><option value="declined">Ditolak</option><option value="reversed">Dikembalikan</option></select></label>
+      <label>Metode/source<select id="paymentMethodFilter"><option value="ALL">Semua sumber</option><option value="CASHIER">Cashier</option><option value="VENDING">Vending</option><option value="TOPUP">Top Up</option></select></label>
+      <input id="paymentSearch" placeholder="Cari Member ID, hardware, transaksi, request">
+      <button type="submit">Cari Transaksi</button>
     </form>
     <div id="paymentResult" class="result"></div>
-  </section>
-  <section class="section">
-    <h2>Transaksi Pembayaran</h2>
-    <div class="grid">
-      <label>Cari transaksi<input id="paymentSearch" placeholder="ID transaksi / akun / perangkat"></label>
-      <label>Metode<select id="paymentMethodFilter"><option value="ALL">Semua metode</option><option value="NFC">NFC</option><option value="QRIS">QRIS</option><option value="CASH">Cash</option></select></label>
-      <label>Status<select id="paymentStatusFilter"><option value="ALL">Semua status</option><option value="completed">Berhasil</option><option value="pending">Menunggu</option><option value="failed">Gagal</option><option value="refunded">Refund</option></select></label>
-    </div>
-    <div id="payments" class="scroll"></div>
+    <div id="payments" class="scroll" style="margin-top:12px"></div>
   </section>
 </div>
