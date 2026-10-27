@@ -16,8 +16,8 @@
     <div class="login-brand">M-Group</div>
     <h1>Masuk ke Management</h1>
     <p class="login-muted">Gunakan akun admin untuk melanjutkan.</p>
-    <label>Username<input id="loginUsername" name="username" autocomplete="username" required></label>
-    <label>Password<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+    <label>Nama operator (label lokal)<input id="loginUsername" name="username" autocomplete="username" value="admin" required></label>
+    <label>Admin API Token<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label><p class="login-muted">Token admin berasal dari konfigurasi server MGROUP_ADMIN_TOKEN. Token hanya disimpan di session browser ini.</p>
     <button type="submit" class="login-submit">Masuk</button>
     <div id="loginError" class="login-error" role="status"></div>
   </form>
@@ -61,7 +61,7 @@
    if(!r.ok)throw new Error('Gagal memuat halaman '+name);
    document.getElementById('page-'+name).outerHTML=await r.text();
  }));
- const s=document.createElement('script');s.src='/assets/js/app.js';s.onerror=()=>{document.getElementById('status').textContent='● Gagal memuat JavaScript WebUI';};document.body.appendChild(s);
+ const api=document.createElement('script');api.src='/assets/js/api.js';api.onload=()=>{const s=document.createElement('script');s.src='/assets/js/app.js';s.onerror=()=>{document.getElementById('status').textContent='● Gagal memuat JavaScript WebUI';};document.body.appendChild(s);};api.onerror=()=>{document.getElementById('status').textContent='● Gagal memuat API client';};document.body.appendChild(api);
 })().catch(e=>{document.getElementById('status').textContent='● WebUI gagal dimuat';console.error(e)});
 window.addEventListener('error',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan JavaScript WebUI';console.error('M-Group WebUI error:',e.message,e.filename,e.lineno)});
 window.addEventListener('unhandledrejection',e=>{const status=document.getElementById('status');if(status)status.textContent='● Kesalahan proses WebUI';console.error('M-Group WebUI rejected promise:',e.reason)});
