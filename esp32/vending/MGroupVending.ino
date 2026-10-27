@@ -162,14 +162,14 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   if(written<=0||(length>=0&&written!=length)){LittleFS.remove(tempPath);return false;}
   File input=LittleFS.open(tempPath,"r");
   if(!input){LittleFS.remove(tempPath);return false;}
-  mbedtls_sha256_context ctx;mbedtls_sha256_init(&ctx);mbedtls_sha256_starts(&ctx,0);
+  mbedtls_sha256_context ctx;mbedtls_sha256_init(&ctx);if(mbedtls_sha256_starts_ret(&ctx,0)!=0){input.close();mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}
   uint8_t buffer[1024];size_t total=0;
   while(input.available()){
     size_t n=input.read(buffer,sizeof(buffer));if(!n)break;
     total+=n;if(total>2*1024*1024){input.close();mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}
-    mbedtls_sha256_update(&ctx,buffer,n);
+    if(mbedtls_sha256_update_ret(&ctx,buffer,n)!=0){input.close();mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}
   }
-  input.close();uint8_t digest[32];mbedtls_sha256_finish(&ctx,digest);mbedtls_sha256_free(&ctx);
+  input.close();uint8_t digest[32];if(mbedtls_sha256_finish_ret(&ctx,digest)!=0){mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}mbedtls_sha256_free(&ctx);
   char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
   if(String(hashHex)!=expectedHash){LittleFS.remove(tempPath);return false;}
   LittleFS.remove(backupPath);
