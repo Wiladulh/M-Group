@@ -65,6 +65,32 @@ class MemberCreate(BaseModel):
     registration_date: str | None = Field(default=None, max_length=10)
     pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
+class MemberUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    nik: str | None = Field(default=None, min_length=16, max_length=16, pattern=r'^[0-9]{16}$')
+    phone: str | None = Field(default=None, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
+    address: str | None = Field(default=None, max_length=300)
+    birth_place: str | None = Field(default=None, max_length=100)
+    birth_date: str | None = Field(default=None, max_length=10)
+    sex: str | None = Field(default=None, max_length=24)
+    rt: str | None = Field(default=None, max_length=8)
+    rw: str | None = Field(default=None, max_length=8)
+    village: str | None = Field(default=None, max_length=100)
+    district: str | None = Field(default=None, max_length=100)
+    city_regency: str | None = Field(default=None, max_length=100)
+    province: str | None = Field(default=None, max_length=100)
+    religion: str | None = Field(default=None, max_length=50)
+    marital_status: str | None = Field(default=None, max_length=50)
+    occupation: str | None = Field(default=None, max_length=100)
+    citizenship: str | None = Field(default=None, max_length=32)
+    registration_date: str | None = Field(default=None, max_length=10)
+    status: str | None = Field(default=None, pattern='^(active|suspended|closed)$')
+
+class MemberPinReset(BaseModel):
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
+    reason: str = Field(min_length=5, max_length=200)
+
 class TopUpRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     member_id: str = Field(min_length=1, max_length=128)
@@ -357,6 +383,54 @@ def list_members(connection: DB):
         item.update(profile)
         items.append(item)
     return {'items': items}
+
+@app.patch('/api/v2/admin/members/{member_id}', dependencies=[Depends(require_admin)])
+def update_member(member_id: str, payload: MemberUpdate, connection: DB):
+    fields=payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=422,detail={'code':'NO_MEMBER_FIELDS'})
+    with transaction(connection):
+        current=connection.execute("SELECT member_id,display_name,nik,phone,email,profile_json,status FROM members WHERE member_id=?",(member_id,)).fetchone()
+        if not current:
+            raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
+        profile=json.loads(current['profile_json'] or '{}')
+        for key in ('address','birth_place','birth_date','sex','rt','rw','village','district','city_regency','province','religion','marital_status','occupation','citizenship','registration_date'):
+            if key in fields: profile[key]=fields.pop(key)
+        if 'display_name' in fields and fields['display_name'] is not None: fields['display_name']=fields['display_name'].strip()
+        fields['profile_json']=json.dumps(profile,separators=(',',':'))
+        sets=','.join(f"{key}=?" for key in fields)
+        values=list(fields.values())+[member_id]
+        connection.execute(f"UPDATE members SET {sets},updated_at=CURRENT_TIMESTAMP WHERE member_id=?",values)
+        audit(connection,'member.update','member',member_id,detail={'fields':sorted(payload.model_fields_set)})
+    return {'member_id':member_id,'status':'updated'}
+
+@app.post('/api/v2/admin/members/{member_id}/reset-pin', dependencies=[Depends(require_admin)])
+def reset_member_pin(member_id: str, payload: MemberPinReset, connection: DB):
+    with transaction(connection):
+        row=connection.execute("SELECT status FROM members WHERE member_id=?",(member_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
+        connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
+                           (pin_hash(payload.pin),member_id))
+        audit(connection,'member.pin.reset','member',member_id,detail={'reason':payload.reason})
+    return {'member_id':member_id,'pin_configured':True}
+
+@app.get('/api/v2/admin/members/{member_id}/cards', dependencies=[Depends(require_admin)])
+def list_member_cards(member_id: str, connection: DB):
+    if not connection.execute("SELECT 1 FROM members WHERE member_id=?",(member_id,)).fetchone():
+        raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
+    rows=connection.execute("SELECT card_id,status,substr(card_uid_hash,1,8) AS card_fingerprint,created_at FROM member_cards WHERE member_id=? ORDER BY created_at DESC",(member_id,)).fetchall()
+    return {'items':[dict(row) for row in rows]}
+
+@app.post('/api/v2/admin/members/{member_id}/cards/{card_id}/revoke', dependencies=[Depends(require_admin)])
+def revoke_member_card(member_id: str, card_id: str, connection: DB):
+    with transaction(connection):
+        row=connection.execute("SELECT card_id,status FROM member_cards WHERE card_id=? AND member_id=?",(card_id,member_id)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'CARD_NOT_FOUND'})
+        connection.execute("UPDATE member_cards SET status='revoked' WHERE card_id=?",(card_id,))
+        audit(connection,'member.card.revoke','member',member_id,detail={'card_id':card_id})
+    return {'member_id':member_id,'card_id':card_id,'status':'revoked'}
 
 @app.post('/api/v2/finance/top-ups', dependencies=[Depends(require_admin)])
 def top_up(payload: TopUpRequest, connection: DB):
