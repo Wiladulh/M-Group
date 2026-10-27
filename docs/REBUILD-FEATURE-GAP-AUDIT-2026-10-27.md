@@ -62,3 +62,18 @@ The README says audit supports day/week/month, but timezone and boundary semanti
 
 ## Release gate
 Do not merge while any P1 is unresolved, any financial invariant lacks test evidence, any report export has not been reopened/validated as XLSX, or any physical-device behavior is described as passed without real-device evidence.
+
+## Implementation progress on 2026-10-28 (source changes only; no tests/build run)
+
+- Added the admin role migration and server-side role-aware account lifecycle: super-admin account creation/status changes/password reset, session revocation on disable/reset, active-account session validation, and a read-only auditor guard.
+- Restricted high-impact operations to super admins, including device provisioning/rotation/revocation, member NFC/PIN and top-up corrections, direct financial credit/debit, vending/product/promotion configuration, payment administration, and backup/export-import recovery actions. Device revocation now writes an audit event.
+- Added a super-admin UI flow to reset another admin's password; account password changes now require at least 12 characters.
+- NFC registration/replacement now requires choosing an active cashier in the WebUI and binds the server session to that cashier's key fingerprint. The server rejects missing/unavailable cashier selection; the five-minute expiry and cashier-side device-key authentication remain in place.
+- The shared ESP32 device portal now requires the local PIN for both cashier and vending, exposes the PIN-change form for both, and blocks saving while the default PIN is active. The DHCP LAN WebUI remains available after Wi-Fi configuration; the setup AP remains the recovery path.
+- Audit XLSX filenames include a unique suffix to avoid concurrent exports overwriting each other. Device pre-registration status is now accepted by device management.
+- These changes have **not** been built or tested, per the project owner's instruction to defer testing until implementation is complete.
+
+## Remaining implementation gap before the final test phase
+
+- The server/WebUI product image upload path validates and optimizes images and provides SHA-256 versioned URLs, and the vending firmware caches the catalog JSON by hash. However, the current vending firmware does not yet download and atomically cache the image assets themselves. This remains open and must not be marked complete.
+- Finish the remaining source-level integration review and implementation items before any test/build run. Physical NFC, DHCP/LAN portal, transaction recovery, key revocation, and image sync still require their later acceptance tests.
