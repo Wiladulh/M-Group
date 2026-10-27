@@ -248,22 +248,59 @@ def import_excel(db, source):
     return imported
 
 
-def export_rows_excel(rows, target):
+def export_rows_excel(rows, target, metadata=None):
     if Workbook is None:
         raise RuntimeError("openpyxl_required")
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    from openpyxl.styles import Font, PatternFill, Alignment
     target=Path(target)
     target.parent.mkdir(parents=True,exist_ok=True)
+    metadata=metadata or {}
     wb=Workbook()
     ws=wb.active
-    ws.title="audit"
-    if rows:
-        headers=list(rows[0].keys())
-        ws.append(headers)
-        for row in rows:
-            ws.append([row.get(h) for h in headers])
-    else:
-        ws.append(["transaction_id","created_at","source","status","amount"])
-    ws.freeze_panes="A2"
-    ws.auto_filter.ref=ws.dimensions
+    ws.title="Laporan Transaksi"
+    source_label={"ALL":"Semua perangkat","CASHIER":"Cashier","VENDING":"Vending"}.get(metadata.get("source"),metadata.get("source","Semua perangkat"))
+    ws["A1"]="M-GROUP — LAPORAN TRANSAKSI"
+    ws["A1"].font=Font(bold=True,size=16)
+    ws["A2"]="Sumber: "+str(source_label)
+    ws["A3"]="Periode: "+str(metadata.get("start","—"))+" sampai "+str(metadata.get("end","—"))+" (Asia/Jakarta)"
+    ws["A4"]="Metode pembayaran: "+str(metadata.get("method","ALL"))
+    ws["A5"]="Dibuat: "+datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d %H:%M:%S")+" WIB"
+    rows=list(rows or [])
+    completed=[r for r in rows if str(r.get("status","")).lower()=="completed"]
+    failed=[r for r in rows if str(r.get("status","")).lower() in {"failed","error"}]
+    canceled=[r for r in rows if str(r.get("status","")).lower() in {"canceled","cancelled","refunded"}]
+    ws["A6"]="Ringkasan"
+    ws["A6"].font=Font(bold=True)
+    ws.append(["Status","Jumlah transaksi","Total nominal"])
+    for cell in ws[7]:
+        cell.font=Font(bold=True,color="FFFFFF")
+        cell.fill=PatternFill("solid",fgColor="1F4E78")
+    for label,group in [("Berhasil",completed),("Gagal",failed),("Dibatalkan/Refund",canceled)]:
+        ws.append([label,len(group),sum(int(r.get("amount") or 0) for r in group)])
+    ws["A12"]="Detail transaksi"
+    ws["A12"].font=Font(bold=True,size=12)
+    headers=list(rows[0].keys()) if rows else ["transaction_id","created_at","source","hardware_id","member_id","account_id","transaction_type","amount","status","payment_method","payment_provider"]
+    ws.append(headers)
+    header_row=13
+    for cell in ws[header_row]:
+        cell.font=Font(bold=True,color="FFFFFF")
+        cell.fill=PatternFill("solid",fgColor="1F4E78")
+        cell.alignment=Alignment(wrap_text=True)
+    for row in rows:
+        ws.append([row.get(h) for h in headers])
+    ws.freeze_panes="A14"
+    ws.auto_filter.ref=f"A{header_row}:{ws.cell(ws.max_row, len(headers)).coordinate}"
+    for col in ws.columns:
+        letter=col[0].column_letter
+        width=min(34,max(12,max((len(str(cell.value or "")) for cell in col),default=10)+2))
+        ws.column_dimensions[letter].width=width
+    for row in ws.iter_rows(min_row=8,max_row=10,min_col=3,max_col=3):
+        for cell in row: cell.number_format='"Rp" #,##0'
+    for row in ws.iter_rows(min_row=header_row+1,min_col=1,max_col=len(headers)):
+        for cell in row:
+            if headers[cell.column-1]=="amount" and isinstance(cell.value,(int,float)):
+                cell.number_format='"Rp" #,##0'
     wb.save(target)
     return target
