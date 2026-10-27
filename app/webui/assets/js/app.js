@@ -375,7 +375,7 @@ $('financialForm').onsubmit=async e=>{
     });
     $('financialResult').textContent=JSON.stringify(d,null,2);
     if(r.ok){financialPending=null;try{sessionStorage.removeItem('mgroup-financial-pending')}catch(_){}await load();await loadFinancialLedger()}
-    else $('financialResult').textContent+='\\nJika hasil transaksi belum pasti, ulangi dengan data yang sama agar key idempotensi tetap digunakan.';
+    else $('financialResult').textContent+='\nJika hasil transaksi belum pasti, ulangi dengan data yang sama agar key idempotensi tetap digunakan.';
   }catch(err){
     $('financialResult').textContent='Hasil transaksi belum dapat dipastikan. Ulangi dengan data yang sama; key idempotensi tetap disimpan. '+err.message;
   }
