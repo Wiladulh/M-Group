@@ -1448,7 +1448,7 @@ def build_router(db, app_settings=None):
                 raise HTTPException(409,"registration_session_expired")
             replacement=c.execute("SELECT operator_id FROM nfc_replacement_intents WHERE session_id=? AND member_id=?",(q.session_id,session["member_id"])).fetchone()
             duplicate=c.execute(
-                "SELECT member_id FROM member_nfc_cards WHERE UPPER(card_uid)=? AND status='active'",
+                "SELECT member_id,status FROM member_nfc_cards WHERE UPPER(card_uid)=?",
                 (card_uid,)
             ).fetchone()
             if duplicate:
@@ -1460,10 +1460,21 @@ def build_router(db, app_settings=None):
         if replacement:
             if not identity.verify_pin(session["member_id"],q.pin):
                 raise HTTPException(403,"invalid_member_pin_for_card_replacement")
+            pin_salt=None;pin_hash=None
         else:
-            identity.set_pin(session["member_id"],q.pin)
+            pin_salt=secrets.token_hex(16)
+            pin_hash=identity._hash_pin(q.pin,pin_salt)
         try:
             with db.connect() as c:
+                c.execute("BEGIN IMMEDIATE")
+                # Recheck ownership after acquiring the write lock to prevent two cashiers
+                # from binding the same UID concurrently.
+                duplicate=c.execute("SELECT member_id FROM member_nfc_cards WHERE UPPER(card_uid)=?",(card_uid,)).fetchone()
+                if duplicate: raise HTTPException(409,"nfc_card_already_registered")
+                credential_owner=c.execute("SELECT member_id FROM identity_credentials WHERE credential_id=?",(credential_id,)).fetchone()
+                if credential_owner: raise HTTPException(409,"credential_already_registered")
+                if not replacement:
+                    c.execute("UPDATE identity_members SET pin_salt=?,pin_hash=? WHERE member_id=?",(pin_salt,pin_hash,session["member_id"]))
                 if replacement:
                     old_credentials=c.execute("SELECT credential_id FROM member_nfc_cards WHERE member_id=? AND status='active'",(session["member_id"],)).fetchall()
                     c.execute("UPDATE member_nfc_cards SET status='revoked',revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND status='active'",(session["member_id"],))
