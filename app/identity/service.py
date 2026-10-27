@@ -93,54 +93,63 @@ class IdentityService:
         }
 
     def verify_credential_pin(self, credential_id, pin):
-        auth = self.authorize_credential(credential_id)
-        if not auth["authorized"]:
-            raise PermissionError(auth["reason"])
-
-        ok = self.verify_pin(auth["member_id"], pin)
-        table = None
+        # Serialize credential authorization, PIN verification, and failure
+        # accounting. Otherwise parallel wrong-PIN requests can all pass the
+        # initial unlocked check before any request blocks the credential.
         with self.db.connect() as c:
-            if c.execute(
-                "SELECT 1 FROM identity_credentials WHERE credential_id=?",
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT credential_id,member_id,status,enabled,pin_blocked "
+                "FROM identity_credentials WHERE credential_id=?",
                 (credential_id,),
-            ).fetchone():
-                table = "identity_credentials"
-            elif c.execute(
-                "SELECT 1 FROM credential_registry WHERE credential_id=?",
-                (credential_id,),
-            ).fetchone():
+            ).fetchone()
+            table = "identity_credentials"
+            if not row:
+                row = c.execute(
+                    "SELECT credential_id,member_id,status,enabled,pin_blocked "
+                    "FROM credential_registry WHERE credential_id=?",
+                    (credential_id,),
+                ).fetchone()
                 table = "credential_registry"
-
-            if not table:
+            if not row:
                 raise PermissionError("credential_not_found")
+            member = c.execute(
+                "SELECT status,pin_salt,pin_hash FROM identity_members WHERE member_id=?",
+                (row["member_id"],),
+            ).fetchone()
+            if row["status"] != "active" or row["enabled"] != 1 or not member or member["status"] != "active":
+                raise PermissionError("inactive")
+            if row["pin_blocked"] == 1:
+                raise PermissionError("credential_pin_blocked")
 
+            ok = (
+                isinstance(pin, str) and pin.isdigit() and 4 <= len(pin) <= 6
+                and member["pin_salt"] and member["pin_hash"]
+                and hmac.compare_digest(
+                    self._hash_pin(pin, member["pin_salt"]), member["pin_hash"]
+                )
+            )
             if ok:
                 c.execute(
                     f"UPDATE {table} SET pin_failed_attempts=0 WHERE credential_id=?",
                     (credential_id,),
                 )
+                event = "pin_verified"
+            else:
                 c.execute(
-                    "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
-                    "VALUES(?,?,?,?)",
-                    ("identity", "credential", credential_id, "pin_verified"),
+                    f"UPDATE {table} SET pin_failed_attempts=pin_failed_attempts+1, "
+                    "pin_blocked=CASE WHEN pin_failed_attempts+1>=? THEN 1 ELSE pin_blocked END "
+                    "WHERE credential_id=?",
+                    (self.PIN_MAX_ATTEMPTS, credential_id),
                 )
-                c.commit()
-                return True
-
-            c.execute(
-                f"UPDATE {table} SET pin_failed_attempts=pin_failed_attempts+1, "
-                "pin_blocked=CASE WHEN pin_failed_attempts+1>=? THEN 1 ELSE pin_blocked END "
-                "WHERE credential_id=?",
-                (self.PIN_MAX_ATTEMPTS, credential_id),
-            )
+                event = "pin_failed"
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
                 "VALUES(?,?,?,?)",
-                ("identity", "credential", credential_id, "pin_failed"),
+                ("identity", "credential", credential_id, event),
             )
             c.commit()
-
-        return False
+            return bool(ok)
 
     def unblock_credential_pin(self, credential_id):
         with self.db.connect() as c:
