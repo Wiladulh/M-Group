@@ -402,6 +402,18 @@ function renderPaymentTransactions(){
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
 $('paymentStatusFilter').onchange=renderPaymentTransactions;
+let paymentPendingKey=null;
+try{paymentPendingKey=sessionStorage.getItem('mgroup-payment-pending-key');if(paymentPendingKey&&!$('idem').value)$('idem').value=paymentPendingKey}catch(_){}
+['payMember','credential','payaccount','payamount','method','provider'].forEach(id=>{
+  const el=$(id);if(!el)return;
+  el.addEventListener('input',clearPendingPaymentKey);
+  el.addEventListener('change',clearPendingPaymentKey);
+});
+function clearPendingPaymentKey(){
+  if(paymentPendingKey&&$('idem').value===paymentPendingKey)$('idem').value='';
+  paymentPendingKey=null;
+  try{sessionStorage.removeItem('mgroup-payment-pending-key')}catch(_){}
+}
 $('paymentForm').onsubmit=async e=>{
   e.preventDefault();
   const method=$('method').value,pin=$('paypin').value;
@@ -411,11 +423,12 @@ $('paymentForm').onsubmit=async e=>{
   if(!Number.isSafeInteger(amount)||amount<=0){$('paymentResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
   if(!confirm('Konfirmasi pembayaran '+money(amount)+' dari rekening '+accountId+' melalui '+method+'?'))return;
   let idem=$('idem').value.trim();
-  if(!idem){idem='webui-payment:'+(window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)));$('idem').value=idem}
+  if(!idem){idem=paymentPendingKey||('webui-payment:'+(window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))));$('idem').value=idem}
+  paymentPendingKey=idem;try{sessionStorage.setItem('mgroup-payment-pending-key',idem)}catch(_){}
   const q={credential_id:credentialId,account_id:accountId,amount,method,provider:$('provider').value||'local',idempotency_key:idem,pin:pin||null};
   const {r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
   $('paymentResult').textContent=JSON.stringify(d,null,2);
-  if(r.ok){$('paypin').value='';$('idem').value='';await load()}
+  if(r.ok){$('paypin').value='';$('idem').value='';paymentPendingKey=null;try{sessionStorage.removeItem('mgroup-payment-pending-key')}catch(_){}await load()}
 };
 let vendingCatalog=[];
 async function loadVendingCatalog(machineId){
