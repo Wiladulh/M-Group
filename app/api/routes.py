@@ -32,12 +32,20 @@ class PaymentRequest(BaseModel):
     reference: str | None = None
     method: str = "NFC"
     provider: str = "local"
-    idempotency_key: str | None = None
+    idempotency_key: str
     hardware_id: str | None = None
     pin: str | None = None
     original_amount: int | None = None
     discount_amount: int = 0
     promo_id: str | None = None
+
+    @__import__("pydantic").field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value):
+        value=value.strip()
+        if len(value)<8 or len(value)>128:
+            raise ValueError("invalid_idempotency_key")
+        return value
 
 class PinRequest(BaseModel):
     pin: str
