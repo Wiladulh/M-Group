@@ -1412,7 +1412,7 @@ def build_router(db, app_settings=None):
                 media_type="image/jpeg"
         except HTTPException:
             raise
-        except (UnidentifiedImageError, OSError, ValueError):
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
             raise HTTPException(415,"invalid_or_corrupt_product_image")
         if len(optimized)>MAX_OPTIMIZED_PRODUCT_IMAGE_BYTES: raise HTTPException(413,"optimized_product_image_must_be_under_64kb")
         digest=hashlib.sha256(optimized).hexdigest()
