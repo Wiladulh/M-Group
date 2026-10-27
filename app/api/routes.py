@@ -1585,6 +1585,7 @@ def build_router(db, app_settings=None):
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
+        actor=getattr(request.state,"admin_username","")
         with db.connect() as c:
             c.execute("BEGIN IMMEDIATE")
             pending=c.execute(
