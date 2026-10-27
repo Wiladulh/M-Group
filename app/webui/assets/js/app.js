@@ -558,6 +558,12 @@ $('accountSettings').onsubmit=async e=>{
 };
 $('settingsLogout').onclick=()=>$('logoutButton').click();
 
+async function loadAuditEvents(){
+  const target=$('auditEvents');if(!target)return;
+  const {r,d}=await json('/api/v1/audit?limit=100',{});
+  target.innerHTML=r.ok?table(d.events||[],['created_at','event_type','entity_type','entity_id','detail']):'<p class="hint">'+esc(d.detail||'Gagal memuat audit sistem')+'</p>';
+}
+$('auditEventsRefresh').onclick=loadAuditEvents;
 async function loadAudit(){
   try{
     const deviceSelect=$('auditDevice');
@@ -657,6 +663,7 @@ function unlockApp(username,role=null){
     const submit=$('productForm').querySelector('button[type="submit"]');if(submit)submit.hidden=!superAdmin;
   }
   loadNfcCashierOptions();
+  loadAuditEvents();
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
   $('activeUsername').textContent=(username||'Admin')+(role?' · '+role:'');
