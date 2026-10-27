@@ -21,6 +21,10 @@
         <option value="QRIS">QRIS</option>
       </select>
       <label>Perangkat<select id="auditDevice"><option value="ALL">Semua perangkat</option></select></label>
+      <label>Status transaksi<select id="auditStatus"><option value="ALL">Semua status</option><option value="completed">Completed</option><option value="succeeded">Succeeded</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="refunded">Refunded</option><option value="cancelled">Cancelled</option></select></label>
+      <label>Jenis transaksi<select id="auditType"><option value="ALL">Semua jenis</option><option value="DEPOSIT">Setoran Cashier</option><option value="PAYMENT">Pembayaran Cashier</option><option value="PURCHASE">Pembelian Vending</option><option value="TOPUP">Top Up</option></select></label>
+      <label>Member ID<input id="auditMemberId" maxlength="64" placeholder="Cari Member ID"></label>
+      <label>ID transaksi<input id="auditTransactionId" maxlength="128" placeholder="Cari ID transaksi"></label>
       <label id="auditSingleDateLabel">Tanggal acuan<input id="auditDate" type="date"></label>
       <label id="auditStartDateLabel" hidden>Tanggal mulai<input id="auditStartDate" type="date"></label>
       <label id="auditEndDateLabel" hidden>Tanggal akhir (termasuk)<input id="auditEndDate" type="date"></label>
