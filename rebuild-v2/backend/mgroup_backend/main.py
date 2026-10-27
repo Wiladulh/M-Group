@@ -1364,10 +1364,16 @@ def admin_dashboard(connection: DB, period: str = 'week'):
             daily[day]=daily.get(day,0)+1
         except (TypeError,ValueError):
             continue
+    channel_sql="SELECT transaction_type,amount_minor,metadata_json FROM transactions WHERE status='succeeded'"
+    channel_args=[]
+    if start:
+        channel_sql+=" AND created_at>=? AND created_at<?";channel_args=[start,end]
+    channel_rows=connection.execute(channel_sql,channel_args).fetchall()
     channels={}
-    for row in recent:
-        typ=row['transaction_type']
-        channel=typ.replace('_',' ').title()
+    for row in channel_rows:
+        try: meta=json.loads(row['metadata_json'] or '{}')
+        except (TypeError,ValueError): meta={}
+        channel=meta.get('payment_method') or row['transaction_type'].replace('_',' ').title()
         slot=channels.setdefault(channel,{'channel':channel,'transactions':0,'amount_minor':0})
         slot['transactions']+=1;slot['amount_minor']+=row['amount_minor']
     return {'period':period,'summary':{'members':member_count,'active_devices':active_devices,'member_balance_minor':balance,'successful_transactions':successful},
