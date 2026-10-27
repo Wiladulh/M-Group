@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_id TEXT PRIMARY KEY,
     member_id TEXT UNIQUE,
     account_type TEXT NOT NULL CHECK (account_type IN ('member', 'merchant', 'system')),
+    label TEXT,
     currency TEXT NOT NULL DEFAULT 'IDR',
     balance_minor INTEGER NOT NULL DEFAULT 0 CHECK (balance_minor >= 0),
     status TEXT NOT NULL DEFAULT 'active'
