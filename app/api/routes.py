@@ -1991,8 +1991,9 @@ def build_router(db, app_settings=None):
                 start=f"{y:04d}-{m:02d}-01"
                 end=f"{y+1:04d}-01-01" if m==12 else f"{y:04d}-{m+1:02d}-01"
             else:
-                d=dt.date.fromisoformat(date); monday=d-dt.timedelta(days=d.weekday())
-                start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
+                selected_day=dt.date.fromisoformat(date)
+                start=(selected_day-dt.timedelta(days=6)).isoformat()
+                end=(selected_day+dt.timedelta(days=1)).isoformat()
             # Transaction timestamps are stored as UTC by SQLite CURRENT_TIMESTAMP.
             # Translate local Asia/Jakarta midnight boundaries to UTC before filtering.
             query_start=dt.datetime.combine(dt.date.fromisoformat(start),dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
