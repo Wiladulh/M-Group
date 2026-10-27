@@ -60,7 +60,7 @@ String pendingCreateProduct="",pendingCreateCredential="";
 unsigned long pendingCreateSequence=0;
 int pendingCreateServo=0;
 long pendingCreateAmount=0;
-bool createRequestRejected=false;
+bool createRequestRejected=false,createPriceChanged=false;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
 Product productsList[16];
@@ -218,7 +218,7 @@ bool products(){
   return true;
 }
 String beginTransaction(const String&product,const String&credential,const String&seq,long expectedAmount){
-  createRequestRejected=false;
+  createRequestRejected=false;createPriceChanged=false;
   String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\",\"expected_amount\":"+String(expectedAmount)+"}";
   String path=String("/api/v1/vending/")+HARDWARE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
@@ -227,7 +227,7 @@ String beginTransaction(const String&product,const String&credential,const Strin
     String tx=jsonString(reply,"transaction_id");
     Serial.printf("BEGIN attempt=%d code=%d %s\n",attempt,code,reply.c_str());
     if(tx.length())return tx;
-    if(code>=400 && code<500){createRequestRejected=true;return "";}
+    if(code>=400 && code<500){createRequestRejected=true;createPriceChanged=reply.indexOf("catalog_price_changed")>=0;return "";}
     delay(250);
   }
   return "";
@@ -310,7 +310,7 @@ void scanCard(){
   savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel,x.price);
   String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence),pendingCreateAmount);
   if(!tx.length()){
-    if(createRequestRejected){clearPendingCreateRequest();showMessage("TRANSACTION REJECTED","Check stock/card");}
+    if(createRequestRejected){clearPendingCreateRequest();showMessage(createPriceChanged?"PRICE CHANGED":"TRANSACTION REJECTED",createPriceChanged?"Refresh catalog":"Check stock/card");}
     else showMessage("CREATE PENDING","Retry same request");
     delay(1200);return;
   }
@@ -375,14 +375,14 @@ void loop(){
   }
   if(pendingCreateRequest){
     showMessage("CREATE PENDING","Retry same request");
-    String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
+    String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence),pendingCreateAmount);
     if(tx.length()){
       const int servoChannel=pendingCreateServo;
       clearPendingCreateRequest();
       savePendingTransaction(tx,"created",servoChannel);
     }else if(createRequestRejected){
       clearPendingCreateRequest();
-      showMessage("CREATE REJECTED","Ready to retry");
+      showMessage(createPriceChanged?"PRICE CHANGED":"CREATE REJECTED",createPriceChanged?"Refresh catalog":"Ready to retry");
     }
     delay(500);return;
   }
