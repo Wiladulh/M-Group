@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -69,7 +70,9 @@ void registrationScan(const String& session);
 void scanCard();
 
 String getJson(const String& path,int& code){
-  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(5000); http.begin(String(M_GROUP_BASE_URL)+path);
+  HTTPClient http; WiFiClientSecure secureClient; http.setConnectTimeout(3000); http.setTimeout(5000);String url=String(M_GROUP_BASE_URL)+path;
+  if(M_GROUP_BASE_URL.startsWith("https://")){String ca=configPortal.tlsCaCertificate();if(ca.isEmpty()){code=-2;Serial.println("HTTPS rejected: configure trusted server CA in local WebUI");return "";}secureClient.setCACert(ca.c_str());if(!http.begin(secureClient,url)){code=-2;return "";}}
+  else if(!http.begin(url)){code=-2;return "";}
   http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY); code=http.GET();
   String out=code>0?http.getString():""; http.end(); return out;
 }
@@ -81,7 +84,9 @@ String jsonField(const String& body,const String& key){
 }
 
 String postJson(const String& path,const String& body,int& code){
-  HTTPClient http; http.setConnectTimeout(3000); http.setTimeout(8000); http.begin(String(M_GROUP_BASE_URL)+path);
+  HTTPClient http; WiFiClientSecure secureClient; http.setConnectTimeout(3000); http.setTimeout(8000);String url=String(M_GROUP_BASE_URL)+path;
+  if(M_GROUP_BASE_URL.startsWith("https://")){String ca=configPortal.tlsCaCertificate();if(ca.isEmpty()){code=-2;Serial.println("HTTPS rejected: configure trusted server CA in local WebUI");return "";}secureClient.setCACert(ca.c_str());if(!http.begin(secureClient,url)){code=-2;return "";}}
+  else if(!http.begin(url)){code=-2;return "";}
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY); code=http.POST(body);
   String out=code>0?http.getString():""; http.end(); return out;
