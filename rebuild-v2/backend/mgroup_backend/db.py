@@ -59,6 +59,7 @@ def initialize(database_path: str) -> None:
         # Idempotent additive migrations keep existing v2 data while the clean
         # schema evolves; no migration drops or rewrites financial records.
         migrations={
+            'accounts': {'label': 'TEXT'},
             'members': {
                 'nik': 'TEXT',
                 'phone': 'TEXT',
