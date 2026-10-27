@@ -111,7 +111,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       String host=*url_; host.replace("https://","");host.replace("http://","");int slash=host.indexOf('/');if(slash>=0)host=host.substring(0,slash);
       uint16_t port=url_->startsWith("https://")?443:80;int colon=host.lastIndexOf(':');if(colon>0){port=(uint16_t)host.substring(colon+1).toInt();host=host.substring(0,colon);}
       WiFiClient client;client.setTimeout(3000);bool ok=client.connect(host.c_str(),port);if(ok)client.stop();
-      String body=String("{\"ok\":")+(ok?"true":"false")+",\"detail\":\""+(ok?"tcp_reachable":"server_unreachable")+"\",\"host\":\""+host+"\",\"port\":"+String(port)+"}";
+       String body=String("{\"ok\":")+(ok?"true":"false")+",\"detail\":\""+(ok?"tcp_reachable":"server_unreachable")+"\",\"host\":\""+jsonEscape(host)+"\",\"port\":"+String(port)+"}";
       req->send(ok?200:503,"application/json; charset=utf-8",body);
     });
     server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}if(defaultPinActive()){req->send(403,"text/plain","Ganti PIN default 19929900 sebelum menyimpan konfigurasi perangkat.");return;}
