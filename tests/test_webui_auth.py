@@ -82,7 +82,14 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             assert dashboard.json()["analytics_period"] == "1w"
             assert isinstance(dashboard.json()["analytics"], list)
             assert isinstance(dashboard.json()["most_used_vending"], list)
+            assert isinstance(dashboard.json()["best_selling_products"], list)
             assert isinstance(dashboard.json()["payment_channels"], list)
+            custom_range_missing = client.get("/api/v1/audit/report?period=custom")
+            assert custom_range_missing.status_code == 400
+            custom_range_invalid = client.get(
+                "/api/v1/audit/report?period=custom&start_date=2026-02-02&end_date=2026-02-01"
+            )
+            assert custom_range_invalid.status_code == 400
             invalid_period = client.get("/api/v1/dashboard?period=unknown")
             assert invalid_period.status_code == 400
 
