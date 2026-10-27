@@ -159,6 +159,8 @@ class PurchaseRequest(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
     pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
+    payment_method: str = Field(default='nfc', pattern='^(nfc|qris)$')
+    expected_amount_minor: int | None = Field(default=None, gt=0, le=100_000_000)
 
 
 class DispenseResult(BaseModel):
@@ -1041,7 +1043,9 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
             if prior:
                 meta = json.loads(prior['metadata_json'] or '{}')
                 if (prior['transaction_type'] != 'purchase' or prior['hardware_id'] != device['hardware_id']
-                    or meta.get('product_id') != payload.product_id or meta.get('card_hash') != digest):
+                    or meta.get('product_id') != payload.product_id or meta.get('card_hash') != digest
+                    or (payload.expected_amount_minor is not None and prior['amount_minor'] != payload.expected_amount_minor)
+                    or meta.get('payment_method','nfc') != payload.payment_method):
                     raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
                 return {'transaction_id': prior['transaction_id'], 'status': prior['status'],
                         'amount_minor': prior['amount_minor'], 'idempotent_replay': True}
@@ -1064,6 +1068,8 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
             if not account or account['status'] != 'active':
                 raise HTTPException(status_code=409, detail={'code': 'ACCOUNT_NOT_ACTIVE'})
             amount = product['price_minor']
+            if payload.expected_amount_minor is not None and amount != payload.expected_amount_minor:
+                raise HTTPException(status_code=409, detail={'code':'CATALOG_PRICE_CHANGED'})
             if account['balance_minor'] < amount:
                 raise HTTPException(status_code=409, detail={'code': 'INSUFFICIENT_BALANCE'})
             system_id = ensure_system_account(connection)
