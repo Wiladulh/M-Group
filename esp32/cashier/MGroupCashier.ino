@@ -260,6 +260,7 @@ void checkMemberBalance(){
 }
 
 void registrationProgress(const String& session,const String& status){
+  configPortal.setStatusExtra(",\\\"registration_status\\\":\\\""+status+"\\\"");
   String body="{\"session_id\":\""+session+"\",\"status\":\""+status+"\"}";
   int code=0;String reply=postJson("/api/v1/cashier/nfc-registration/progress",body,code);
   Serial.printf("NFC PROGRESS %s %d\\n",status.c_str(),code);
