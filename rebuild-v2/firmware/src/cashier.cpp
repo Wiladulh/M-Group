@@ -77,9 +77,9 @@ void finishRequest(const String& path,const String& body) {
 String cardUid() {
   uint8_t uid[10];uint8_t length=0;String value;
   if(pn532Ready) {
-    if(!pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A,uid,&length,30))return "";
+    if(!pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A,uid,&length,30)){lastCardUid="";return "";}
   } else if(rc522Ready) {
-    if(!rfid.PICC_IsNewCardPresent()||!rfid.PICC_ReadCardSerial())return "";
+    if(!rfid.PICC_IsNewCardPresent()||!rfid.PICC_ReadCardSerial()){lastCardUid="";return "";}
     length=rfid.uid.size;for(uint8_t i=0;i<length;i++)uid[i]=rfid.uid.uidByte[i];
     rfid.PICC_HaltA();rfid.PCD_StopCrypto1();
   } else return "";
