@@ -27,6 +27,9 @@
       <div class="section" style="grid-column:1/-1">
         <h3>Identitas NFC Member</h3>
         <p class="hint">Simpan member terlebih dahulu, lalu mulai scan. Cashier aktif akan mengklaim sesi menggunakan device key; WebUI tidak memerlukan device ID Cashier. Cashier akan meminta member menempelkan kartu NFC dan memasukkan PIN transaksi 4 digit. UID dan PIN diverifikasi server.</p>
+        <label style="display:block;margin-top:10px">Terminal Cashier
+          <select id="nfcCashier" required><option value="">Memuat daftar Cashier...</option></select>
+        </label>
         <div style="margin-top:10px"><button type="button" id="nfcStart">Scan / Ganti Kartu NFC</button></div>
         <div id="nfcRegistrationResult" class="hint" role="status"></div>
       </div>
