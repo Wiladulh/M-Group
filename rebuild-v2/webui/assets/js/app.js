@@ -258,14 +258,14 @@
       state.products=d.items||[];
       $("products").innerHTML=table(state.products,[
         {key:"product_id",label:"Product ID"},{key:"name",label:"Nama"},{key:"price_minor",label:"Harga",render:r=>esc(money(r.price_minor))},
-        {key:"stock",label:"Stok"},{key:"capacity",label:"Kapasitas"},
+        {key:"stock",label:"Stok"},{key:"capacity",label:"Kapasitas"},{key:"enabled",label:"Aktif",render:r=>statusPill(r.enabled?"active":"disabled")},
         {key:"nfc_promo_percent",label:"Promo NFC"},{key:"qris_promo_percent",label:"Promo QRIS"},
         {key:"image_sha256",label:"Hash gambar",render:r=>esc(r.image_sha256||"—")}
       ]);
       const id=Number($("productId").value||1),p=state.products.find(x=>x.product_id===id);
       if(p) {
         $("productName").value=p.name||"";$("productPrice").value=p.price_minor||"";$("productStock").value=p.stock??0;
-        $("productCapacity").value=p.capacity??p.stock??0;$("productEnabled").checked=p.price_minor>0;
+        $("productCapacity").value=p.capacity??p.stock??0;$("productEnabled").checked=Boolean(p.enabled);
         await showProductImage(p);
       }
     } catch(e) { show("productResult",errorText(e),true); }
@@ -286,7 +286,7 @@
       const registryId=$("machineId").value, productId=Number($("productId").value);
       if(!registryId||!productId)throw new Error("Pilih mesin dan Product ID.");
       const payload={name:$("productName").value.trim(),price_minor:Number($("productPrice").value),
-        stock:Number($("productStock").value),capacity:Number($("productCapacity").value)};
+        stock:Number($("productStock").value),capacity:Number($("productCapacity").value),enabled:$("productEnabled").checked};
       await request("/vending/devices/"+encodeURIComponent(registryId)+"/products/"+productId,{method:"PUT",body:payload});
       const file=$("productImageFile").files[0];
       if(file) {
