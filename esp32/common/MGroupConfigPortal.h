@@ -48,7 +48,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
 <label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>\n<label>Device ID dari server</label><input name="device_id" maxlength="64" required autocomplete="off">
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
-<small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
+<small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><hr><h3>Keamanan WebUI Cashier</h3><form method="post" action="/change-pin"><label>PIN saat ini</label><input name="old_pin" type="password" maxlength="32" required><label>PIN baru (minimal 8 karakter)</label><input name="new_pin" type="password" minlength="8" maxlength="32" required><label>Ulangi PIN baru</label><input name="confirm_pin" type="password" minlength="8" maxlength="32" required><button type="submit">Ganti PIN WebUI</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     return h;
   }
   void startPortal(bool setupAp=true) {
@@ -62,12 +62,19 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       active_=false;
       Serial.println("M-GROUP DEVICE WEBUI will be available at the DHCP IP on port 80 after Wi-Fi connects.");
     }
-    server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){req->send(200,"text/html; charset=utf-8",page(label_));});
-    server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){
+    server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){if(cashierMode_&&!authorized(req)){req->send(200,"text/html; charset=utf-8",loginPage());return;}req->send(200,"text/html; charset=utf-8",page(label_));});
+    server_.on("/login",HTTP_POST,[this](AsyncWebServerRequest *req){
+      if(!cashierMode_){req->redirect("/");return;}
+      if(millis()<pinLockedUntil_){req->send(429,"text/plain","Terlalu banyak percobaan. Coba lagi 15 menit.");return;}
+      String pin=req->hasParam("pin",true)?req->getParam("pin",true)->value():"";String expected=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");
+      if(pin.length()<4||sha256Hex(pin)!=expected){if(pinWindowStarted_==0||millis()-pinWindowStarted_>900000UL){pinWindowStarted_=millis();pinFailures_=0;}if(++pinFailures_>=5){pinLockedUntil_=millis()+900000UL;pinFailures_=0;pinWindowStarted_=0;}req->send(401,"text/html; charset=utf-8",loginPage()+"<p>PIN salah atau percobaan dibatasi.</p>");return;}
+      pinFailures_=0;pinWindowStarted_=0;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
+    });
+    server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+"}";
       req->send(200,"application/json; charset=utf-8",body);
     });
-    server_.on("/test",HTTP_GET,[this](AsyncWebServerRequest *req){
+    server_.on("/test",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       if(WiFi.status()!=WL_CONNECTED){req->send(503,"application/json","{\"ok\":false,\"detail\":\"wifi_disconnected\"}");return;}
       String host=*url_; host.replace("https://","");host.replace("http://","");int slash=host.indexOf('/');if(slash>=0)host=host.substring(0,slash);
       uint16_t port=url_->startsWith("https://")?443:80;int colon=host.lastIndexOf(':');if(colon>0){port=(uint16_t)host.substring(colon+1).toInt();host=host.substring(0,colon);}
@@ -75,7 +82,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       String body=String("{\"ok\":")+(ok?"true":"false")+",\"detail\":\""+(ok?"tcp_reachable":"server_unreachable")+"\",\"host\":\""+host+"\",\"port\":"+String(port)+"}";
       req->send(ok?200:503,"application/json; charset=utf-8",body);
     });
-    server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){
+    server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       auto value=[req](const char *name)->String {return req->hasParam(name,true)?req->getParam(name,true)->value():"";};
       String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceId=value("device_id"),deviceKey=value("device_key");
       ssid.trim();serverUrl.trim();deviceKey.trim();
@@ -86,6 +93,13 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
       delay(900);ESP.restart();
     });
-    server_.onNotFound([](AsyncWebServerRequest *req){req->send(404,"text/plain","Not found");});server_.begin();
+    server_.on("/change-pin",HTTP_POST,[this](AsyncWebServerRequest *req){
+      if(!cashierMode_){req->send(404,"text/plain","Not found");return;}if(!authorized(req)){requireAuth(req);return;}
+      auto value=[req](const char *name)->String{return req->hasParam(name,true)?req->getParam(name,true)->value():"";};String oldPin=value("old_pin"),newPin=value("new_pin"),confirm=value("confirm_pin");
+      if(sha256Hex(oldPin)!=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356")){req->send(403,"text/plain","PIN saat ini salah.");return;}
+      if(newPin.length()<8||newPin.length()>32||newPin!=confirm||newPin=="19929900"){req->send(400,"text/plain","PIN baru harus 8-32 karakter, cocok dengan konfirmasi, dan bukan PIN default.");return;}
+      prefs_.putString("webui_pin_hash",sha256Hex(newPin));req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>PIN berhasil diganti</h2><p>Silakan kembali ke WebUI.</p><a href='/'>Kembali</a>");
+    });
+    server_.onNotFound([this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}req->send(404,"text/plain","Not found");});server_.begin();
   }
 };
