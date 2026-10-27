@@ -204,7 +204,7 @@ class VendingService:
             result["servo_channel"] = result["slot"]
         result["enabled"] = bool(result["enabled"])
         return result
-    def begin(self,machine_id,product_id,credential_id,account_id,idempotency_key,payment_method="NFC",payment_provider="local",expected_amount=None):
+    def begin(self,machine_id,product_id,credential_id,account_id,idempotency_key,payment_method="NFC",payment_provider="local"):
         machine=self.machine(machine_id)
         resolved=self.payment.identity.account_for_credential(credential_id)
         if not resolved["authorized"]:
@@ -234,8 +234,7 @@ class VendingService:
                 if (old["machine_id"] != machine_id or old["product_id"] != expected_product_key
                     or old["credential_id"] != credential_id or old["account_id"] != account_id
                     or old["payment_method"] != payment_method
-                    or old["payment_provider"] != payment_provider
-                    or (expected_amount is not None and old["amount"] != expected_amount)):
+                    or old["payment_provider"] != payment_provider):
                     raise ValueError("idempotency_key_conflict")
                 return dict(old)
             if not p: raise ValueError("product_not_found")
@@ -253,11 +252,6 @@ class VendingService:
                 discount,_=self.promos.calculate(p["price"],promo["discount_percent"])
                 promo_id=promo["promo_id"]
             final_amount=p["price"]-discount
-            if expected_amount is not None and (
-                not isinstance(expected_amount,int) or isinstance(expected_amount,bool) or expected_amount<=0
-                or final_amount!=expected_amount
-            ):
-                raise ValueError("catalog_price_changed")
             tx="vend-"+uuid4().hex
             c.execute("""INSERT INTO vending_transactions
                 (transaction_id,machine_id,product_id,credential_id,account_id,base_amount,discount_amount,amount,
