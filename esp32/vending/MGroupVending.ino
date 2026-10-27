@@ -211,7 +211,7 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   return true;
 }
 void syncProductImages(const String&catalog){
-  if(!productImageFsReady){productImageSyncStatus="Filesystem tidak tersedia";vendingPrefs.putString("product_images_status",productImageSyncStatus);return;}
+  if(!productImageFsReady){productImageSyncStatus="Filesystem tidak tersedia";if(vendingPrefs.getString("product_images_status","")!=productImageSyncStatus)vendingPrefs.putString("product_images_status",productImageSyncStatus);return;}
   int pos=0,success=0,requested=0;
   while(true){
     int idPos=catalog.indexOf("\"product_id\":\"",pos);if(idPos<0)break;
@@ -224,7 +224,7 @@ void syncProductImages(const String&catalog){
     pos=objectEnd+1;
   }
   productImageSyncStatus=requested==0?"Tidak ada gambar":(requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia"));
-  vendingPrefs.putString("product_images_status",productImageSyncStatus);
+  if(vendingPrefs.getString("product_images_status","")!=productImageSyncStatus)vendingPrefs.putString("product_images_status",productImageSyncStatus);
 }
 
 void clearPendingCreateRequest(){
