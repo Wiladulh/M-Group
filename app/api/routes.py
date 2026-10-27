@@ -1956,7 +1956,7 @@ def build_router(db, app_settings=None):
         if source not in {"ALL","CASHIER","VENDING","TOPUP"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month","custom"}: raise HTTPException(400,"invalid_period")
         method=method.upper()
-        if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
+        if method not in {"ALL","NFC","QRIS","CASH"}: raise HTTPException(400,"invalid_method")
         status=status.upper()
         if status not in {"ALL","COMPLETED","PENDING","FAILED","CANCELLED","REFUNDED","REFUNDING","AUTHORIZED","CREATED"}:
             raise HTTPException(400,"invalid_status")
