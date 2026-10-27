@@ -266,7 +266,8 @@ def export_rows_excel(rows, target, metadata=None):
     ws["A2"]="Sumber: "+str(source_label)
     ws["A3"]="Periode: "+str(metadata.get("start","—"))+" sampai "+str(metadata.get("end","—"))+" (Asia/Jakarta)"
     ws["A4"]="Metode pembayaran: "+str(metadata.get("method","ALL"))
-    ws["A5"]="Dibuat: "+datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d %H:%M:%S")+" WIB"
+    ws["A5"]="Perangkat: "+str(metadata.get("hardware_id","ALL"))
+    ws["A6"]="Dibuat: "+datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d %H:%M:%S")+" WIB"
     rows=list(rows or [])
     completed=[r for r in rows if str(r.get("status","")).lower()=="completed"]
     failed=[r for r in rows if str(r.get("status","")).lower() in {"failed","error"}]
