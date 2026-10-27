@@ -7,18 +7,29 @@
         <option value="ALL">Semua</option>
         <option value="CASHIER">Cashier</option>
         <option value="VENDING">Vending</option>
+        <option value="TOPUP">Top Up</option>
       </select>
       <select id="auditPeriod">
         <option value="day">Harian</option>
         <option value="week">Mingguan</option>
         <option value="month">Bulanan</option>
+        <option value="custom">Rentang manual</option>
+        <option value="all">Semua waktu</option>
       </select>
-      <select id="auditMethod">
-        <option value="ALL">Semua metode</option>
-        <option value="NFC">NFC / saldo member</option>
-        <option value="QRIS">QRIS</option>
+      <select id="auditStatus">
+        <option value="ALL">Semua status</option><option value="succeeded">Berhasil</option>
+        <option value="pending">Menunggu</option><option value="declined">Ditolak</option><option value="reversed">Dikembalikan</option>
       </select>
-      <input id="auditDate" type="date">
+      <select id="auditType">
+        <option value="ALL">Semua jenis</option><option value="purchase">Pembelian Vending</option>
+        <option value="cashier_payment">Pembayaran Cashier</option><option value="top_up">Top Up</option><option value="withdrawal">Penarikan</option>
+      </select>
+      <input id="auditMemberId" placeholder="Member ID">
+      <input id="auditHardwareId" placeholder="Hardware ID">
+      <input id="auditTransactionId" placeholder="ID transaksi / request">
+      <label id="auditDateLabel">Tanggal acuan<input id="auditDate" type="date"></label>
+      <label id="auditStartLabel" hidden>Tanggal mulai<input id="auditStartDate" type="date"></label>
+      <label id="auditEndLabel" hidden>Tanggal akhir (termasuk)<input id="auditEndDate" type="date"></label>
       <button type="submit">Tampilkan Audit</button>
     </form>
     <div id="auditResult" class="scroll" style="margin-top:12px"></div>
