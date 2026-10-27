@@ -1596,6 +1596,10 @@ def build_router(db, app_settings=None):
                               FROM payment_transactions p
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
                               WHERE p.transaction_source='CASHIER'""")
+        if source == "TOPUP":
+            queries.append("""SELECT transaction_id,created_at,'TOPUP' source,hardware_id,member_id,account_id,
+                              'TOPUP' transaction_type,amount,status,'NFC' payment_method,'local' payment_provider
+                              FROM cashier_deposits""")
         if source in {"ALL","TOPUP"}:
             queries.append("""SELECT f.transaction_id,f.created_at,'TOPUP' source,NULL hardware_id,a.member_id,f.account_id,
                               'TOPUP' transaction_type,f.amount,f.status,'CASH' payment_method,'local' payment_provider
