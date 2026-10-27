@@ -67,10 +67,11 @@ Do not merge while any P1 is unresolved, any financial invariant lacks test evid
 
 - Added the admin role migration and server-side role-aware account lifecycle: super-admin account creation/status changes/password reset, session revocation on disable/reset, active-account session validation, and a read-only auditor guard.
 - Restricted high-impact operations to super admins, including device provisioning/rotation/revocation, member NFC/PIN and top-up corrections, direct financial credit/debit, vending/product/promotion configuration, payment administration, and backup/export-import recovery actions. Device revocation now writes an audit event.
-- Added a super-admin UI flow to reset another admin's password; account password changes now require at least 12 characters.
+- Added super-admin UI flows to reset another admin's password and change another admin's role, with protection against demoting the last active super admin. Account password changes now require at least 12 characters.
+- Added admin security events to the audit feed, including account role/status/password changes and device revocation. Manual financial and payment API requests now require idempotency keys; the Financial Core WebUI preserves pending keys across uncertain network outcomes.
 - NFC registration/replacement now requires choosing an active cashier in the WebUI and binds the server session to that cashier's key fingerprint. The server rejects missing/unavailable cashier selection; the five-minute expiry and cashier-side device-key authentication remain in place.
 - The shared ESP32 device portal now requires the local PIN for both cashier and vending, exposes the PIN-change form for both, and blocks saving while the default PIN is active. The DHCP LAN WebUI remains available after Wi-Fi configuration; the setup AP remains the recovery path.
-- Audit XLSX filenames include a unique suffix to avoid concurrent exports overwriting each other. Device pre-registration status is now accepted by device management.
+- Audit XLSX filenames include a unique suffix to avoid concurrent exports overwriting each other; audit search/export now share source, method, device, member, status, transaction-ID, and date-range filters. Device pre-registration status is now accepted by device management.
 - These changes have **not** been built or tested, per the project owner's instruction to defer testing until implementation is complete.
 
 ## Remaining implementation gap before the final test phase
