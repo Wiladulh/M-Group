@@ -1135,8 +1135,11 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             row=c.execute("SELECT content_type,image_data,sha256 FROM vending_product_images WHERE machine_id=? AND product_id=?",(machine["machine_id"],str(product_id))).fetchone()
         if not row: raise HTTPException(404,"product_image_not_found")
+        etag='"'+row["sha256"]+'"'
+        if request.headers.get("if-none-match")==etag:
+            return Response(status_code=304,headers={"ETag":etag,"Cache-Control":"public, max-age=31536000, immutable"})
         if v and v != row["sha256"]: raise HTTPException(409,"product_image_version_changed")
-        return Response(content=bytes(row["image_data"]),media_type=row["content_type"],headers={"ETag":'"'+row["sha256"]+'"',"Cache-Control":"public, max-age=31536000, immutable"})
+        return Response(content=bytes(row["image_data"]),media_type=row["content_type"],headers={"ETag":etag,"Cache-Control":"public, max-age=31536000, immutable"})
 
     @r.post("/vending/{machine_id}/products/{product_id}/image")
     async def vending_product_image_upload(request: Request, machine_id: str, product_id: str, file: UploadFile = File(...)):
