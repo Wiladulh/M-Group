@@ -174,8 +174,8 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   if(String(hashHex)!=expectedHash){LittleFS.remove(tempPath);return false;}
   LittleFS.remove(backupPath);
   bool hadOld=LittleFS.exists(finalPath);
-  if(hadOld&&!LittleFS.rename(finalPath,backupPath)){LittleFS.remove(tempPath);return false;}
-  if(!LittleFS.rename(tempPath,finalPath)){
+  if(hadOld&&!LittleFS.rename(finalPath.c_str(),backupPath.c_str())){LittleFS.remove(tempPath);return false;}
+  if(!LittleFS.rename(tempPath.c_str(),finalPath.c_str())){
     if(hadOld)LittleFS.rename(backupPath,finalPath);
     LittleFS.remove(tempPath);return false;
   }
