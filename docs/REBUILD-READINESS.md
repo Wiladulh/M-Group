@@ -1,8 +1,8 @@
 # M-Group Rebuild Readiness
 
-**Target branch:** `rebuild/remove-device-id-dependencies`  
+**Target branch:** `rebuild/clean-room-v2`  
 **Main branch:** intentionally untouched; do not merge during the rebuild.  
-**Status:** preflight complete enough to begin a controlled rebuild; not release-ready.
+**Status:** clean-room rebuild implementation in progress; not release-ready. Per current project instruction, defer builds/tests/Actions until all scoped feature implementation and integration work is complete.
 
 ## Why the current CI is red
 
@@ -24,7 +24,7 @@ The two firmware workflows passing proves the firmware builds compile; it does *
 
 ## Non-negotiable rebuild decisions
 
-- Keep work on `rebuild/remove-device-id-dependencies`; do not merge to `main` until the rebuild is reviewed and all required checks pass.
+- Keep work on `rebuild/clean-room-v2`; do not merge to `main` until all feature implementation is complete, the full test/release gates pass, and the repository owner explicitly approves.
 - Remove `device_id` from active application contracts, schemas, firmware, test fixtures, examples, and documentation.
 - Use the device key as the authentication secret. Do not treat a client-supplied identifier as authentication.
 - If a stable physical identity is required for hardware routing, define one explicit canonical hardware identity and its lifecycle. Do not silently reintroduce `device_id` under another name or duplicate identity columns.
