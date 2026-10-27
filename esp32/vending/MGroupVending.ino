@@ -159,7 +159,7 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   File output=LittleFS.open(tempPath,"w");
   if(!output){http.end();return false;}
   int written=http.writeToStream(&output);output.flush();output.close();http.end();
-  if(written<=0||(length>=0&&written!=length)){LittleFS.remove(tempPath);return false;}
+  if(written<=0||written>2*1024*1024||(length>=0&&written!=length)){LittleFS.remove(tempPath);return false;}
   File input=LittleFS.open(tempPath,"r");
   if(!input){LittleFS.remove(tempPath);return false;}
   mbedtls_sha256_context ctx;mbedtls_sha256_init(&ctx);if(mbedtls_sha256_starts_ret(&ctx,0)!=0){input.close();mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}
