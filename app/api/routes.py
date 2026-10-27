@@ -2098,7 +2098,19 @@ def build_router(db, app_settings=None):
             create_native_backup(db,snapshot,include_excel=False)
             path.write_bytes(content)
             result=restore_native_backup(db,path)
-            return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name}
+            # A restored snapshot may contain sessions that were revoked after it was taken.
+            # Revoke every session after the database switch so restore cannot resurrect old access.
+            restored_at=int(time.time())
+            actor=getattr(request.state,"admin_username","")
+            with db.connect() as c:
+                c.execute("UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL",(restored_at,))
+                c.execute(
+                    "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                    (actor,"backup_restore",None,"all_admin_sessions_revoked;pre_restore_backup="+snapshot.name,restored_at),
+                )
+                c.commit()
+            response=None
+            return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name,"admin_sessions_revoked":True}
         except HTTPException:
             raise
         except Exception:
