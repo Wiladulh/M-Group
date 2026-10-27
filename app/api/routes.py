@@ -478,7 +478,10 @@ def build_router(db, app_settings=None):
             ).fetchone()[0]
             c.commit()
         if account is None:
-            raise HTTPException(503, "admin_login_not_configured")
+            with db.connect() as c:
+                configured = c.execute("SELECT COUNT(*) FROM admin_users WHERE is_active=1").fetchone()[0]
+            if configured == 0:
+                raise HTTPException(503, "admin_login_not_configured")
         if failures >= 10:
             raise HTTPException(429, "login_rate_limited")
         password_valid = verify_password(q.password, account["password_hash"]) if account else False
