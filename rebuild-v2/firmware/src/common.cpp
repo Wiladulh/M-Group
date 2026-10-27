@@ -60,7 +60,10 @@ void MGroupV2Runtime::storeWebPin(const String& pin) {
 
 bool MGroupV2Runtime::pinMatches(const String& pin) {
   if(pin.length()<8||pin.length()>32)return false;
-  String candidate=sha256Hex(webPinSalt_+pin);\n  if(candidate.length()!=webPinHash_.length())return false;\n  uint8_t difference=0;for(size_t i=0;i<candidate.length();i++)difference|=(uint8_t)(candidate[i]^webPinHash_[i]);\n  return difference==0;
+  String candidate=sha256Hex(webPinSalt_+pin);
+  if(candidate.length()!=webPinHash_.length())return false;
+  uint8_t difference=0;for(size_t i=0;i<candidate.length();i++)difference|=(uint8_t)(candidate[i]^webPinHash_[i]);
+  return difference==0;
 }
 
 bool MGroupV2Runtime::wifiConnected() const { return WiFi.status()==WL_CONNECTED; }
