@@ -1187,7 +1187,7 @@ def finance_reconciliation(connection: DB):
     account_mismatches = [dict(row) for row in account_rows]
     pending_purchases = [dict(row) for row in pending_rows]
     return {
-        'status': 'attention_required' if transaction_imbalances or account_mismatches else 'ok',
+        'status': 'attention_required' if transaction_imbalances or account_mismatches or pending_purchases else 'ok',
         'transaction_imbalances': transaction_imbalances,
         'account_mismatches': account_mismatches,
         'pending_purchases': pending_purchases,
