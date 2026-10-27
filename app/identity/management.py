@@ -160,7 +160,7 @@ class MemberManagementService:
             try:
                 c.execute("BEGIN IMMEDIATE")
                 existing = c.execute(
-                    "SELECT card_id,member_id,status FROM member_nfc_cards WHERE card_uid=?",
+                    "SELECT card_id,member_id,status FROM member_nfc_cards WHERE UPPER(card_uid)=?",
                     (card_uid,),
                 ).fetchone()
                 if existing and existing["member_id"] != member_id:
@@ -174,9 +174,9 @@ class MemberManagementService:
                 )
                 if existing:
                     c.execute(
-                        "UPDATE member_nfc_cards SET credential_id=?,status='active',revoked_at=NULL "
+                        "UPDATE member_nfc_cards SET credential_id=?,card_uid=?,status='active',revoked_at=NULL "
                         "WHERE card_id=? AND member_id=?",
-                        (credential_id, existing["card_id"], member_id),
+                        (credential_id, card_uid, existing["card_id"], member_id),
                     )
                     card_id = existing["card_id"]
                 else:
