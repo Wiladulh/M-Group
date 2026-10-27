@@ -2067,6 +2067,13 @@ def build_router(db, app_settings=None):
         end_inclusive=(dt.date.fromisoformat(data["end"])-dt.timedelta(days=1)).isoformat()
         path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}-{uuid4().hex[:8]}.xlsx"
         export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"]})
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (getattr(request.state,"admin_username",""),"audit_export",None,
+                 f"source={data['source']};period={data['period']};start={data['start']};end={end_inclusive};method={data['method']};rows={len(data['transactions'])}",int(time.time())),
+            )
+            c.commit()
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
@@ -2076,8 +2083,14 @@ def build_router(db, app_settings=None):
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
         import datetime as dt
-        path=root/f"M-Group_BACKUP_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.mgroup.zip"
+        path=root/f"M-Group_BACKUP_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}.mgroup.zip"
         create_native_backup(db,path,include_excel=True)
+        with db.connect() as c:
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (getattr(request.state,"admin_username",""),"backup_created",None,"file="+path.name,int(time.time())),
+            )
+            c.commit()
         return FileResponse(path,filename=path.name,media_type="application/zip")
 
     @r.post("/backup/restore")
