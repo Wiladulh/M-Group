@@ -183,7 +183,7 @@
         {key:"balance_minor",label:"Saldo",render:r=>esc(money(r.balance_minor))},{key:"status",label:"Status",render:r=>statusPill(r.status)}
       ]);
       $("account").innerHTML='<option value="">Pilih anggota</option>'+members.map(a=>'<option value="'+esc(a.member_id)+'">'+esc(a.member_id+' · '+(a.member_name||""))+' · '+esc(money(a.balance_minor))+'</option>').join("");
-      $("cashierSettlementAccount").innerHTML='<option value="">Pilih rekening merchant</option>'+state.accounts.filter(a=>a.account_type==="merchant"&&a.status==="active").map(a=>'<option value="'+esc(a.account_id)+'">'+esc(a.account_id)+' · '+esc(money(a.balance_minor))+'</option>').join("");
+      $("cashierSettlementAccount").innerHTML='<option value="">Pilih rekening merchant</option>'+state.accounts.filter(a=>a.account_type==="merchant"&&a.status==="active").map(a=>'<option value="'+esc(a.account_id)+'">'+esc(a.label||a.account_id)+' · '+esc(money(a.balance_minor))+'</option>').join("");
     } catch(e) { show("financialResult",errorText(e),true); }
   }
   async function loadLedger() {
