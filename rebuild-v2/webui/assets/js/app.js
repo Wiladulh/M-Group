@@ -67,7 +67,9 @@
         {key:"device_name",label:"Perangkat"},{key:"transaction_type",label:"Jenis"},{key:"amount",label:"Nominal"},
         {key:"status",label:"Status",render:r=>statusPill(r.status)}
       ]);
-      show("dashboardResult","Ringkasan dimuat dari backend v2.");
+      const {data:recon}=await request("/admin/finance/reconciliation");
+      const pending=(recon.pending_purchases||[]).length;
+      show("dashboardResult",recon.status==="ok"?"Ringkasan dimuat. Rekonsiliasi ledger seimbang.":"Perhatian rekonsiliasi: "+(recon.transaction_imbalances||[]).length+" transaksi tidak seimbang, "+(recon.account_mismatches||[]).length+" saldo akun berbeda, "+pending+" pembelian masih pending.");
     } catch(e) { show("dashboardResult",errorText(e),true); }
   }
   function memberPayload() {
