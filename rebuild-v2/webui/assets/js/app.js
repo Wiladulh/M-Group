@@ -99,7 +99,7 @@
       {key:"phone",label:"No. HP"},{key:"balance_minor",label:"Saldo",render:r=>esc(money(r.balance_minor))},
       {key:"active_cards",label:"Kartu aktif",render:r=>esc(r.active_cards??"—")},
       {key:"status",label:"Status",render:r=>statusPill(r.status)},
-      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(r.member_id)+'">Reset PIN</button>'}
+      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(r.member_id)+'">Reset PIN</button> <button type="button" data-member-action="cards" data-member-id="'+esc(r.member_id)+'">Kartu</button>'}
     ],"Belum ada anggota.");
   }
   function clearMemberForm() {
@@ -497,6 +497,18 @@
     if(b.dataset.memberAction==="edit"&&member)fillMemberForm(member);
     if(b.dataset.memberAction==="nfc"){ $("memberId").value=id; await loadCashierChoices(); $("nfcCashier").focus(); }
     if(b.dataset.memberAction==="pin")resetMemberPin(id);
+    if(b.dataset.memberAction==="cards") {
+      try {
+        const {data:d}=await request("/admin/members/"+encodeURIComponent(id)+"/cards");
+        const cards=d.items||[],active=cards.filter(c=>c.status==="active");
+        if(!active.length){alert("Tidak ada kartu aktif untuk "+id);return;}
+        const selected=active.length===1?active[0]:active.find(c=>c.card_id===prompt("Masukkan Card ID yang akan dicabut:\n"+active.map(c=>c.card_id+" · "+c.card_fingerprint).join("\n")));
+        if(!selected)return;
+        if(!confirm("Cabut kartu "+selected.card_fingerprint+" untuk "+id+"?"))return;
+        await request("/admin/members/"+encodeURIComponent(id)+"/cards/"+encodeURIComponent(selected.card_id)+"/revoke",{method:"POST"});
+        show("memberAuthResult","Kartu berhasil dicabut.");await loadMembers();
+      } catch(e) {show("memberAuthResult",errorText(e),true);}
+    }
   });
   $("financialForm").addEventListener("submit",submitFinancial);
   $("account").addEventListener("change",loadLedger);
