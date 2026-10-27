@@ -1605,8 +1605,9 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/nfc-replacement/start")
     def nfc_replacement_start(request: Request, member_id,q:NfcRegistrationStartRequest):
         require_admin(request)
-        if not q.operator_id.strip():
-            raise HTTPException(400,"operator_id_required")
+        operator_id=getattr(request.state,"admin_username","")
+        if not operator_id:
+            raise HTTPException(401,"admin_session_required")
         cashier_hardware_id=(q.cashier_hardware_id or "").strip()
         if not cashier_hardware_id:
             raise HTTPException(400,"cashier_selection_required")
@@ -1627,8 +1628,8 @@ def build_router(db, app_settings=None):
                 raise HTTPException(409,"cashier_registration_busy")
             session_id="nfc-replace-"+uuid4().hex
             c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,hardware_id,status,expires_at) VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))",(session_id,member_id,cashier_fingerprint))
-            c.execute("INSERT INTO nfc_replacement_intents(session_id,member_id,operator_id) VALUES(?,?,?)",(session_id,member_id,q.operator_id.strip()))
-            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier={cashier_hardware_id}"))
+            c.execute("INSERT INTO nfc_replacement_intents(session_id,member_id,operator_id) VALUES(?,?,?)",(session_id,member_id,operator_id))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier={cashier_hardware_id}:operator={operator_id}"))
             c.commit()
         return {"session_id":session_id,"member_id":member_id,"status":"scan_pending","operation":"replacement"}
 
