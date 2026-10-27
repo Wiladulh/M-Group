@@ -625,7 +625,7 @@ let currentAdminRole=null;
 function unlockApp(username,role=null){
   currentAdminRole=role;
   const superAdmin=role==='super_admin';
-  ['financialForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
+  ['financialForm','paymentForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
   if($('accountSettings'))$('accountSettings').hidden=role==='auditor';
   if($('memberForm'))$('memberForm').hidden=role==='auditor';
   if($('productForm')){
