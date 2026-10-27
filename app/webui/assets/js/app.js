@@ -508,7 +508,7 @@ $('auditExport').onclick=async()=>{
     const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+(period==='custom'?'&start_date='+encodeURIComponent(startDate)+'&end_date='+encodeURIComponent(endDate):(date?'&date='+encodeURIComponent(date):''));
     const r=await fetch('/api/v1/audit/export.xlsx'+q,{});
     if(!r.ok)throw new Error('Export gagal: '+r.status);
-    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='M-Group-audit-'+source.toLowerCase()+'-'+method.toLowerCase()+'-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
+    const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);const disposition=r.headers.get('content-disposition')||'';const fileMatch=disposition.match(/filename=\"?([^\";]+)\"?/i);a.download=fileMatch?fileMatch[1]:'All-audit-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
   }catch(e){$('auditResult').textContent=e.message}
 };
 $('operatorPinForm').onsubmit=async e=>{
