@@ -6,7 +6,7 @@
   <section class="section">
     <h2>Inventory Produk</h2>
     <div id="products" class="scroll"></div>
-    <div class="hint">Setiap mesin memiliki lima Product ID tetap (1–5). Slot dan servo dipetakan otomatis; keduanya tidak dapat diedit terpisah. Gambar maksimal 2 MB divalidasi dan dioptimalkan server menjadi WebP/JPEG, lalu diberi hash versi agar perangkat dapat melakukan sinkronisasi diferensial.</div>
+    <div class="hint">Setiap mesin memiliki lima Product ID tetap (1–5). Slot dan servo dipetakan otomatis; keduanya tidak dapat diedit terpisah. Upload gambar maksimal 2 MB divalidasi dan dioptimalkan server menjadi thumbnail WebP/JPEG maksimal 64 KiB, lalu diberi hash versi agar perangkat dapat melakukan sinkronisasi diferensial.</div>
     <form id="productForm" style="margin-top:12px">
       <button id="loadVendingMachines" type="button">Muat Daftar Mesin</button>
       <select id="machineId" required><option value="">Pilih mesin setelah daftar dimuat</option></select>
