@@ -12,7 +12,7 @@ class MGroupConfigPortal {
     ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; id_=&deviceId; key_=&deviceKey; label_=deviceLabel;
     prefs_.begin(storageNamespace,false);
     cashierMode_=String(deviceLabel).indexOf("Cashier")>=0;
-    if(cashierMode_&&!prefs_.isKey("webui_pin_hash"))prefs_.putString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");
+    if(cashierMode_&&!prefs_.isKey("webui_pin_hash")){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+"19929900"));}
     if(cashierMode_)sessionToken_=randomToken();
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
     *url_=prefs_.getString("server_url",*url_); *id_=prefs_.getString("device_id",*id_); *key_=prefs_.getString("device_key",*key_);
@@ -32,7 +32,9 @@ class MGroupConfigPortal {
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
   bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!sessionExpiresAt_||(long)(millis()-sessionExpiresAt_)>=0||!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
-  bool defaultPinActive(){return cashierMode_&&prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356")=="9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356";}
+  bool pinMatches(const String &pin){String salt=prefs_.getString("webui_pin_salt","");String stored=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");return salt.isEmpty()?sha256Hex(pin)==stored:sha256Hex(salt+pin)==stored;}
+  void storePin(const String &pin){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+pin));}
+  bool defaultPinActive(){return cashierMode_&&pinMatches("19929900");}
   String loginPage(){
     String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PIN WebUI Cashier</title><body style="font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7"><h2>WebUI Cashier</h2><p>Masukkan PIN konfigurasi untuk membuka pengaturan perangkat.</p><form method="post" action="/login"><input name="pin" type="password" maxlength="32" autocomplete="current-password" required style="padding:12px;width:95%"><button style="padding:12px;margin-top:12px">Masuk</button></form></body></html>)HTML";
     if(defaultPinActive())h.replace("</form></body></html>","</form><p>PIN awal 19929900 masih aktif. Ganti setelah masuk.</p></body></html>");
@@ -79,9 +81,9 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
     server_.on("/login",HTTP_POST,[this](AsyncWebServerRequest *req){
       if(!cashierMode_){req->redirect("/");return;}
       if(millis()<pinLockedUntil_){req->send(429,"text/plain","Terlalu banyak percobaan. Coba lagi 15 menit.");return;}
-      String pin=req->hasParam("pin",true)?req->getParam("pin",true)->value():"";String expected=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");
-      if(pin.length()<4||sha256Hex(pin)!=expected){if(pinWindowStarted_==0||millis()-pinWindowStarted_>900000UL){pinWindowStarted_=millis();pinFailures_=0;}if(++pinFailures_>=5){pinLockedUntil_=millis()+900000UL;pinFailures_=0;pinWindowStarted_=0;}req->send(401,"text/html; charset=utf-8",loginPage()+"<p>PIN salah atau percobaan dibatasi.</p>");return;}
-      pinFailures_=0;pinWindowStarted_=0;sessionToken_=randomToken();sessionExpiresAt_=millis()+1800000UL;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
+      String pin=req->hasParam("pin",true)?req->getParam("pin",true)->value():"";
+      if(pin.length()<4||!pinMatches(pin)){if(pinWindowStarted_==0||millis()-pinWindowStarted_>900000UL){pinWindowStarted_=millis();pinFailures_=0;}if(++pinFailures_>=5){pinLockedUntil_=millis()+900000UL;pinFailures_=0;pinWindowStarted_=0;}req->send(401,"text/html; charset=utf-8",loginPage()+"<p>PIN salah atau percobaan dibatasi.</p>");return;}
+      pinFailures_=0;pinWindowStarted_=0;if(!prefs_.isKey("webui_pin_salt"))storePin(pin);sessionToken_=randomToken();sessionExpiresAt_=millis()+1800000UL;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
     });
     server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       time_t now=time(nullptr);struct tm localInfo;char localTime[24]="Belum sinkron";if(now>1700000000&&localtime_r(&now,&localInfo))strftime(localTime,sizeof(localTime),"%Y-%m-%d %H:%M:%S",&localInfo);
@@ -110,9 +112,9 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
     server_.on("/change-pin",HTTP_POST,[this](AsyncWebServerRequest *req){
       if(!cashierMode_){req->send(404,"text/plain","Not found");return;}if(!authorized(req)){requireAuth(req);return;}
       auto value=[req](const char *name)->String{return req->hasParam(name,true)?req->getParam(name,true)->value():"";};String oldPin=value("old_pin"),newPin=value("new_pin"),confirm=value("confirm_pin");
-      if(sha256Hex(oldPin)!=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356")){req->send(403,"text/plain","PIN saat ini salah.");return;}
+      if(!pinMatches(oldPin)){req->send(403,"text/plain","PIN saat ini salah.");return;}
       if(newPin.length()<8||newPin.length()>32||newPin!=confirm||newPin=="19929900"){req->send(400,"text/plain","PIN baru harus 8-32 karakter, cocok dengan konfirmasi, dan bukan PIN default.");return;}
-      prefs_.putString("webui_pin_hash",sha256Hex(newPin));req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>PIN berhasil diganti</h2><p>Silakan kembali ke WebUI.</p><a href='/'>Kembali</a>");
+      storePin(newPin);req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>PIN berhasil diganti</h2><p>Silakan kembali ke WebUI.</p><a href='/'>Kembali</a>");
     });
     server_.onNotFound([this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}req->send(404,"text/plain","Not found");});server_.begin();
   }
