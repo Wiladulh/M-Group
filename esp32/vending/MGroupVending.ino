@@ -145,7 +145,7 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   String prefKey="img_"+productId+"_sha";
   String finalPath="/product_"+productId+".img",tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
   if(LittleFS.exists(backupPath.c_str())){
-    if(!LittleFS.exists(finalPath.c_str()))LittleFS.rename(backupPath.c_str(),finalPath.c_str());
+    if(!LittleFS.exists(finalPath.c_str())&&!LittleFS.rename(backupPath.c_str(),finalPath.c_str()))return false;
     else LittleFS.remove(backupPath.c_str());
   }
   if(vendingPrefs.getString(prefKey.c_str(),"")==expectedHash&&LittleFS.exists(finalPath))return true;
