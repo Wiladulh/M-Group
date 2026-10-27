@@ -1,6 +1,6 @@
 class DeviceManagementService:
     ALLOWED_TYPES = {"esp32-cashier", "esp32-vending", "esp32-s3-vending", "cashier", "vending"}
-    ALLOWED_STATUS = {"active", "pending", "offline", "disabled", "maintenance", "unassigned"}
+    ALLOWED_STATUS = {"active", "pending", "awaiting_device_registration", "offline", "disabled", "maintenance", "unassigned"}
 
     def __init__(self, db):
         self.db = db
