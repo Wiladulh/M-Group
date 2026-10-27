@@ -1715,13 +1715,22 @@ def build_router(db, app_settings=None):
 
     @r.get("/audit/report")
     def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL",
+                     status:str="ALL",member_id:str="",transaction_id:str="",transaction_type:str="ALL"):
         require_admin(request)
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING","TOPUP"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month","custom"}: raise HTTPException(400,"invalid_period")
         method=method.upper()
         if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
+        status=status.lower()
+        if status not in {"all","completed","succeeded","pending","failed","refunded","cancelled","canceled"}:
+            raise HTTPException(400,"invalid_status")
+        transaction_type=transaction_type.upper()
+        if transaction_type not in {"ALL","DEPOSIT","PAYMENT","PURCHASE","TOPUP"}:
+            raise HTTPException(400,"invalid_transaction_type")
+        member_id=member_id.strip()
+        transaction_id=transaction_id.strip()
         import datetime as dt
         from zoneinfo import ZoneInfo
         jakarta=ZoneInfo("Asia/Jakarta")
@@ -1792,6 +1801,15 @@ def build_router(db, app_settings=None):
         transactions=[dict(x) for x in rows]
         if hardware_id and hardware_id!="ALL":
             transactions=[x for x in transactions if x.get("hardware_id")==hardware_id]
+        if status!="all":
+            transactions=[x for x in transactions if str(x.get("status") or "").lower()==status]
+        if member_id:
+            transactions=[x for x in transactions if str(x.get("member_id") or "")==member_id]
+        if transaction_id:
+            needle=transaction_id.lower()
+            transactions=[x for x in transactions if needle in str(x.get("transaction_id") or "").lower()]
+        if transaction_type!="ALL":
+            transactions=[x for x in transactions if str(x.get("transaction_type") or "").upper()==transaction_type]
         for transaction in transactions:
             created=transaction.get("created_at")
             if created:
@@ -1800,14 +1818,18 @@ def build_router(db, app_settings=None):
                     transaction["created_at"]=parsed.astimezone(jakarta).strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     pass
-        return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,"transactions":transactions}
+        return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,
+                "status":status,"member_id":member_id,"transaction_id":transaction_id,
+                "transaction_type":transaction_type,"transactions":transactions}
 
     @r.get("/audit/export.xlsx")
     def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL",
+                     status:str="ALL",member_id:str="",transaction_id:str="",transaction_type:str="ALL"):
         require_admin(request)
         # Reuse the endpoint's authorization and parameter validation.
-        data=audit_report(request, source, period, date, method, start_date, end_date, hardware_id)
+        data=audit_report(request, source, period, date, method, start_date, end_date, hardware_id,
+                          status, member_id, transaction_id, transaction_type)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
