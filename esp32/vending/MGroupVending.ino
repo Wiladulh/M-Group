@@ -363,8 +363,8 @@ void setup(){
   const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
   configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
   vendingPrefs.begin("M_GROUP-vend",false);
-  productImageFsReady=LittleFS.begin(false);
-  if(!productImageFsReady)Serial.println("PRODUCT IMAGE CACHE unavailable; preserving catalog and existing files");
+  productImageFsReady=LittleFS.begin(true);
+  if(!productImageFsReady)Serial.println("PRODUCT IMAGE CACHE unavailable; catalog remains available from NVS");
   productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");
   catalogHash=vendingPrefs.getString("catalog_hash","");catalogLastSyncEpoch=vendingPrefs.getULong("catalog_sync_at",0);catalogSyncStatus=vendingPrefs.getString("catalog_sync_status","Belum disinkronkan");catalogSyncError=vendingPrefs.getString("catalog_sync_error","");
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
