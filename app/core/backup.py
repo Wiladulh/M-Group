@@ -260,7 +260,7 @@ def export_rows_excel(rows, target, metadata=None):
     wb=Workbook()
     ws=wb.active
     ws.title="Laporan Transaksi"
-    source_label={"ALL":"Semua perangkat","CASHIER":"Cashier","VENDING":"Vending"}.get(metadata.get("source"),metadata.get("source","Semua perangkat"))
+    source_label={"ALL":"Semua perangkat","CASHIER":"Cashier","VENDING":"Vending","TOPUP":"Top Up"}.get(metadata.get("source"),metadata.get("source","Semua perangkat"))
     ws["A1"]="M-GROUP — LAPORAN TRANSAKSI"
     ws["A1"].font=Font(bold=True,size=16)
     ws["A2"]="Sumber: "+str(source_label)
