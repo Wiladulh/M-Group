@@ -189,6 +189,10 @@ class NfcRegistrationCompleteRequest(BaseModel):
     card_uid: str
     pin: str
 
+class NfcRegistrationProgressRequest(BaseModel):
+    session_id: str
+    status: str
+
 class CashierDepositRequest(BaseModel):
     credential_id: str
     amount: int
@@ -1374,8 +1378,8 @@ def build_router(db, app_settings=None):
         with db.connect() as c:
             row=c.execute(
                 """SELECT session_id,member_id,status,hardware_id FROM nfc_registration_sessions
-                   WHERE hardware_id IN ('*',?) AND status='scan_pending' AND expires_at>CURRENT_TIMESTAMP
-                   ORDER BY created_at LIMIT 1""",(fingerprint,)
+                   WHERE hardware_id IN ('*',?) AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
+                     AND expires_at>CURRENT_TIMESTAMP ORDER BY created_at LIMIT 1""",(fingerprint,)
             ).fetchone()
             if row and row["hardware_id"]=="*":
                 c.execute("UPDATE nfc_registration_sessions SET hardware_id=? WHERE session_id=? AND hardware_id='*'",
@@ -1384,6 +1388,28 @@ def build_router(db, app_settings=None):
         if not row:
             return {"status":"idle"}
         return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
+
+    @r.post("/cashier/nfc-registration/progress")
+    def cashier_nfc_registration_progress(q:NfcRegistrationProgressRequest,
+                                          x_m_group_device_key: str | None = Header(default=None)):
+        identity_row=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
+        allowed={"waiting_nfc","pin_pending","processing","failed"}
+        if q.status not in allowed:
+            raise HTTPException(400,"invalid_registration_progress")
+        with db.connect() as c:
+            session=c.execute("SELECT session_id,status,expires_at FROM nfc_registration_sessions WHERE session_id=? AND hardware_id=?",
+                              (q.session_id,identity_row["fingerprint"])).fetchone()
+            if not session:
+                raise HTTPException(404,"registration_session_not_found")
+            if session["status"] not in {"scan_pending","waiting_nfc","pin_pending","processing"}:
+                raise HTTPException(409,"registration_session_not_active")
+            if session["expires_at"]<=__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
+                c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
+                c.commit()
+                raise HTTPException(409,"registration_session_expired")
+            c.execute("UPDATE nfc_registration_sessions SET status=? WHERE session_id=?",(q.status,q.session_id))
+            c.commit()
+        return {"session_id":q.session_id,"status":q.status}
 
     @r.post("/cashier/nfc-registration/complete")
     def cashier_nfc_registration_complete(q:NfcRegistrationCompleteRequest,
