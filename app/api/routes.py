@@ -1422,6 +1422,14 @@ def build_router(db, app_settings=None):
                 raise HTTPException(404,"registration_session_not_found")
             if session["status"] not in {"scan_pending","waiting_nfc","pin_pending","processing"}:
                 raise HTTPException(409,"registration_session_not_active")
+            allowed_transitions={
+                "scan_pending":{"waiting_nfc","failed"},
+                "waiting_nfc":{"waiting_nfc","pin_pending","failed"},
+                "pin_pending":{"pin_pending","processing","failed"},
+                "processing":{"processing","failed"},
+            }
+            if q.status not in allowed_transitions.get(session["status"],set()):
+                raise HTTPException(409,"invalid_registration_status_transition")
             if session["expires_at"]<=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
                 c.commit()
