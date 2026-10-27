@@ -1580,6 +1580,7 @@ def build_router(db, app_settings=None):
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
         with db.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
             pending=c.execute(
                 "SELECT session_id FROM nfc_registration_sessions WHERE hardware_id IN ('*',?) "
                 "AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') "
@@ -1620,6 +1621,7 @@ def build_router(db, app_settings=None):
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
         with db.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
             pending=c.execute("SELECT session_id FROM nfc_registration_sessions WHERE hardware_id IN ('*',?) AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') AND expires_at>CURRENT_TIMESTAMP",(cashier_fingerprint,)).fetchone()
             if pending:
                 raise HTTPException(409,"cashier_registration_busy")
