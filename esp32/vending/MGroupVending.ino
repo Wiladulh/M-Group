@@ -221,6 +221,10 @@ void syncProductImages(const String&catalog){
     String imageUrl=jsonStringBetween(catalog,"image_url",objectStart,objectEnd);
     String imageHash=jsonStringBetween(catalog,"image_sha256",objectStart,objectEnd);
     if(id.length()&&imageUrl.length()&&imageHash.length()){requested++;if(cacheProductImage(imageUrl,imageHash,id))success++;}
+    else if(id.length()&&productImageFsReady){
+      String token=productAssetToken(id),stalePath="/p_"+token+".img",staleKey="p"+token+"s";
+      LittleFS.remove(stalePath.c_str());vendingPrefs.remove(staleKey.c_str());
+    }
     pos=objectEnd+1;
   }
   productImageSyncStatus=requested==0?"Tidak ada gambar":(requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia"));
