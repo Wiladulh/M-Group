@@ -217,6 +217,21 @@ class AdminAccountUpdateRequest(BaseModel):
     username: str
     new_password: str | None = None
 
+class AdminUserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+
+    @__import__("pydantic").field_validator("role")
+    @classmethod
+    def validate_role(cls, value):
+        if value not in {"super_admin", "operator", "auditor"}:
+            raise ValueError("invalid_admin_role")
+        return value
+
+class AdminUserStatusRequest(BaseModel):
+    is_active: bool
+
 def request_is_https(request: Request) -> bool:
     return request.url.scheme.lower() == "https"
 
@@ -285,6 +300,71 @@ def build_router(db, app_settings=None):
             result["product_id"] = str(row["slot"])
         return result
 
+    def require_super_admin(request: Request):
+        if not getattr(request.state, "admin_authenticated", False):
+            raise HTTPException(401, "admin_session_required")
+        if getattr(request.state, "admin_role", None) != "super_admin":
+            raise HTTPException(403, "admin_role_forbidden")
+
+    @r.get("/admin/users")
+    def list_admin_users(request: Request):
+        require_super_admin(request)
+        with db.connect() as c:
+            rows = c.execute(
+                "SELECT username,role,is_active,created_at,updated_at,created_by FROM admin_users ORDER BY username"
+            ).fetchall()
+        return {"users": [dict(row) for row in rows]}
+
+    @r.post("/admin/users")
+    def create_admin_user(q: AdminUserCreateRequest, request: Request):
+        require_super_admin(request)
+        username = q.username.strip()
+        if len(username) < 3 or len(username) > 64 or any(not (ch.isalnum() or ch in "._-") for ch in username):
+            raise HTTPException(400, "invalid_admin_username")
+        if len(q.password) < 12:
+            raise HTTPException(400, "password_too_short")
+        now = int(time.time())
+        actor = getattr(request.state, "admin_username", "")
+        with db.connect() as c:
+            try:
+                c.execute(
+                    "INSERT INTO admin_users(username,password_hash,role,is_active,created_at,updated_at,created_by) VALUES(?,?,?,?,?,?,?)",
+                    (username, hash_password(q.password), q.role, 1, now, now, actor),
+                )
+            except __import__("sqlite3").IntegrityError:
+                raise HTTPException(409, "admin_username_already_exists")
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (actor, "admin_created", username, "role="+q.role, now),
+            )
+            c.commit()
+        return {"created": True, "username": username, "role": q.role}
+
+    @r.patch("/admin/users/{username}/status")
+    def set_admin_user_status(username: str, q: AdminUserStatusRequest, request: Request):
+        require_super_admin(request)
+        actor = getattr(request.state, "admin_username", "")
+        now = int(time.time())
+        if username == actor and not q.is_active:
+            raise HTTPException(409, "cannot_disable_current_admin")
+        with db.connect() as c:
+            target = c.execute("SELECT username,role,is_active FROM admin_users WHERE username=?", (username,)).fetchone()
+            if not target:
+                raise HTTPException(404, "admin_user_not_found")
+            if target["role"] == "super_admin" and q.is_active == 0:
+                active = c.execute("SELECT COUNT(*) FROM admin_users WHERE role='super_admin' AND is_active=1").fetchone()[0]
+                if active <= 1:
+                    raise HTTPException(409, "cannot_disable_last_super_admin")
+            c.execute("UPDATE admin_users SET is_active=?,updated_at=? WHERE username=?", (int(q.is_active), now, username))
+            if not q.is_active:
+                c.execute("UPDATE webui_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL", (now, username))
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (actor, "admin_status_changed", username, "is_active="+str(int(q.is_active)), now),
+            )
+            c.commit()
+        return {"updated": True, "username": username, "is_active": q.is_active}
+
     @r.post("/auth/login")
     def admin_login(q: AdminLoginRequest, request: Request, response: Response):
         username = q.username.strip()
@@ -299,16 +379,35 @@ def build_router(db, app_settings=None):
         now = int(time.time())
         with db.connect() as c:
             account = c.execute(
-                "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+                "SELECT username,password_hash,role,is_active FROM admin_users WHERE username=?",
+                (username,),
             ).fetchone()
-            if account is None and configured_username and configured_hash:
-                c.execute(
-                    "INSERT OR IGNORE INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
-                    (configured_username, configured_hash, now),
-                )
-                account = c.execute(
+            admin_count = c.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0]
+            if admin_count == 0:
+                legacy = c.execute(
                     "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
                 ).fetchone()
+                if legacy is None and configured_username and configured_hash:
+                    c.execute(
+                        "INSERT OR IGNORE INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                        (configured_username, configured_hash, now),
+                    )
+                    legacy = c.execute(
+                        "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
+                    ).fetchone()
+                if legacy:
+                    c.execute(
+                        "INSERT OR IGNORE INTO admin_users(username,password_hash,role,is_active,created_at,updated_at,created_by) VALUES(?,?,'super_admin',1,?,?,?)",
+                        (legacy["username"], legacy["password_hash"], now, now, "migration"),
+                    )
+                    c.execute(
+                        "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                        ("system", "legacy_admin_imported", legacy["username"], "Legacy admin account promoted to super_admin", now),
+                    )
+                    account = c.execute(
+                        "SELECT username,password_hash,role,is_active FROM admin_users WHERE username=?",
+                        (username,),
+                    ).fetchone()
             failures = c.execute(
                 "SELECT COUNT(*) FROM webui_login_attempts WHERE client_key=? AND succeeded=0 AND attempted_at>=?",
                 (client_key, now - 900),
@@ -318,9 +417,9 @@ def build_router(db, app_settings=None):
             raise HTTPException(503, "admin_login_not_configured")
         if failures >= 10:
             raise HTTPException(429, "login_rate_limited")
-        password_valid = verify_password(q.password, account["password_hash"])
-        username_valid = secrets.compare_digest(username, account["username"])
-        valid = username_valid and password_valid
+        password_valid = verify_password(q.password, account["password_hash"]) if account else False
+        username_valid = bool(account) and secrets.compare_digest(username, account["username"])
+        valid = username_valid and password_valid and bool(account["is_active"])
         with db.connect() as c:
             c.execute(
                 "INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
@@ -340,7 +439,7 @@ def build_router(db, app_settings=None):
             key="m_group_session", value=token, max_age=43200, httponly=True,
             secure=request_is_https(request), samesite="lax", path="/",
         )
-        return {"authenticated": True, "username": account["username"]}
+        return {"authenticated": True, "username": account["username"], "role": account["role"]}
 
     @r.get("/auth/session")
     def admin_session(request: Request):
@@ -388,16 +487,27 @@ def build_router(db, app_settings=None):
             if session is None:
                 raise HTTPException(401, "admin_session_expired")
             account = c.execute(
-                "SELECT password_hash FROM webui_admin_accounts WHERE username=?",
+                "SELECT password_hash FROM admin_users WHERE username=? AND is_active=1",
                 (session["username"],),
             ).fetchone()
             if account is None or not verify_password(q.current_password, account["password_hash"]):
                 raise HTTPException(403, "invalid_current_password")
             password_hash = hash_password(q.new_password) if q.new_password else account["password_hash"]
+            duplicate = c.execute("SELECT 1 FROM admin_users WHERE username<>? AND username=?", (session["username"], username)).fetchone()
+            if duplicate:
+                raise HTTPException(409, "admin_username_already_exists")
+            c.execute(
+                "UPDATE admin_users SET username=?,password_hash=?,updated_at=? WHERE username=?",
+                (username, password_hash, now, session["username"]),
+            )
             c.execute("DELETE FROM webui_admin_accounts")
             c.execute(
                 "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
                 (username, password_hash, now),
+            )
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (session["username"], "account_updated", username, "Username/password updated", now),
             )
             c.execute(
                 "UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL AND session_hash<>?",
