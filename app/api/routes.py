@@ -459,7 +459,7 @@ def build_router(db, app_settings=None):
                 c.commit()
         if not row:
             raise HTTPException(401, "admin_session_expired")
-        return {"authenticated": True, "username": row["username"]}
+        return {"authenticated": True, "username": row["username"], "role": getattr(request.state, "admin_role", None)}
 
     @r.post("/auth/account")
     def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
@@ -672,6 +672,10 @@ def build_router(db, app_settings=None):
     def require_admin(request: Request):
         if not getattr(request.state, "admin_authenticated", False):
             raise HTTPException(401, "admin_session_required")
+        # Auditors have read-only access. All write endpoints using this guard
+        # are denied before reaching their business logic.
+        if getattr(request.state, "admin_role", None) == "auditor" and request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            raise HTTPException(403, "admin_role_read_only")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
             if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
