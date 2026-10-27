@@ -12,6 +12,7 @@
     <h2>Generate Key Perangkat</h2>
     <p class="hint">Admin hanya memilih jenis perangkat. Server membuat Device Key unik. Perangkat mengirim hardware_id saat enrollment; server menetapkan registry_id.</p>
     <form id="deviceProvisionForm">
+      <label>Nama tampilan perangkat<input id="provisionDeviceName" maxlength="120" placeholder="Contoh: Cashier Kantin Utama"></label>
       <label>Jenis perangkat
         <select id="provisionDeviceType" required>
           <option value="esp32-cashier">Cashier</option>
