@@ -65,7 +65,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Masukkan Device ID dan Device Key yang dibuat server saat perangkat diprovisikan. Jangan menggunakan ID dari perangkat lain.</p><section><h3>Status perangkat</h3><pre id="status">Memuat status...</pre><button type="button" onclick="fetch('/test').then(r=>r.json()).then(x=>alert(x.detail+' ('+x.host+':'+x.port+')')).catch(()=>alert('Uji koneksi gagal'))">Uji koneksi server</button></section>
+<p class="warn">Masukkan Device ID dan Device Key yang dibuat server saat perangkat diprovisikan. Jangan menggunakan ID dari perangkat lain.</p><section><h3>Status perangkat</h3><pre id="status">Memuat status...</pre><button type="button" onclick="fetch('/test').then(r=>r.json()).then(x=>alert(x.detail+' ('+x.host+':'+x.port+')')).catch(()=>alert('Uji koneksi gagal'))">Uji koneksi TCP server</button></section>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" placeholder="Kosongkan untuk mempertahankan password saat ini">
