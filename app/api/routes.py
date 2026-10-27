@@ -503,7 +503,7 @@ def build_router(db, app_settings=None):
             not (ch.isalnum() or ch in "._-") for ch in username
         ):
             raise HTTPException(400, "invalid_admin_username")
-        if q.new_password is not None and len(q.new_password) < 8:
+        if q.new_password is not None and len(q.new_password) < 12:
             raise HTTPException(400, "password_too_short")
         now = int(time.time())
         session_hash = hash_session_token(token)
