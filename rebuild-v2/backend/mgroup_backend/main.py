@@ -1008,6 +1008,157 @@ def finance_reconciliation(connection: DB):
     }
 
 
+@app.get('/api/v2/admin/accounts', dependencies=[Depends(require_admin)])
+def admin_accounts(connection: DB):
+    rows=connection.execute("""SELECT a.account_id,a.member_id,m.display_name AS member_name,a.account_type,
+        a.currency,a.balance_minor,a.status,a.updated_at FROM accounts a
+        LEFT JOIN members m ON m.member_id=a.member_id ORDER BY a.account_type,a.created_at DESC""").fetchall()
+    return {'items':[dict(row) for row in rows]}
+
+@app.get('/api/v2/admin/accounts/{account_id}/ledger', dependencies=[Depends(require_admin)])
+def account_ledger(account_id: str, connection: DB, limit: int = 100):
+    limit=max(1,min(limit,500))
+    if not connection.execute("SELECT 1 FROM accounts WHERE account_id=?",(account_id,)).fetchone():
+        raise HTTPException(status_code=404,detail={'code':'ACCOUNT_NOT_FOUND'})
+    rows=connection.execute("""SELECT l.entry_id,l.transaction_id,l.direction,l.amount_minor,l.created_at,
+        t.request_id,t.transaction_type,t.status,t.hardware_id,t.member_id,t.metadata_json
+        FROM ledger_entries l JOIN transactions t ON t.transaction_id=l.transaction_id
+        WHERE l.account_id=? ORDER BY l.created_at DESC LIMIT ?""",(account_id,limit)).fetchall()
+    return {'account_id':account_id,'items':[dict(row) for row in rows]}
+
+@app.post('/api/v2/finance/withdrawals', dependencies=[Depends(require_admin)])
+def withdraw(payload: TopUpRequest, connection: DB):
+    transaction_id=new_id('txn')
+    try:
+        with transaction(connection):
+            prior=connection.execute("SELECT transaction_id,member_id,amount_minor,transaction_type,status FROM transactions WHERE request_id=?",(payload.request_id,)).fetchone()
+            if prior:
+                if prior['member_id']!=payload.member_id or prior['amount_minor']!=payload.amount_minor or prior['transaction_type']!='withdrawal' or prior['status']!='succeeded':
+                    raise HTTPException(status_code=409,detail={'code':'IDEMPOTENCY_CONFLICT'})
+                return {'transaction_id':prior['transaction_id'],'status':prior['status'],'idempotent_replay':True}
+            account=connection.execute("SELECT account_id,balance_minor,status,currency FROM accounts WHERE member_id=? AND account_type='member'",(payload.member_id,)).fetchone()
+            if not account:
+                raise HTTPException(status_code=404,detail={'code':'MEMBER_ACCOUNT_NOT_FOUND'})
+            if account['status']!='active':
+                raise HTTPException(status_code=409,detail={'code':'ACCOUNT_NOT_ACTIVE'})
+            if account['balance_minor']<payload.amount_minor:
+                raise HTTPException(status_code=409,detail={'code':'INSUFFICIENT_BALANCE'})
+            system_id=ensure_system_account(connection)
+            system=connection.execute("SELECT balance_minor,status,currency FROM accounts WHERE account_id=?",(system_id,)).fetchone()
+            if not system or system['status']!='active' or system['currency']!=account['currency'] or system['balance_minor']<payload.amount_minor:
+                raise HTTPException(status_code=409,detail={'code':'SYSTEM_ACCOUNT_INSUFFICIENT_BALANCE'})
+            connection.execute("""INSERT INTO transactions(transaction_id,request_id,member_id,transaction_type,
+                amount_minor,currency,status,metadata_json,completed_at) VALUES(?,?,?,'withdrawal',?,?,'succeeded',?,CURRENT_TIMESTAMP)""",
+                (transaction_id,payload.request_id,payload.member_id,payload.amount_minor,account['currency'],
+                 json.dumps({'description':payload.description},separators=(',',':'))))
+            connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND balance_minor>=?",
+                (payload.amount_minor,account['account_id'],payload.amount_minor))
+            connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND balance_minor>=?",
+                (payload.amount_minor,system_id,payload.amount_minor))
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
+                (new_id('led'),transaction_id,account['account_id'],payload.amount_minor))
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
+                (new_id('led'),transaction_id,system_id,payload.amount_minor))
+            audit(connection,'finance.withdrawal','transaction',transaction_id,payload.request_id,
+                  {'member_id':payload.member_id,'amount_minor':payload.amount_minor,'description':payload.description})
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409,detail={'code':'IDEMPOTENCY_CONFLICT'}) from exc
+    return {'transaction_id':transaction_id,'status':'succeeded','idempotent_replay':False}
+
+def _transaction_window(period: str, date: str | None, start_date: str | None, end_date: str | None):
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    jakarta=ZoneInfo('Asia/Jakarta')
+    selected=dt.date.fromisoformat(date) if date else dt.datetime.now(jakarta).date()
+    if period=='day':
+        start=selected; end=start+dt.timedelta(days=1)
+    elif period=='week':
+        start=selected-dt.timedelta(days=selected.weekday()); end=start+dt.timedelta(days=7)
+    elif period=='month':
+        start=selected.replace(day=1); end=(start.replace(year=start.year+1,month=1) if start.month==12 else start.replace(month=start.month+1))
+    elif period=='custom':
+        if not start_date or not end_date: raise HTTPException(status_code=400,detail={'code':'CUSTOM_RANGE_REQUIRED'})
+        start=dt.date.fromisoformat(start_date); inclusive_end=dt.date.fromisoformat(end_date)
+        if start>inclusive_end: raise HTTPException(status_code=400,detail={'code':'INVALID_DATE_RANGE'})
+        end=inclusive_end+dt.timedelta(days=1)
+    elif period=='all':
+        return None,None
+    else:
+        raise HTTPException(status_code=400,detail={'code':'INVALID_PERIOD'})
+    utc_start=dt.datetime.combine(start,dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    utc_end=dt.datetime.combine(end,dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    return utc_start,utc_end
+
+@app.get('/api/v2/admin/transactions', dependencies=[Depends(require_admin)])
+def admin_transactions(connection: DB, period: str = 'week', date: str | None = None,
+                       start_date: str | None = None, end_date: str | None = None,
+                       source: str = 'ALL', status: str = 'ALL', transaction_type: str = 'ALL',
+                       member_id: str = '', hardware_id: str = '', transaction_id: str = '',
+                       limit: int = 500):
+    source=source.upper(); status=status.lower(); transaction_type=transaction_type.lower()
+    if source not in {'ALL','CASHIER','VENDING','TOPUP'}: raise HTTPException(status_code=400,detail={'code':'INVALID_SOURCE'})
+    if status not in {'all','pending','succeeded','declined','reversed'}: raise HTTPException(status_code=400,detail={'code':'INVALID_STATUS'})
+    allowed_types={'all','purchase','cashier_payment','top_up','withdrawal','refund','adjustment','transfer'}
+    if transaction_type not in allowed_types: raise HTTPException(status_code=400,detail={'code':'INVALID_TRANSACTION_TYPE'})
+    start,end=_transaction_window(period,date,start_date,end_date)
+    sql="""SELECT t.transaction_id,t.request_id,t.hardware_id,d.display_name AS device_name,t.member_id,m.display_name AS member_name,
+        t.transaction_type,t.amount_minor,t.currency,t.status,t.metadata_json,t.created_at,t.completed_at
+        FROM transactions t LEFT JOIN members m ON m.member_id=t.member_id
+        LEFT JOIN device_registry d ON d.hardware_id=t.hardware_id WHERE 1=1"""
+    args=[]
+    if start:
+        sql+=" AND t.created_at>=? AND t.created_at<?";args.extend([start,end])
+    if source=='CASHIER':
+        sql+=" AND (t.transaction_type='cashier_payment' OR (t.transaction_type='top_up' AND t.metadata_json LIKE '%\"source\":\"cashier\"%'))"
+    elif source=='VENDING': sql+=" AND t.transaction_type='purchase'"
+    elif source=='TOPUP': sql+=" AND t.transaction_type='top_up'"
+    if status!='all': sql+=" AND t.status=?";args.append(status)
+    if transaction_type!='all': sql+=" AND t.transaction_type=?";args.append(transaction_type)
+    if member_id.strip(): sql+=" AND t.member_id=?";args.append(member_id.strip())
+    if hardware_id.strip(): sql+=" AND t.hardware_id=?";args.append(hardware_id.strip())
+    if transaction_id.strip(): sql+=" AND (t.transaction_id LIKE ? OR t.request_id LIKE ?)";args.extend(['%'+transaction_id.strip()+'%','%'+transaction_id.strip()+'%'])
+    sql+=" ORDER BY t.created_at DESC LIMIT ?";args.append(max(1,min(limit,1000)))
+    rows=connection.execute(sql,args).fetchall()
+    items=[]
+    for row in rows:
+        item=dict(row)
+        try: item['metadata']=json.loads(item.pop('metadata_json') or '{}')
+        except (TypeError,ValueError): item['metadata']={}
+        items.append(item)
+    return {'items':items,'period':period,'source':source,'status':status,'transaction_type':transaction_type,
+            'start_utc':start,'end_utc_exclusive':end,'timezone':'Asia/Jakarta'}
+
+@app.get('/api/v2/admin/dashboard', dependencies=[Depends(require_admin)])
+def admin_dashboard(connection: DB, period: str = 'week'):
+    start,end=_transaction_window(period,None,None,None)
+    member_count=connection.execute("SELECT COUNT(*) FROM members").fetchone()[0]
+    active_devices=connection.execute("SELECT COUNT(*) FROM device_registry WHERE status='active'").fetchone()[0]
+    balance=connection.execute("SELECT COALESCE(SUM(balance_minor),0) FROM accounts WHERE account_type='member' AND status='active'").fetchone()[0]
+    tx_sql="SELECT COUNT(*) FROM transactions WHERE status='succeeded'"
+    tx_args=[]
+    if start: tx_sql+=" AND created_at>=? AND created_at<?";tx_args=[start,end]
+    successful=connection.execute(tx_sql,tx_args).fetchone()[0]
+    recent=connection.execute("""SELECT t.transaction_id,t.request_id,t.hardware_id,d.display_name AS device_name,
+        t.member_id,m.display_name AS member_name,t.transaction_type,t.amount_minor,t.currency,t.status,t.metadata_json,t.created_at
+        FROM transactions t LEFT JOIN members m ON m.member_id=t.member_id LEFT JOIN device_registry d ON d.hardware_id=t.hardware_id
+        ORDER BY t.created_at DESC LIMIT 10""").fetchall()
+    sales=connection.execute("""SELECT t.hardware_id,t.amount_minor,t.metadata_json,t.created_at
+        FROM transactions t WHERE t.transaction_type='purchase' AND t.status='succeeded'"""+(" AND t.created_at>=? AND t.created_at<?" if start else ""),
+        ([start,end] if start else [])).fetchall()
+    used={};products={}
+    for row in sales:
+        meta=json.loads(row['metadata_json'] or '{}')
+        hid=row['hardware_id'] or 'unknown'
+        used[hid]=used.get(hid,0)+1
+        pid=str(meta.get('product_id','?')); key=(hid,pid)
+        item=products.setdefault(key,{'hardware_id':hid,'product_id':pid,'product_name':meta.get('product_name',f'Produk {pid}'),'units_sold':0,'revenue_minor':0})
+        item['units_sold']+=1;item['revenue_minor']+=row['amount_minor']
+    names={r['hardware_id']:r['display_name'] or r['hardware_id'] for r in connection.execute("SELECT hardware_id,display_name FROM device_registry WHERE device_type='vending'").fetchall()}
+    return {'period':period,'summary':{'members':member_count,'active_devices':active_devices,'member_balance_minor':balance,'successful_transactions':successful},
+        'analytics':[],'most_used_vending':[{'hardware_id':k,'device_name':names.get(k,k),'transactions':v} for k,v in sorted(used.items(),key=lambda x:x[1],reverse=True)[:10]],
+        'best_selling_products':sorted(products.values(),key=lambda x:x['units_sold'],reverse=True)[:10],
+        'recent_transactions':[dict(r) for r in recent]}
+
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
 def list_audit(connection: DB, limit: int = 100):
     limit = max(1, min(limit, 500))
