@@ -534,7 +534,8 @@ async function loadAudit(){
     const source=$('auditSource').value, period=$('auditPeriod').value, date=$('auditDate').value, method=$('auditMethod').value, hardwareId=deviceSelect.value;
     const startDate=$('auditStartDate').value,endDate=$('auditEndDate').value;
     if(period==='custom'&&(!startDate||!endDate||startDate>endDate))throw new Error('Isi rentang tanggal yang valid; tanggal mulai tidak boleh setelah tanggal akhir.');
-    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+'&hardware_id='+encodeURIComponent(hardwareId)+(period==='custom'?'&start_date='+encodeURIComponent(startDate)+'&end_date='+encodeURIComponent(endDate):(date?'&date='+encodeURIComponent(date):''));
+    const status=$('auditStatus').value,transactionType=$('auditType').value,memberId=$('auditMemberId').value.trim(),transactionId=$('auditTransactionId').value.trim();
+    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+'&hardware_id='+encodeURIComponent(hardwareId)+'&status='+encodeURIComponent(status)+'&transaction_type='+encodeURIComponent(transactionType)+'&member_id='+encodeURIComponent(memberId)+'&transaction_id='+encodeURIComponent(transactionId)+(period==='custom'?'&start_date='+encodeURIComponent(startDate)+'&end_date='+encodeURIComponent(endDate):(date?'&date='+encodeURIComponent(date):''));
     const {r,d}=await json('/api/v1/audit/report'+q,{});
     $('auditResult').innerHTML=r.ok?table((d.transactions||[]).map(x=>({...x,amount:money(x.amount)})),['transaction_id','created_at','source','member_id','account_id','transaction_type','payment_method','payment_provider','amount','status']):'<p class="hint" style="padding:16px">'+esc(d.detail||'Audit gagal')+'</p>';
   }catch(e){$('auditResult').textContent=e.message}
@@ -551,7 +552,8 @@ $('auditExport').onclick=async()=>{
     const source=$('auditSource').value,period=$('auditPeriod').value,date=$('auditDate').value,method=$('auditMethod').value,hardwareId=$('auditDevice').value;
     const startDate=$('auditStartDate').value,endDate=$('auditEndDate').value;
     if(period==='custom'&&(!startDate||!endDate||startDate>endDate))throw new Error('Isi rentang tanggal yang valid; tanggal mulai tidak boleh setelah tanggal akhir.');
-    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+'&hardware_id='+encodeURIComponent(hardwareId)+(period==='custom'?'&start_date='+encodeURIComponent(startDate)+'&end_date='+encodeURIComponent(endDate):(date?'&date='+encodeURIComponent(date):''));
+    const status=$('auditStatus').value,transactionType=$('auditType').value,memberId=$('auditMemberId').value.trim(),transactionId=$('auditTransactionId').value.trim();
+    const q='?source='+encodeURIComponent(source)+'&period='+encodeURIComponent(period)+'&method='+encodeURIComponent(method)+'&hardware_id='+encodeURIComponent(hardwareId)+'&status='+encodeURIComponent(status)+'&transaction_type='+encodeURIComponent(transactionType)+'&member_id='+encodeURIComponent(memberId)+'&transaction_id='+encodeURIComponent(transactionId)+(period==='custom'?'&start_date='+encodeURIComponent(startDate)+'&end_date='+encodeURIComponent(endDate):(date?'&date='+encodeURIComponent(date):''));
     const r=await fetch('/api/v1/audit/export.xlsx'+q,{});
     if(!r.ok)throw new Error('Export gagal: '+r.status);
     const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);const disposition=r.headers.get('content-disposition')||'';const fileMatch=disposition.match(/filename=\"?([^\";]+)\"?/i);a.download=fileMatch?fileMatch[1]:'All-audit-'+period+'.xlsx';a.click();URL.revokeObjectURL(a.href);
