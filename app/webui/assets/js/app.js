@@ -356,7 +356,6 @@ $('financialForm').onsubmit=async e=>{
   const accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
   if(!accountId){$('financialResult').textContent='Pilih rekening terlebih dahulu.';return}
   if(!Number.isSafeInteger(amount)||amount<=0){$('financialResult').textContent='Nominal harus berupa rupiah bulat lebih besar dari 0.';return}
-  if(!reference){$('financialResult').textContent='Referensi transaksi wajib diisi.';return}
   const action=direction==='credit'?'KREDIT / TOP-UP':'DEBIT / PENARIKAN';
   const selectedAccount=dashboardAccounts.find(x=>x.account_id===accountId);
   const memberLabel=selectedAccount?.member_name||accountId;
