@@ -260,18 +260,26 @@ void checkMemberBalance(){
   }
 }
 
+void registrationProgress(const String& session,const String& status){
+  String body="{\"session_id\":\""+session+"\",\"status\":\""+status+"\"}";
+  int code=0;String reply=postJson("/api/v1/cashier/nfc-registration/progress",body,code);
+  Serial.printf("NFC PROGRESS %s %d\\n",status.c_str(),code);
+}
 void registrationScan(const String& session){
+  registrationProgress(session,"waiting_nfc");
   lcdShow("REGISTRASI NFC","Silahkan scan");
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;
   while(!card.readUID(uid,len)){ delay(20); }
   String credential=uidToCredential(uid,len);
+  registrationProgress(session,"pin_pending");
   lcdShow("Kartu diterima","PIN 4 digit:");
   String pin=readKeyDigits("PIN 4 digit:",true,4,4);
+  registrationProgress(session,"processing");
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply=postJson(String("/api/v1/cashier/nfc-registration/complete"),body,code);
-  Serial.printf("NFC REG %d %s\n",code,reply.c_str());
+  Serial.printf("NFC REG %d %s\\n",code,reply.c_str());
   if(code==200) lcdShow("REGISTRASI","BERHASIL");
-  else lcdShow("REGISTRASI","GAGAL");
+  else {registrationProgress(session,"failed");lcdShow("REGISTRASI","GAGAL");}
   delay(1800);
 }
 
