@@ -1551,7 +1551,9 @@ def build_router(db, app_settings=None):
         method=method.upper()
         if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
         import datetime as dt
-        date=date or dt.date.today().isoformat()
+        from zoneinfo import ZoneInfo
+        jakarta=ZoneInfo("Asia/Jakarta")
+        date=date or dt.datetime.now(jakarta).date().isoformat()
         try:
             if period=="custom":
                 if not start_date or not end_date:
@@ -1574,6 +1576,10 @@ def build_router(db, app_settings=None):
             else:
                 d=dt.date.fromisoformat(date); monday=d-dt.timedelta(days=d.weekday())
                 start=monday.isoformat(); end=(monday+dt.timedelta(days=7)).isoformat()
+            # Transaction timestamps are stored as UTC by SQLite CURRENT_TIMESTAMP.
+            # Translate local Asia/Jakarta midnight boundaries to UTC before filtering.
+            query_start=dt.datetime.combine(dt.date.fromisoformat(start),dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            query_end=dt.datetime.combine(dt.date.fromisoformat(end),dt.time.min,tzinfo=jakarta).astimezone(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError as exc:
             raise HTTPException(400,str(exc) or "invalid_date")
         queries=[]
@@ -1596,7 +1602,7 @@ def build_router(db, app_settings=None):
                               LEFT JOIN financial_accounts a ON a.account_id=v.account_id""")
         combined=" UNION ALL ".join("SELECT * FROM ("+q+") WHERE created_at>=? AND created_at<?" for q in queries)
         sql="SELECT * FROM ("+combined+") WHERE (?='ALL' OR UPPER(COALESCE(payment_method,''))=?) ORDER BY created_at DESC"
-        args=[v for _ in queries for v in (start,end)]+[method,method]
+        args=[v for _ in queries for v in (query_start,query_end)]+[method,method]
         with db.connect() as c:
             rows=c.execute(sql,args).fetchall()
         return {"source":source,"period":period,"method":method,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
