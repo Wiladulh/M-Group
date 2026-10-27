@@ -1161,14 +1161,13 @@ def build_router(db, app_settings=None):
             location=(q.display_name or "").strip()
             if len(location)>120 or any(ord(ch)<32 for ch in location):
                 raise HTTPException(400,"invalid_device_location")
-            if location:
+            if location and row["display_name"] != location:
                 c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP,display_name=?,updated_at=CURRENT_TIMESTAMP WHERE hardware_id=?",
                           (location,hardware_id))
-                if row["display_name"] != location:
-                    c.execute(
-                        "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
-                        ("device:"+hardware_id,"device_location_updated",hardware_id,"installation_location_updated",int(time.time())),
-                    )
+                c.execute(
+                    "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                    ("device:"+hardware_id,"device_location_updated",hardware_id,"installation_location_updated",int(time.time())),
+                )
             else:
                 c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE hardware_id=?",
                           (hardware_id,))
