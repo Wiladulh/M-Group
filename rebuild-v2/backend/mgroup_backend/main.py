@@ -29,6 +29,14 @@ async def lifespan(app: FastAPI):
     if not settings.admin_token or not settings.device_key_pepper:
         raise RuntimeError('MGROUP_ADMIN_TOKEN and MGROUP_DEVICE_KEY_PEPPER must be configured')
     initialize(settings.database_path)
+    bootstrap=connect(settings.database_path)
+    try:
+        with transaction(bootstrap):
+            if not bootstrap.execute("SELECT 1 FROM admin_users LIMIT 1").fetchone():
+                bootstrap.execute("INSERT INTO admin_users(admin_id,username,password_hash,role,status) VALUES(?, 'admin', ?, 'super_admin', 'active')",
+                                  (new_id('adm'),pin_hash(settings.admin_token)))
+    finally:
+        bootstrap.close()
     yield
 
 app = FastAPI(title='M-Group API v2', version='2.0.0', lifespan=lifespan)
@@ -43,6 +51,23 @@ def db_conn():
 
 DB = Annotated[sqlite3.Connection, Depends(db_conn)]
 Admin = Annotated[None, Depends(require_admin)]
+
+class AdminLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=64, pattern=r'^[A-Za-z0-9_.-]+$')
+    password: str = Field(min_length=12, max_length=128)
+    role: str = Field(pattern='^(super_admin|operator|auditor)$')
+
+class AdminPasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+    confirm_password: str = Field(min_length=12, max_length=128)
+
+class AdminPasswordReset(BaseModel):
+    new_password: str = Field(min_length=12, max_length=128)
 
 class MemberCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
