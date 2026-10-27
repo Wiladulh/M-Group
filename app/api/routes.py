@@ -175,14 +175,12 @@ class VendingBeginRequest(BaseModel):
     idempotency_key: str
     payment_method: str = "NFC"
     payment_provider: str = "local"
-    # Firmware submits the price it displayed; reject a changed catalog price.
-    expected_amount: int | None = None
 
 class VendingDispenseRequest(BaseModel):
     success: bool = True
 
 class NfcRegistrationStartRequest(BaseModel):
-    # Required by the start endpoints; the server resolves it to the provisioned key fingerprint.
+    # Optional compatibility field. The cashier binds itself through its device key.
     cashier_hardware_id: str | None = None
     operator_id: str = "admin"
 
@@ -1261,7 +1259,7 @@ def build_router(db, app_settings=None):
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
-            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider,q.expected_amount))
+            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.get("/vending/transactions/{transaction_id}")
@@ -1324,26 +1322,11 @@ def build_router(db, app_settings=None):
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
-        cashier_hardware_id=(q.cashier_hardware_id or "").strip()
-        if not cashier_hardware_id:
-            raise HTTPException(400,"cashier_selection_required")
         with db.connect() as c:
-            c.execute("BEGIN IMMEDIATE")
-            cashier=c.execute(
-                """SELECT hardware_id,auth_key_hash FROM device_registry
-                   WHERE hardware_id=? AND device_type IN ('esp32-cashier','cashier')
-                     AND status='active' AND auth_key_hash IS NOT NULL AND deleted_at IS NULL""",
-                (cashier_hardware_id,)
-            ).fetchone()
-            if not cashier:
-                raise HTTPException(409,"cashier_not_available")
-            cashier_fingerprint=cashier["auth_key_hash"]
             pending=c.execute(
-                """SELECT session_id FROM nfc_registration_sessions
-                   WHERE hardware_id IN ('*',?)
-                     AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
-                     AND expires_at>CURRENT_TIMESTAMP""",
-                (cashier_fingerprint,)
+                "SELECT session_id FROM nfc_registration_sessions WHERE hardware_id='*' "
+                "AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') "
+                "AND expires_at>CURRENT_TIMESTAMP"
             ).fetchone()
             if pending:
                 raise HTTPException(409,"cashier_registration_busy")
@@ -1351,15 +1334,15 @@ def build_router(db, app_settings=None):
             c.execute(
                 """INSERT INTO nfc_registration_sessions
                    (session_id,member_id,hardware_id,status,expires_at)
-                   VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))""",
-                (session_id,member_id,cashier_fingerprint)
+                   VALUES(?,?,'*','scan_pending',datetime('now','+5 minutes'))""",
+                (session_id,member_id)
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier={cashier_hardware_id}")
+                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier=key_authenticated")
             )
             c.commit()
-        return {"session_id":session_id,"member_id":member_id,"cashier_hardware_id":cashier_hardware_id,"status":"scan_pending"}
+        return {"session_id":session_id,"member_id":member_id,"status":"scan_pending"}
 
     @r.post("/members/{member_id}/nfc-replacement/start")
     def nfc_replacement_start(request: Request, member_id,q:NfcRegistrationStartRequest):
@@ -1369,35 +1352,16 @@ def build_router(db, app_settings=None):
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
-        cashier_hardware_id=(q.cashier_hardware_id or "").strip()
-        if not cashier_hardware_id:
-            raise HTTPException(400,"cashier_selection_required")
         with db.connect() as c:
-            c.execute("BEGIN IMMEDIATE")
-            cashier=c.execute(
-                """SELECT hardware_id,auth_key_hash FROM device_registry
-                   WHERE hardware_id=? AND device_type IN ('esp32-cashier','cashier')
-                     AND status='active' AND auth_key_hash IS NOT NULL AND deleted_at IS NULL""",
-                (cashier_hardware_id,)
-            ).fetchone()
-            if not cashier:
-                raise HTTPException(409,"cashier_not_available")
-            cashier_fingerprint=cashier["auth_key_hash"]
-            pending=c.execute(
-                """SELECT session_id FROM nfc_registration_sessions
-                   WHERE hardware_id IN ('*',?)
-                     AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
-                     AND expires_at>CURRENT_TIMESTAMP""",
-                (cashier_fingerprint,)
-            ).fetchone()
+            pending=c.execute("SELECT session_id FROM nfc_registration_sessions WHERE hardware_id='*' AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') AND expires_at>CURRENT_TIMESTAMP").fetchone()
             if pending:
                 raise HTTPException(409,"cashier_registration_busy")
             session_id="nfc-replace-"+uuid4().hex
-            c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,hardware_id,status,expires_at) VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))",(session_id,member_id,cashier_fingerprint))
+            c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,hardware_id,status,expires_at) VALUES(?,?,'*','scan_pending',datetime('now','+5 minutes'))",(session_id,member_id))
             c.execute("INSERT INTO nfc_replacement_intents(session_id,member_id,operator_id) VALUES(?,?,?)",(session_id,member_id,q.operator_id.strip()))
-            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier={cashier_hardware_id}"))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier=key_authenticated"))
             c.commit()
-        return {"session_id":session_id,"member_id":member_id,"cashier_hardware_id":cashier_hardware_id,"status":"scan_pending","operation":"replacement"}
+        return {"session_id":session_id,"member_id":member_id,"status":"scan_pending","operation":"replacement"}
 
     @r.get("/members/{member_id}/nfc-registration/{session_id}")
     def nfc_registration_status(request: Request, member_id,session_id):
@@ -1717,22 +1681,13 @@ def build_router(db, app_settings=None):
 
     @r.get("/audit/report")
     def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL",
-                     status:str="ALL",member_id:str="",transaction_id:str="",transaction_type:str="ALL"):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
         require_admin(request)
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING","TOPUP"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month","custom"}: raise HTTPException(400,"invalid_period")
         method=method.upper()
         if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
-        status=status.lower()
-        if status not in {"all","completed","succeeded","pending","failed","refunded","cancelled","canceled"}:
-            raise HTTPException(400,"invalid_status")
-        transaction_type=transaction_type.upper()
-        if transaction_type not in {"ALL","DEPOSIT","PAYMENT","PURCHASE","TOPUP"}:
-            raise HTTPException(400,"invalid_transaction_type")
-        member_id=member_id.strip()
-        transaction_id=transaction_id.strip()
         import datetime as dt
         from zoneinfo import ZoneInfo
         jakarta=ZoneInfo("Asia/Jakarta")
@@ -1784,10 +1739,7 @@ def build_router(db, app_settings=None):
             queries.append("""SELECT f.transaction_id,f.created_at,'TOPUP' source,NULL hardware_id,a.member_id,f.account_id,
                               'TOPUP' transaction_type,f.amount,f.status,'CASH' payment_method,'local' payment_provider
                               FROM financial_transactions f JOIN financial_accounts a ON a.account_id=f.account_id
-                              WHERE f.transaction_type='credit' AND a.member_id IS NOT NULL
-                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'cashier-deposit:%'
-                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'correction:%'
-                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'vending-refund:%'""")
+                              WHERE f.transaction_type='credit' AND COALESCE(f.idempotency_key,'') NOT LIKE 'cashier-deposit:%'""")
         if source in {"ALL","VENDING"}:
             queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.hardware_id,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
@@ -1803,15 +1755,6 @@ def build_router(db, app_settings=None):
         transactions=[dict(x) for x in rows]
         if hardware_id and hardware_id!="ALL":
             transactions=[x for x in transactions if x.get("hardware_id")==hardware_id]
-        if status!="all":
-            transactions=[x for x in transactions if str(x.get("status") or "").lower()==status]
-        if member_id:
-            transactions=[x for x in transactions if str(x.get("member_id") or "")==member_id]
-        if transaction_id:
-            needle=transaction_id.lower()
-            transactions=[x for x in transactions if needle in str(x.get("transaction_id") or "").lower()]
-        if transaction_type!="ALL":
-            transactions=[x for x in transactions if str(x.get("transaction_type") or "").upper()==transaction_type]
         for transaction in transactions:
             created=transaction.get("created_at")
             if created:
@@ -1820,42 +1763,22 @@ def build_router(db, app_settings=None):
                     transaction["created_at"]=parsed.astimezone(jakarta).strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     pass
-        return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,
-                "status":status,"member_id":member_id,"transaction_id":transaction_id,
-                "transaction_type":transaction_type,"transactions":transactions}
+        return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,"transactions":transactions}
 
     @r.get("/audit/export.xlsx")
     def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL",
-                     status:str="ALL",member_id:str="",transaction_id:str="",transaction_type:str="ALL"):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
         require_admin(request)
         # Reuse the endpoint's authorization and parameter validation.
-        data=audit_report(request, source, period, date, method, start_date, end_date, hardware_id,
-                          status, member_id, transaction_id, transaction_type)
+        data=audit_report(request, source, period, date, method, start_date, end_date, hardware_id)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
         source_code={"ALL":"All","CASHIER":"Cash","VENDING":"Vend","TOPUP":"Tup"}.get(data["source"],"All")
         import datetime as dt
         end_inclusive=(dt.date.fromisoformat(data["end"])-dt.timedelta(days=1)).isoformat()
-        stem=f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}"
-        # Reserve a collision-safe sequence number atomically. Two admins
-        # exporting the same report at once must never overwrite each other's
-        # XLSX artifact.
-        sequence=1
-        while True:
-            path=root/f"{stem}-{sequence:02d}.xlsx"
-            try:
-                with path.open("xb"):
-                    pass
-                break
-            except FileExistsError:
-                sequence+=1
-        try:
-            export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"],"status":data["status"],"transaction_type":data["transaction_type"],"member_id":data["member_id"],"transaction_id_filter":data["transaction_id"],"hardware_id":data["hardware_id"],"timezone":"Asia/Jakarta"})
-        except Exception:
-            path.unlink(missing_ok=True)
-            raise
+        path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}.xlsx"
+        export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"]})
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
