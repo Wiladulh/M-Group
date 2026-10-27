@@ -5,6 +5,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
+#include <LittleFS.h>
 #include <mbedtls/sha256.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -44,6 +45,8 @@ M_GROUPCardReader card(PN532_IRQ,PN532_RESET,RC522_SCK,RC522_MISO,RC522_MOSI,RC5
 Adafruit_SSD1306 display(128,64,&Wire,-1);
 Servo dispensers[SERVO_COUNT];
 Preferences vendingPrefs;
+bool productImageFsReady=false;
+String productImageSyncStatus="Belum disinkronkan";
 unsigned long lastHeartbeat=0,lastCatalogRefresh=0,vendingSequence=0;
 String catalogSyncStatus="Belum disinkronkan",catalogSyncError="",catalogHash="";
 unsigned long catalogLastSyncEpoch=0;
@@ -131,6 +134,73 @@ void parseProducts(const String&json){
     pos=e+1;productCount++;
   }
 }
+String jsonStringBetween(const String&json,const String&key,int start,int end){
+  String marker="\\""+key+"\\":\\"";int p=json.indexOf(marker,start);
+  if(p<0||p>=end)return "";
+  p+=marker.length();int e=json.indexOf('"',p);if(e<0||e>end)return "";
+  return json.substring(p,e);
+}
+bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const String&productId){
+  if(!productImageFsReady||relativeUrl.isEmpty()||expectedHash.length()!=64)return false;
+  String prefKey="img_"+productId+"_sha";
+  String finalPath="/product_"+productId+".img",tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
+  if(vendingPrefs.getString(prefKey.c_str(),"")==expectedHash&&LittleFS.exists(finalPath))return true;
+  String url=relativeUrl.startsWith("http://")||relativeUrl.startsWith("https://")?relativeUrl:String(M_GROUP_BASE_URL)+relativeUrl;
+  HTTPClient http;WiFiClientSecure secureClient;http.setConnectTimeout(3000);http.setTimeout(10000);
+  if(url.startsWith("https://")){
+    String ca=configPortal.tlsCaCertificate();if(ca.isEmpty())return false;
+    secureClient.setCACert(ca.c_str());if(!http.begin(secureClient,url))return false;
+  }else if(!http.begin(url))return false;
+  http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY);
+  int code=http.GET();
+  if(code!=200){http.end();return false;}
+  int length=http.getSize();
+  if(length>2*1024*1024){http.end();return false;}
+  File output=LittleFS.open(tempPath,"w");
+  if(!output){http.end();return false;}
+  int written=http.writeToStream(&output);output.flush();output.close();http.end();
+  if(written<=0||(length>=0&&written!=length)){LittleFS.remove(tempPath);return false;}
+  File input=LittleFS.open(tempPath,"r");
+  if(!input){LittleFS.remove(tempPath);return false;}
+  mbedtls_sha256_context ctx;mbedtls_sha256_init(&ctx);mbedtls_sha256_starts(&ctx,0);
+  uint8_t buffer[1024];size_t total=0;
+  while(input.available()){
+    size_t n=input.read(buffer,sizeof(buffer));if(!n)break;
+    total+=n;if(total>2*1024*1024){input.close();mbedtls_sha256_free(&ctx);LittleFS.remove(tempPath);return false;}
+    mbedtls_sha256_update(&ctx,buffer,n);
+  }
+  input.close();uint8_t digest[32];mbedtls_sha256_finish(&ctx,digest);mbedtls_sha256_free(&ctx);
+  char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
+  if(String(hashHex)!=expectedHash){LittleFS.remove(tempPath);return false;}
+  LittleFS.remove(backupPath);
+  bool hadOld=LittleFS.exists(finalPath);
+  if(hadOld&&!LittleFS.rename(finalPath,backupPath)){LittleFS.remove(tempPath);return false;}
+  if(!LittleFS.rename(tempPath,finalPath)){
+    if(hadOld)LittleFS.rename(backupPath,finalPath);
+    LittleFS.remove(tempPath);return false;
+  }
+  if(hadOld)LittleFS.remove(backupPath);
+  vendingPrefs.putString(prefKey.c_str(),expectedHash);
+  return true;
+}
+void syncProductImages(const String&catalog){
+  if(!productImageFsReady){productImageSyncStatus="Filesystem tidak tersedia";return;}
+  int pos=0,success=0,requested=0;
+  while(true){
+    int idPos=catalog.indexOf("\\"product_id\\":\\"",pos);if(idPos<0)break;
+    int objectStart=catalog.lastIndexOf('{',idPos);int objectEnd=catalog.indexOf('}',idPos);
+    if(objectStart<0||objectEnd<0)break;
+    String id=jsonStringBetween(catalog,"product_id",objectStart,objectEnd);
+    String imageUrl=jsonStringBetween(catalog,"image_url",objectStart,objectEnd);
+    String imageHash=jsonStringBetween(catalog,"image_sha256",objectStart,objectEnd);
+    if(id.length()&&imageUrl.length()&&imageHash.length()){requested++;if(cacheProductImage(imageUrl,imageHash,id))success++;}
+    pos=objectEnd+1;
+  }
+  productImageSyncStatus=requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia");
+  int cached=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cached++;
+  configPortal.setStatusExtra(",\\"product_images_status\\":\\""+productImageSyncStatus+"\\",\\"product_images_cached\\":"+String(cached));
+}
+
 void clearPendingCreateRequest(){
   vendingPrefs.putBool("create_pending",false);
   vendingPrefs.remove("create_product");vendingPrefs.remove("create_credential");
