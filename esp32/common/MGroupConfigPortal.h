@@ -31,6 +31,19 @@ class MGroupConfigPortal {
   String sessionToken_="",statusExtra_=""; unsigned long sessionExpiresAt_=0,pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
+  static String jsonEscape(const String &value){
+    String out;out.reserve(value.length()+8);
+    for(size_t i=0;i<value.length();i++){
+      const char c=value[i];
+      if(c=='"')out+="\\"";
+      else if(c=='\\\\')out+="\\\\";
+      else if(c=='\n')out+="\\n";
+      else if(c=='\r')out+="\\r";
+      else if(c=='\t')out+="\\t";
+      else if((uint8_t)c>=0x20)out+=c;
+    }
+    return out;
+  }
   bool authorized(AsyncWebServerRequest *req){if(!pinProtected_)return true;if(!sessionExpiresAt_||(long)(millis()-sessionExpiresAt_)>=0||!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
   bool pinMatches(const String &pin){String salt=prefs_.getString("webui_pin_salt","");String stored=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");return salt.isEmpty()?sha256Hex(pin)==stored:sha256Hex(salt+pin)==stored;}
   void storePin(const String &pin){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+pin));}
