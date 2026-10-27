@@ -1495,6 +1495,21 @@ def build_router(db, app_settings=None):
         try:
             with db.connect() as c:
                 c.execute("BEGIN IMMEDIATE")
+                # Re-read the session under the write lock. The earlier read is only
+                # preliminary validation; two concurrent completion requests must not
+                # both be allowed to finish the same registration session.
+                locked_session=c.execute(
+                    "SELECT member_id,status,expires_at,hardware_id FROM nfc_registration_sessions WHERE session_id=?",
+                    (q.session_id,)
+                ).fetchone()
+                if not locked_session or locked_session["member_id"] != session["member_id"] or locked_session["hardware_id"] != cashier_fingerprint:
+                    raise HTTPException(404,"registration_session_not_found")
+                if locked_session["status"] != session["status"] or locked_session["status"] not in {"scan_pending","processing"}:
+                    raise HTTPException(409,"registration_session_not_pending")
+                if locked_session["expires_at"] <= __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
+                    c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=? AND status IN ('scan_pending','processing')",(q.session_id,))
+                    c.commit()
+                    raise HTTPException(409,"registration_session_expired")
                 # Recheck ownership after acquiring the write lock to prevent two cashiers
                 # from binding the same UID concurrently.
                 duplicate=c.execute("SELECT member_id FROM member_nfc_cards WHERE UPPER(card_uid)=?",(card_uid,)).fetchone()
