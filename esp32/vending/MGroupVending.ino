@@ -4,6 +4,7 @@
 #include <time.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <mbedtls/sha256.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
@@ -43,6 +44,8 @@ Adafruit_SSD1306 display(128,64,&Wire,-1);
 Servo dispensers[SERVO_COUNT];
 Preferences vendingPrefs;
 unsigned long lastHeartbeat=0,lastCatalogRefresh=0,vendingSequence=0;
+String catalogSyncStatus="Belum disinkronkan",catalogSyncError="",catalogHash="";
+unsigned long catalogLastSyncEpoch=0;
 bool readerReady=false,displayReady=false,pendingDispenseReport=false,pendingDispenseSuccess=true;
 String pendingDispenseTx="";
 int selectedIndex=0,productCount=0;
@@ -155,16 +158,19 @@ bool products(){
   Serial.printf("PRODUCTS %d bytes=%u\n",code,(unsigned)reply.length());
   if(code>=200&&code<300&&reply.length()){
     String oldCatalog=vendingPrefs.getString("catalog_json","");
-    if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
-    String catalogHash=String(reply.length())+"-"+String((uint32_t)reply[0],HEX)+"-"+String((uint32_t)reply[reply.length()-1],HEX);
+    uint8_t digest[32];mbedtls_sha256((const unsigned char*)reply.c_str(),reply.length(),digest,0);char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
+    catalogHash=String(hashHex);
+    if(reply!=oldCatalog){vendingPrefs.putString("catalog_json",reply);vendingPrefs.putString("catalog_hash",catalogHash);}
     vendingPrefs.putString("catalog_version",catalogHash);
+    catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");
   }else{
+    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);
     reply=vendingPrefs.getString("catalog_json","");
     fromCache=true;
     if(!reply.length()){showMessage("SERVER OFFLINE","No saved catalog","Payment unavailable");return false;}
   }
   parseProducts(reply);
-  if(!productCount){showMessage("VENDING","Catalog empty");return false;}
+  if(!productCount){catalogSyncStatus="Katalog kosong";if(!fromCache)catalogSyncError="Server tidak mengirim produk";showMessage("VENDING","Catalog empty");return false;}
   if(selectedIndex>=productCount)selectedIndex=0;Product&x=productsList[selectedIndex];
   if(fromCache)showMessage("SAVED CATALOG",x.name,"Offline: payment unavailable");
   else showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));
@@ -282,6 +288,7 @@ void setup(){
   const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
   configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
   vendingPrefs.begin("M_GROUP-vend",false);
+  catalogHash=vendingPrefs.getString("catalog_hash","");catalogLastSyncEpoch=vendingPrefs.getULong("catalog_sync_at",0);catalogSyncStatus=vendingPrefs.getString("catalog_sync_status","Belum disinkronkan");catalogSyncError=vendingPrefs.getString("catalog_sync_error","");
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
   if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
