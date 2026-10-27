@@ -636,7 +636,18 @@ def build_router(db, app_settings=None):
         limit=max(1,min(limit,500))
         with db.connect() as c:
             rows=c.execute("SELECT id,event_type,entity_type,entity_id,detail,created_at FROM audit_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
-        return {"events":[dict(x) for x in rows]}
+            security_rows=c.execute("SELECT id,actor_username,event_type,target_username,detail,created_at FROM admin_security_events ORDER BY created_at DESC LIMIT ?",(limit,)).fetchall()
+        events=[dict(x) for x in rows]
+        for row in security_rows:
+            event=dict(row)
+            event["id"]="admin-"+str(event.pop("id"))
+            event["entity_type"]="admin_user"
+            event["entity_id"]=event.pop("target_username")
+            event["detail"]="actor="+str(event.pop("actor_username") or "system")+"; "+str(event.get("detail") or "")
+            event["created_at"]=time.strftime("%Y-%m-%d %H:%M:%S",time.gmtime(int(event["created_at"])))
+            events.append(event)
+        events.sort(key=lambda item:str(item.get("created_at") or ""),reverse=True)
+        return {"events":events[:limit]}
 
     @r.post("/devices/handshake")
     def device_handshake(q: DeviceRegisterRequest):
