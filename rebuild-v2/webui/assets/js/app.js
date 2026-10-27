@@ -491,6 +491,7 @@
     loadDashboard(btn.dataset.analyticsPeriod);
   }));
   $("memberForm").addEventListener("submit",saveMember);
+  $("memberNew").addEventListener("click",clearMemberForm);
   $("memberSearch").addEventListener("input",renderMembers);
   $("memberStatusFilter").addEventListener("change",renderMembers);
   $("nfcStart").addEventListener("click",()=>startNfcRegistration($("memberId").value.trim()));
