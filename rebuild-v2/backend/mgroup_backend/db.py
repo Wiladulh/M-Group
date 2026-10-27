@@ -68,6 +68,7 @@ def initialize(database_path: str) -> None:
             },
             'product_slots': {
                 'capacity': 'INTEGER NOT NULL DEFAULT 0',
+                'enabled': 'INTEGER NOT NULL DEFAULT 0',
             },
             'nfc_registration_sessions': {
                 'replace_existing': 'INTEGER NOT NULL DEFAULT 0',
@@ -87,6 +88,7 @@ def initialize(database_path: str) -> None:
             price_minor INTEGER NOT NULL CHECK (price_minor >= 0),
             stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
             capacity INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0 AND stock <= capacity),
+            enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
             image_path TEXT,
             nfc_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (nfc_promo_percent BETWEEN 0 AND 0),
             qris_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (qris_promo_percent BETWEEN 0 AND 0),
