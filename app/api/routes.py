@@ -1549,7 +1549,7 @@ def build_router(db, app_settings=None):
                      start_date:str|None=None,end_date:str|None=None):
         require_admin(request)
         source=source.upper()
-        if source not in {"ALL","CASHIER","VENDING"}: raise HTTPException(400,"invalid_source")
+        if source not in {"ALL","CASHIER","VENDING","TOPUP"}: raise HTTPException(400,"invalid_source")
         if period not in {"day","week","month","custom"}: raise HTTPException(400,"invalid_period")
         method=method.upper()
         if method not in {"ALL","NFC","QRIS"}: raise HTTPException(400,"invalid_method")
@@ -1596,6 +1596,11 @@ def build_router(db, app_settings=None):
                               FROM payment_transactions p
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
                               WHERE p.transaction_source='CASHIER'""")
+        if source in {"ALL","TOPUP"}:
+            queries.append("""SELECT f.transaction_id,f.created_at,'TOPUP' source,NULL hardware_id,a.member_id,f.account_id,
+                              'TOPUP' transaction_type,f.amount,f.status,'CASH' payment_method,'local' payment_provider
+                              FROM financial_transactions f JOIN financial_accounts a ON a.account_id=f.account_id
+                              WHERE f.transaction_type='credit' AND COALESCE(f.idempotency_key,'') NOT LIKE 'cashier-deposit:%'""")
         if source in {"ALL","VENDING"}:
             queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.hardware_id,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
