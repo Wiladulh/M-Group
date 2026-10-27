@@ -152,7 +152,7 @@ class MemberManagementService:
     def add_card(self, member_id, card_uid, credential_id=None):
         if self.get(member_id) is None:
             raise ValueError("member_not_found")
-        card_uid = (card_uid or "").strip()
+        card_uid = (card_uid or "").strip().upper()
         if not card_uid:
             raise ValueError("card_uid_required")
         card_id = "nfc-" + uuid4().hex
@@ -230,7 +230,7 @@ class MemberManagementService:
                 JOIN identity_members m ON m.member_id=c.member_id
                 WHERE c.card_uid=? AND c.status='active'
                 """,
-                ((card_uid or "").strip(),),
+                ((card_uid or "").strip().upper(),),
             ).fetchone()
             if row is None or row["member_status"] != "active" or row["deleted_at"] is not None:
                 return None
