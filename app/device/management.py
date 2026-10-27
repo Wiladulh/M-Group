@@ -34,8 +34,10 @@ class DeviceManagementService:
             raise ValueError("invalid_device_type")
         if status is not None and status not in self.ALLOWED_STATUS:
             raise ValueError("invalid_device_status")
-        if display_name is not None and not display_name.strip():
-            raise ValueError("display_name_required")
+        if display_name is not None:
+            display_name=display_name.strip()
+            if not display_name or len(display_name)>120 or any(ord(ch)<32 for ch in display_name):
+                raise ValueError("invalid_device_location")
         new_type = device_type or current["device_type"]
         new_status = status or current["status"]
         new_name = display_name if display_name is not None else current["display_name"]
