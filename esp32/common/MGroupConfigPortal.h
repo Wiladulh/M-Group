@@ -29,6 +29,7 @@ class MGroupConfigPortal {
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
   bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
+  bool defaultPinActive(){return cashierMode_&&prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356")=="9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356";}
   static String loginPage(){return String(F("<!doctype html><html lang=\"id\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>PIN WebUI Cashier</title><body style=\"font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7\"><h2>WebUI Cashier</h2><p>Masukkan PIN konfigurasi.</p><form method=\"post\" action=\"/login\"><input name=\"pin\" type=\"password\" maxlength=\"32\" required style=\"padding:12px;width:95%\"><button style=\"padding:12px;margin-top:12px\">Masuk</button></form><p>PIN awal: 19929900. Ganti setelah login.</p></body></html>"));}
   void requireAuth(AsyncWebServerRequest *req){req->send(401,"application/json","{\"ok\":false,\"detail\":\"login_required\"}");}
   static String page(const char *label) {
@@ -50,6 +51,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     if(String(label).indexOf("Cashier")>=0){
+      if(defaultPinActive())h.replace("<h2>Konfigurasi Cashier</h2>","<h2>Konfigurasi Cashier</h2><p class=\"warn\">PIN masih default 19929900. Ganti PIN sebelum menyimpan konfigurasi.</p>");
       String pinForm=R"HTML(<hr><h3>Keamanan WebUI Cashier</h3><form method="post" action="/change-pin"><label>PIN saat ini</label><input name="old_pin" type="password" maxlength="32" required><label>PIN baru (minimal 8 karakter)</label><input name="new_pin" type="password" minlength="8" maxlength="32" required><label>Ulangi PIN baru</label><input name="confirm_pin" type="password" minlength="8" maxlength="32" required><button type="submit">Ganti PIN WebUI</button></form>)HTML";
       h.replace("</main></html>",pinForm+"</main></html>");
     }
@@ -86,7 +88,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       String body=String("{\"ok\":")+(ok?"true":"false")+",\"detail\":\""+(ok?"tcp_reachable":"server_unreachable")+"\",\"host\":\""+host+"\",\"port\":"+String(port)+"}";
       req->send(ok?200:503,"application/json; charset=utf-8",body);
     });
-    server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
+    server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}if(defaultPinActive()){req->send(403,"text/plain","Ganti PIN default 19929900 sebelum menyimpan konfigurasi perangkat.");return;}
       auto value=[req](const char *name)->String {return req->hasParam(name,true)?req->getParam(name,true)->value():"";};
       String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceId=value("device_id"),deviceKey=value("device_key");
       ssid.trim();serverUrl.trim();deviceKey.trim();
