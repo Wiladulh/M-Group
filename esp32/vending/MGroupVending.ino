@@ -163,8 +163,8 @@ bool products(){
     String oldCatalog=vendingPrefs.getString("catalog_json","");
     uint8_t digest[32];mbedtls_sha256((const unsigned char*)reply.c_str(),reply.length(),digest,0);char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
     catalogHash=String(hashHex);
-    if(reply!=oldCatalog){vendingPrefs.putString("catalog_json",reply);vendingPrefs.putString("catalog_hash",catalogHash);}
-    vendingPrefs.putString("catalog_version",catalogHash);
+    if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
+    vendingPrefs.putString("catalog_hash",catalogHash);vendingPrefs.putString("catalog_version",catalogHash);
     catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
   }else{
     catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
