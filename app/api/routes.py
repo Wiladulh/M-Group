@@ -1964,7 +1964,7 @@ def build_router(db, app_settings=None):
         source_code={"ALL":"All","CASHIER":"Cash","VENDING":"Vend","TOPUP":"Tup"}.get(data["source"],"All")
         import datetime as dt
         end_inclusive=(dt.date.fromisoformat(data["end"])-dt.timedelta(days=1)).isoformat()
-        path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}.xlsx"
+        path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}-{uuid4().hex[:8]}.xlsx"
         export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"]})
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
