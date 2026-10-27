@@ -521,14 +521,18 @@ def build_router(db, app_settings=None):
                 SELECT CAST(v.product_id AS TEXT) AS product_id,
                        COALESCE(p.name,'Produk ' || v.product_id) AS product_name,
                        v.machine_id, m.name AS vending_name, m.location,
+                       i.sha256 AS image_sha256,
+                       CASE WHEN i.sha256 IS NOT NULL THEN '/api/v1/vending/' || v.machine_id || '/products/' || CAST(v.product_id AS TEXT) || '/image?v=' || i.sha256 ELSE NULL END AS image_url,
                        COUNT(v.transaction_id) AS units_sold,
                        COALESCE(SUM(v.amount),0) AS revenue
                 FROM vending_transactions v
                 LEFT JOIN vending_machines m ON m.machine_id=v.machine_id
                 LEFT JOIN vending_products p
                   ON p.machine_id=v.machine_id AND CAST(p.slot AS TEXT)=CAST(v.product_id AS TEXT)
+                LEFT JOIN vending_product_images i
+                  ON i.machine_id=v.machine_id AND CAST(i.product_id AS TEXT)=CAST(v.product_id AS TEXT)
                 WHERE v.status='completed' AND v.created_at>=datetime('now',?)
-                GROUP BY v.machine_id,v.product_id,p.name,m.name,m.location
+                GROUP BY v.machine_id,v.product_id,p.name,m.name,m.location,i.sha256
                 ORDER BY units_sold DESC,revenue DESC,product_name LIMIT 10
             """,(date_modifier,)).fetchall()
             payment_channel_rows=c.execute("""
