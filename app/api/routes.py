@@ -1453,6 +1453,11 @@ def build_router(db, app_settings=None):
                 (q.session_id,cashier_fingerprint)
             ).fetchone()
             if not session: raise HTTPException(404,"registration_session_not_found")
+            if session["status"]=="completed":
+                expected_credential="nfc-"+card_uid.replace(":","").replace("-","").lower()
+                if session["card_uid"]==card_uid and session["credential_id"]==expected_credential and identity.verify_pin(session["member_id"],q.pin):
+                    return {"session_id":q.session_id,"member_id":session["member_id"],"credential_id":expected_credential,"card_uid":card_uid,"status":"completed","pin_status":"set"}
+                raise HTTPException(409,"registration_session_already_completed")
             if session["status"] not in {"scan_pending","processing"}: raise HTTPException(409,"registration_session_not_pending")
             if session["expires_at"]<=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
