@@ -212,6 +212,38 @@ def enroll_device(payload: DeviceEnrollment, connection: DB,
     return {'registry_id':row['registry_id'],'hardware_id':hardware_id,'device_type':row['device_type'],'status':'active','idempotent_replay':False}
 
 
+@app.get('/api/v2/admin/devices', dependencies=[Depends(require_admin)])
+def admin_devices(connection: DB):
+    rows=connection.execute("""SELECT registry_id,hardware_id,device_type,display_name,status,mac_address,
+        device_key_hint,created_at,updated_at,last_seen_at,revoked_at FROM device_registry
+        ORDER BY created_at DESC""").fetchall()
+    return {'items':[dict(row) for row in rows]}
+
+@app.post('/api/v2/admin/devices/{registry_id}/rotate-key', dependencies=[Depends(require_admin)])
+def rotate_device_key(registry_id: str, connection: DB):
+    key=secrets.token_urlsafe(32)
+    with transaction(connection):
+        row=connection.execute("SELECT registry_id,status FROM device_registry WHERE registry_id=?",(registry_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'DEVICE_NOT_FOUND'})
+        if row['status'] in ('disabled','revoked'):
+            raise HTTPException(status_code=409,detail={'code':'DEVICE_NOT_ACTIVE'})
+        connection.execute("UPDATE device_registry SET device_key_hash=?,device_key_hint=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",
+            (hash_secret(key,settings.device_key_pepper),key[-4:],registry_id))
+        audit(connection,'device.key.rotate','device',registry_id,detail={'key_shown_once':True})
+    return {'registry_id':registry_id,'device_key':key,'key_shown_once':True,'status':'rotated'}
+
+@app.post('/api/v2/admin/devices/{registry_id}/revoke', dependencies=[Depends(require_admin)])
+def revoke_device_key(registry_id: str, connection: DB):
+    with transaction(connection):
+        row=connection.execute("SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",(registry_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'DEVICE_NOT_FOUND'})
+        connection.execute("UPDATE device_registry SET status='revoked',device_key_hash=NULL,device_key_hint=NULL,revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",(registry_id,))
+        connection.execute("UPDATE nfc_registration_sessions SET status='failed',error_code='CASHIER_REVOKED' WHERE registry_id=? AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')",(registry_id,))
+        audit(connection,'device.key.revoke','device',registry_id,detail={'hardware_id':row['hardware_id']})
+    return {'registry_id':registry_id,'status':'revoked'}
+
 def authenticated_device(connection: sqlite3.Connection, device_key: str | None):
     if not device_key or len(device_key) > 256:
         raise HTTPException(status_code=401, detail={'code': 'DEVICE_UNAUTHORIZED'})
