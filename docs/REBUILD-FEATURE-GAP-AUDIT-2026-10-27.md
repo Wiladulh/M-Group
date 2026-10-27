@@ -75,5 +75,5 @@ Do not merge while any P1 is unresolved, any financial invariant lacks test evid
 
 ## Remaining implementation gap before the final test phase
 
-- The server/WebUI product image upload path validates and optimizes images and provides SHA-256 versioned URLs. The vending firmware now downloads changed assets only, verifies SHA-256, and uses temporary-file/backup renames for replacement; failed downloads retain the previous asset. This source change is not yet built or tested, and image-cache behavior must be confirmed in the final firmware validation phase.
+- The server/WebUI accepts source images up to 2 MiB, optimizes thumbnails to at most 64 KiB, and provides SHA-256 versioned URLs. The vending firmware now downloads changed assets only, verifies SHA-256, and uses temporary-file/backup renames for replacement; failed downloads retain the previous asset. An OTA-compatible partition layout reserves LittleFS for the five thumbnails. These source changes are not yet built or tested, and firmware size/partition fit and image-cache behavior must be confirmed in the final firmware validation phase.
 - Finish the remaining source-level integration review and implementation items before any test/build run. Physical NFC, DHCP/LAN portal, transaction recovery, key revocation, and image sync still require their later acceptance tests.
