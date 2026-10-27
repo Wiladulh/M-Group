@@ -1158,10 +1158,17 @@ def build_router(db, app_settings=None):
             stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
             if not row or stored_type != device_type:
                 raise HTTPException(409,"device_type_mismatch")
-            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE hardware_id=?",
-                      (hardware_id,))
+            location=(q.display_name or "").strip()
+            if len(location)>120 or any(ord(ch)<32 for ch in location):
+                raise HTTPException(400,"invalid_device_location")
+            if location:
+                c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP,display_name=?,updated_at=CURRENT_TIMESTAMP WHERE hardware_id=?",
+                          (location,hardware_id))
+            else:
+                c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE hardware_id=?",
+                          (hardware_id,))
             c.execute("INSERT INTO device_events(hardware_id,event_type,payload) VALUES(?,?,?)",
-                      (hardware_id,"heartbeat",q.model_copy(update={"device_type": device_type}).model_dump_json()))
+                      (hardware_id,"heartbeat",q.model_copy(update={"device_type": device_type,"display_name":location or q.display_name}).model_dump_json()))
             c.commit()
         return {"hardware_id":hardware_id,"device_type":device_type,"status":"active"}
 
