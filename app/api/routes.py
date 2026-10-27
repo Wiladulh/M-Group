@@ -1951,6 +1951,8 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"invalid_status")
         member_id=(member_id or "ALL").strip()
         transaction_id=(transaction_id or "").strip()
+        if len(member_id)>128 or len(transaction_id)>128:
+            raise HTTPException(400,"audit_filter_too_long")
         import datetime as dt
         from zoneinfo import ZoneInfo
         jakarta=ZoneInfo("Asia/Jakarta")
