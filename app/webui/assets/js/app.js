@@ -404,7 +404,7 @@ $('paymentMethodFilter').onchange=renderPaymentTransactions;
 $('paymentStatusFilter').onchange=renderPaymentTransactions;
 let paymentPendingKey=null;
 try{paymentPendingKey=sessionStorage.getItem('mgroup-payment-pending-key');if(paymentPendingKey&&!$('idem').value)$('idem').value=paymentPendingKey}catch(_){}
-['payMember','credential','payaccount','payamount','method','provider'].forEach(id=>{
+['payMember','credential','payaccount','payamount','paypin','method','provider'].forEach(id=>{
   const el=$(id);if(!el)return;
   el.addEventListener('input',clearPendingPaymentKey);
   el.addEventListener('change',clearPendingPaymentKey);
