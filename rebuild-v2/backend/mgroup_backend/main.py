@@ -173,6 +173,7 @@ class ProductUpdate(BaseModel):
     price_minor: int = Field(gt=0, le=100_000_000)
     stock: int = Field(ge=0, le=1_000_000)
     capacity: int | None = Field(default=None, ge=0, le=1_000_000)
+    enabled: bool | None = None
 
 @app.get('/api/v2/health')
 def health():
@@ -331,7 +332,7 @@ def device_products(connection: DB, x_device_key: Annotated[str | None, Header()
     if device['device_type'] != 'vending':
         raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
     rows = connection.execute(
-        """SELECT p.product_id,p.name,p.price_minor,p.stock,p.capacity,i.sha256 AS image_sha256
+        """SELECT p.product_id,p.name,p.price_minor,p.stock,p.capacity,p.enabled,i.sha256 AS image_sha256
            FROM product_slots p LEFT JOIN product_images i
              ON i.registry_id=p.registry_id AND i.product_id=p.product_id
            WHERE p.registry_id=? ORDER BY p.product_id""",
@@ -755,7 +756,7 @@ def get_products(registry_id: str, connection: DB):
     device = connection.execute("SELECT registry_id FROM device_registry WHERE registry_id=? AND device_type='vending'", (registry_id,)).fetchone()
     if not device:
         raise HTTPException(status_code=404, detail={'code': 'VENDING_DEVICE_NOT_FOUND'})
-    rows = connection.execute("""SELECT p.product_id,p.name,p.price_minor,p.stock,p.capacity,p.nfc_promo_percent,p.qris_promo_percent,
+    rows = connection.execute("""SELECT p.product_id,p.name,p.price_minor,p.stock,p.capacity,p.enabled,p.nfc_promo_percent,p.qris_promo_percent,
         i.sha256 AS image_sha256,i.byte_size AS image_size,i.content_type
         FROM product_slots p LEFT JOIN product_images i ON i.registry_id=p.registry_id AND i.product_id=p.product_id
         WHERE p.registry_id=? ORDER BY p.product_id""", (registry_id,)).fetchall()
@@ -774,17 +775,18 @@ def update_product(registry_id: str, product_id: int, payload: ProductUpdate, co
     if not normalized_name:
         raise HTTPException(status_code=422, detail={'code': 'INVALID_PRODUCT_NAME'})
     with transaction(connection):
-        current=connection.execute("SELECT capacity FROM product_slots WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
+        current=connection.execute("SELECT capacity,enabled FROM product_slots WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
         if not current:
             raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
         capacity=payload.capacity if payload.capacity is not None else max(current['capacity'],payload.stock)
+        enabled=int(payload.enabled) if payload.enabled is not None else current['enabled']
         if payload.stock>capacity:
             raise HTTPException(status_code=422,detail={'code':'STOCK_EXCEEDS_CAPACITY'})
-        result = connection.execute('UPDATE product_slots SET name=?,price_minor=?,stock=?,capacity=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?', (normalized_name, payload.price_minor, payload.stock, capacity, registry_id, product_id))
+        result = connection.execute('UPDATE product_slots SET name=?,price_minor=?,stock=?,capacity=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND product_id=?', (normalized_name, payload.price_minor, payload.stock, capacity, enabled, registry_id, product_id))
         if result.rowcount != 1:
             raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
-        connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps({**payload.model_dump(), 'capacity':capacity,'name': normalized_name})))
-    return {'registry_id': registry_id, 'product_id': product_id, 'name': normalized_name,'price_minor':payload.price_minor,'stock':payload.stock,'capacity':capacity,'nfc_promo_percent': 0, 'qris_promo_percent': 0}
+        connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps({**payload.model_dump(), 'capacity':capacity,'enabled':bool(enabled),'name': normalized_name})))
+    return {'registry_id': registry_id, 'product_id': product_id, 'name': normalized_name,'price_minor':payload.price_minor,'stock':payload.stock,'capacity':capacity,'enabled':bool(enabled),'nfc_promo_percent': 0, 'qris_promo_percent': 0}
 
 @app.post('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
 async def upload_product_image(registry_id: str, product_id: int, connection: DB, file: UploadFile = File(...)):
@@ -1057,10 +1059,12 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                 raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
             if not verify_pin(payload.pin, member['pin_hash']):
                 raise HTTPException(status_code=401, detail={'code': 'INVALID_PIN'})
-            product = connection.execute('SELECT name,price_minor,stock FROM product_slots WHERE registry_id=? AND product_id=?',
+            product = connection.execute('SELECT name,price_minor,stock,enabled FROM product_slots WHERE registry_id=? AND product_id=?',
                 (device['registry_id'], payload.product_id)).fetchone()
             if not product:
                 raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
+            if not product['enabled']:
+                raise HTTPException(status_code=409, detail={'code':'PRODUCT_DISABLED'})
             if product['stock'] < 1:
                 raise HTTPException(status_code=409, detail={'code': 'OUT_OF_STOCK'})
             if product['price_minor'] <= 0:
