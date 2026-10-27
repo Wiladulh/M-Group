@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <mbedtls/sha256.h>
 #include <Adafruit_GFX.h>
@@ -64,10 +65,12 @@ struct Product{String id,name;long price;int stock;bool enabled;int servo_channe
 Product productsList[16];
 
 String request(const String& method,const String& path,const String& body,int& code){
-  HTTPClient http;
+  HTTPClient http; WiFiClientSecure secureClient;
   http.setConnectTimeout(3000);
   http.setTimeout(8000);
-  http.begin(String(M_GROUP_BASE_URL)+path);
+  String url=String(M_GROUP_BASE_URL)+path;
+  if(M_GROUP_BASE_URL.startsWith("https://")){String ca=configPortal.tlsCaCertificate();if(ca.isEmpty()){code=-2;Serial.println("HTTPS rejected: configure trusted server CA in local WebUI");return "";}secureClient.setCACert(ca.c_str());if(!http.begin(secureClient,url)){code=-2;return "";}}
+  else if(!http.begin(url)){code=-2;return "";}
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-M-Group-Device-Key",M_GROUP_DEVICE_KEY);
   if(method=="GET")code=http.GET();else if(method=="POST")code=http.POST(body);else code=-1;
