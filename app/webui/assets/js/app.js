@@ -263,17 +263,19 @@ $('deviceAuthForm').onsubmit=async e=>{e.preventDefault();await loadDevices()};
 $('deviceProvisionForm').onsubmit=async e=>{
   e.preventDefault();
   const deviceType=$('provisionDeviceType').value;
+  const location=$('provisionDeviceLocation').value.trim();
   const result=$('deviceProvisionResult');
+  if(!location){result.textContent='Lokasi pemasangan wajib diisi.';return}
   if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({device_type:deviceType})
+    body:JSON.stringify({device_type:deviceType,location})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Key autentikasi dibuat. Salin key ke WebUI perangkat; Device ID dibuat otomatis dari MAC address saat registrasi pertama.';
+  result.textContent='Key autentikasi dibuat untuk lokasi '+(d.location||location)+'. Salin key ke WebUI perangkat; Device ID dibuat otomatis saat registrasi pertama.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
@@ -358,7 +360,7 @@ async function loadVendingCatalog(machineId){
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/products',{});
   if(!r.ok)throw new Error(d.detail||'Gagal memuat katalog vending');
   vendingCatalog=d.products||[];
-  $('products').innerHTML=table(vendingCatalog.map(x=>({...x,price:money(x.price),enabled:x.enabled?'ya':'tidak'})),['product_id','name','price','stock','capacity','enabled']);
+  $('products').innerHTML=vendingCatalog.length?'<table><thead><tr><th>Gambar</th><th>Product ID</th><th>Nama</th><th>Harga</th><th>Stok</th><th>Kapasitas</th><th>Aktif</th><th>Versi gambar</th></tr></thead><tbody>'+vendingCatalog.map(x=>'<tr><td>'+(x.image_url?'<img src="'+esc(x.image_url)+'" alt="Gambar '+esc(x.name)+'" loading="lazy" style="width:56px;height:56px;object-fit:contain">':'—')+'</td><td>'+esc(x.product_id)+'</td><td>'+esc(x.name)+'</td><td>'+money(x.price)+'</td><td>'+esc(x.stock)+'</td><td>'+esc(x.capacity)+'</td><td>'+(x.enabled?'ya':'tidak')+'</td><td>'+esc(x.image_sha256?x.image_sha256.slice(0,12):'—')+'</td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px">Belum ada produk.</p>';
   $('productId').dispatchEvent(new Event('change'));
 }
 async function loadVendingMachines(){
@@ -382,6 +384,15 @@ $('productId').onchange=()=>{
   $('productStock').value=item?.stock??0;
   $('productCapacity').value=item?.capacity??0;
   $('productEnabled').checked=item?!!item.enabled:true;
+  $('productImageFile').value='';
+  $('productImagePreview').innerHTML=item?.image_url?'<img src="'+esc(item.image_url)+'" alt="Pratinjau gambar produk" style="max-width:180px;max-height:180px;object-fit:contain"><p>Versi: '+esc(item.image_sha256||'')+'</p>':'Gambar produk belum tersedia.';
+};
+$('productImageFile').onchange=()=>{
+  const file=$('productImageFile').files?.[0];
+  if(!file){$('productImagePreview').textContent='Gambar produk belum dipilih.';return}
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>2*1024*1024){$('productImageFile').value='';$('productImagePreview').textContent='Pilih PNG/JPEG/WebP dengan ukuran maksimal 2 MB.';return}
+  const url=URL.createObjectURL(file);
+  $('productImagePreview').innerHTML='<img src="'+url+'" alt="Pratinjau gambar produk" style="max-width:180px;max-height:180px;object-fit:contain"><p>'+esc(file.name)+' · '+money(file.size)+' byte</p>';
 };
 $('productForm').onsubmit=async e=>{
   e.preventDefault();
@@ -390,7 +401,16 @@ $('productForm').onsubmit=async e=>{
   const q={product_id:pid,name:$('productName').value.trim(),price:+$('productPrice').value,stock:+$('productStock').value,enabled:$('productEnabled').checked,capacity:+$('productCapacity').value};
   const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
   $('productResult').textContent=JSON.stringify(d,null,2);
-  if(r.ok){await loadVendingCatalog(mid);await load()}
+  if(r.ok){
+    const imageFile=$('productImageFile').files?.[0];
+    if(imageFile){
+      const form=new FormData();form.append('file',imageFile);
+      const upload=await json('/api/v1/vending/'+encodeURIComponent(mid)+'/products/'+encodeURIComponent(pid)+'/image',{method:'POST',body:form});
+      if(!upload.r.ok){$('productResult').textContent='Produk tersimpan, tetapi gambar gagal diunggah: '+(upload.d.detail||'error');await loadVendingCatalog(mid);return}
+      $('productResult').textContent='Produk dan gambar tersimpan. Hash gambar: '+upload.d.sha256;
+    }
+    await loadVendingCatalog(mid);await load()
+  }
 };
 let vendingTransactions=[];
 async function loadVendingTransactions(machineId){
