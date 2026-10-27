@@ -22,7 +22,7 @@ class MGroupConfigPortal {
   }
   bool active() const { return active_; }
   void setStatusExtra(const String &jsonFields){statusExtra_=jsonFields;}
-  String tlsCaCertificate() const {return prefs_.getString("tls_ca","");}
+  String tlsCaCertificate() {return prefs_.getString("tls_ca","");}
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
