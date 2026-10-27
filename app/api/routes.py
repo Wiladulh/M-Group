@@ -1483,14 +1483,24 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/nfc-registration/start")
     def nfc_registration_start(request: Request, member_id,q:NfcRegistrationStartRequest):
         require_admin(request)
+        cashier_hardware_id=(q.cashier_hardware_id or "").strip()
+        if not cashier_hardware_id:
+            raise HTTPException(400,"cashier_selection_required")
+        with db.connect() as c:
+            cashier=c.execute("""SELECT hardware_id,auth_key_hash FROM device_registry
+                WHERE hardware_id=? AND device_type IN ('esp32-cashier','cashier')
+                  AND status='active' AND deleted_at IS NULL AND auth_key_hash IS NOT NULL""",(cashier_hardware_id,)).fetchone()
+        if not cashier:
+            raise HTTPException(409,"cashier_not_available")
+        cashier_fingerprint=cashier["auth_key_hash"]
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
         with db.connect() as c:
             pending=c.execute(
-                "SELECT session_id FROM nfc_registration_sessions WHERE hardware_id='*' "
+                "SELECT session_id FROM nfc_registration_sessions WHERE hardware_id IN ('*',?) "
                 "AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') "
-                "AND expires_at>CURRENT_TIMESTAMP"
+                "AND expires_at>CURRENT_TIMESTAMP",(cashier_fingerprint,)
             ).fetchone()
             if pending:
                 raise HTTPException(409,"cashier_registration_busy")
@@ -1498,12 +1508,12 @@ def build_router(db, app_settings=None):
             c.execute(
                 """INSERT INTO nfc_registration_sessions
                    (session_id,member_id,hardware_id,status,expires_at)
-                   VALUES(?,?,'*','scan_pending',datetime('now','+5 minutes'))""",
-                (session_id,member_id)
+                   VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))""",
+                (session_id,member_id,cashier_fingerprint)
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier=key_authenticated")
+                ("identity","nfc_registration",session_id,f"started:member={member_id}:cashier={cashier_hardware_id}")
             )
             c.commit()
         return {"session_id":session_id,"member_id":member_id,"status":"scan_pending"}
@@ -1513,17 +1523,27 @@ def build_router(db, app_settings=None):
         require_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
+        cashier_hardware_id=(q.cashier_hardware_id or "").strip()
+        if not cashier_hardware_id:
+            raise HTTPException(400,"cashier_selection_required")
+        with db.connect() as c:
+            cashier=c.execute("""SELECT hardware_id,auth_key_hash FROM device_registry
+                WHERE hardware_id=? AND device_type IN ('esp32-cashier','cashier')
+                  AND status='active' AND deleted_at IS NULL AND auth_key_hash IS NOT NULL""",(cashier_hardware_id,)).fetchone()
+        if not cashier:
+            raise HTTPException(409,"cashier_not_available")
+        cashier_fingerprint=cashier["auth_key_hash"]
         member=members.get(member_id)
         if not member or member.get("status")!="active":
             raise HTTPException(404,"member_not_found")
         with db.connect() as c:
-            pending=c.execute("SELECT session_id FROM nfc_registration_sessions WHERE hardware_id='*' AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') AND expires_at>CURRENT_TIMESTAMP").fetchone()
+            pending=c.execute("SELECT session_id FROM nfc_registration_sessions WHERE hardware_id IN ('*',?) AND status IN ('scan_pending','waiting_nfc','pin_pending','processing') AND expires_at>CURRENT_TIMESTAMP",(cashier_fingerprint,)).fetchone()
             if pending:
                 raise HTTPException(409,"cashier_registration_busy")
             session_id="nfc-replace-"+uuid4().hex
-            c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,hardware_id,status,expires_at) VALUES(?,?,'*','scan_pending',datetime('now','+5 minutes'))",(session_id,member_id))
+            c.execute("INSERT INTO nfc_registration_sessions(session_id,member_id,hardware_id,status,expires_at) VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'))",(session_id,member_id,cashier_fingerprint))
             c.execute("INSERT INTO nfc_replacement_intents(session_id,member_id,operator_id) VALUES(?,?,?)",(session_id,member_id,q.operator_id.strip()))
-            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier=key_authenticated"))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",("nfc_replacement","member",member_id,f"started:session={session_id}:cashier={cashier_hardware_id}"))
             c.commit()
         return {"session_id":session_id,"member_id":member_id,"status":"scan_pending","operation":"replacement"}
 
