@@ -64,6 +64,7 @@ class MemberCreate(BaseModel):
     occupation: str | None = Field(default=None, max_length=100)
     citizenship: str | None = Field(default='WNI', max_length=32)
     registration_date: str | None = Field(default=None, max_length=10)
+    status: str = Field(default='active', pattern='^(active|suspended|closed)$')
     pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 class MemberUpdate(BaseModel):
@@ -366,17 +367,17 @@ def create_member(payload: MemberCreate, connection: DB):
             ids = connection.execute("SELECT member_id FROM members WHERE member_id GLOB 'NTR-[0-9]*'").fetchall()
             largest = max((int(row['member_id'][4:]) for row in ids if row['member_id'][4:].isdigit()), default=0)
             member_id = f'NTR-{largest + 1:05d}'
-            profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin'}, exclude_none=True)
-            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,pin_hash) VALUES(?,?,?,?,?,?,?)',
+            profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin','status'}, exclude_none=True)
+            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status,pin_hash) VALUES(?,?,?,?,?,?,?,?)',
                 (member_id, display_name, payload.nik, payload.phone, payload.email,
-                 json.dumps(profile, separators=(',', ':')), pin_hash(payload.pin) if payload.pin else None))
+                 json.dumps(profile, separators=(',', ':')),payload.status,pin_hash(payload.pin) if payload.pin else None))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
             audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'MEMBER_CREATE_CONFLICT'}) from exc
     return {'member_id': member_id, 'display_name': display_name, 'account_id': account_id,
             'nik': payload.nik, 'phone': payload.phone, 'email': payload.email,
-            'balance_minor': 0, 'status': 'active', 'pin_configured': bool(payload.pin)}
+            'balance_minor': 0, 'status': payload.status, 'pin_configured': bool(payload.pin)}
 
 @app.get('/api/v2/members', dependencies=[Depends(require_admin)])
 def list_members(connection: DB):
