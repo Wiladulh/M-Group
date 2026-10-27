@@ -1348,9 +1348,32 @@ def admin_dashboard(connection: DB, period: str = 'week'):
         item=products.setdefault(key,{'hardware_id':hid,'product_id':pid,'product_name':meta.get('product_name',f'Produk {pid}'),'units_sold':0,'revenue_minor':0})
         item['units_sold']+=1;item['revenue_minor']+=row['amount_minor']
     names={r['hardware_id']:r['display_name'] or r['hardware_id'] for r in connection.execute("SELECT hardware_id,display_name FROM device_registry WHERE device_type='vending'").fetchall()}
+    analytics_sql="SELECT created_at FROM transactions WHERE status='succeeded'"
+    analytics_args=[]
+    if start:
+        analytics_sql+=" AND created_at>=? AND created_at<?";analytics_args=[start,end]
+    analytics_rows=connection.execute(analytics_sql,analytics_args).fetchall()
+    from datetime import datetime,timezone
+    from zoneinfo import ZoneInfo
+    jakarta=ZoneInfo('Asia/Jakarta');daily={}
+    for row in analytics_rows:
+        try:
+            local=datetime.strptime(row['created_at'][:19],'%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).astimezone(jakarta)
+            day=local.strftime('%Y-%m-%d')
+            daily[day]=daily.get(day,0)+1
+        except (TypeError,ValueError):
+            continue
+    channels={}
+    for row in recent:
+        typ=row['transaction_type']
+        channel=typ.replace('_',' ').title()
+        slot=channels.setdefault(channel,{'channel':channel,'transactions':0,'amount_minor':0})
+        slot['transactions']+=1;slot['amount_minor']+=row['amount_minor']
     return {'period':period,'summary':{'members':member_count,'active_devices':active_devices,'member_balance_minor':balance,'successful_transactions':successful},
-        'analytics':[],'most_used_vending':[{'hardware_id':k,'device_name':names.get(k,k),'transactions':v} for k,v in sorted(used.items(),key=lambda x:x[1],reverse=True)[:10]],
+        'analytics':[{'date':k,'count':v} for k,v in sorted(daily.items())],
+        'most_used_vending':[{'hardware_id':k,'device_name':names.get(k,k),'transactions':v} for k,v in sorted(used.items(),key=lambda x:x[1],reverse=True)[:10]],
         'best_selling_products':sorted(products.values(),key=lambda x:x['units_sold'],reverse=True)[:10],
+        'payment_channels':sorted(channels.values(),key=lambda x:x['transactions'],reverse=True),
         'recent_transactions':[dict(r) for r in recent]}
 
 @app.get('/api/v2/admin/reports/transactions.xlsx', dependencies=[Depends(require_admin)])
