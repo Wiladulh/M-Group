@@ -56,6 +56,28 @@ def initialize(database_path: str) -> None:
     connection = connect(database_path)
     try:
         connection.executescript(SCHEMA_PATH.read_text(encoding='utf-8'))
+        # Idempotent additive migrations keep existing v2 data while the clean
+        # schema evolves; no migration drops or rewrites financial records.
+        migrations={
+            'members': {
+                'nik': 'TEXT',
+                'phone': 'TEXT',
+                'email': 'TEXT',
+                'profile_json': "TEXT NOT NULL DEFAULT '{}'",
+            },
+            'product_slots': {
+                'capacity': 'INTEGER NOT NULL DEFAULT 0',
+            },
+            'nfc_registration_sessions': {
+                'replace_existing': 'INTEGER NOT NULL DEFAULT 0',
+            },
+        }
+        for table, columns in migrations.items():
+            existing={row[1] for row in connection.execute(f'PRAGMA table_info({table})')}
+            for column, definition in columns.items():
+                if column not in existing:
+                    connection.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+        connection.execute('UPDATE product_slots SET capacity=stock WHERE capacity<stock')
         connection.executescript('''
         CREATE TABLE IF NOT EXISTS product_slots (
             registry_id TEXT NOT NULL,
