@@ -1462,7 +1462,18 @@ def build_router(db, app_settings=None):
             if cred and cred["member_id"]!=session["member_id"]:
                 raise HTTPException(409,"credential_already_registered")
         if replacement:
-            if not identity.verify_pin(session["member_id"],q.pin):
+            with db.connect() as c:
+                active_credential=c.execute(
+                    "SELECT credential_id FROM member_nfc_cards WHERE member_id=? AND status='active' "
+                    "ORDER BY created_at DESC LIMIT 1",(session["member_id"],)
+                ).fetchone()
+            if not active_credential or not active_credential["credential_id"]:
+                raise HTTPException(409,"active_member_credential_required_for_replacement")
+            try:
+                pin_ok=identity.verify_credential_pin(active_credential["credential_id"],q.pin)
+            except PermissionError as exc:
+                raise HTTPException(403,str(exc))
+            if not pin_ok:
                 raise HTTPException(403,"invalid_member_pin_for_card_replacement")
             pin_salt=None;pin_hash=None
         else:
