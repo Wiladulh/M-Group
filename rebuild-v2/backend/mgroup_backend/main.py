@@ -252,19 +252,28 @@ def create_member(payload: MemberCreate, connection: DB):
             ids = connection.execute("SELECT member_id FROM members WHERE member_id GLOB 'NTR-[0-9]*'").fetchall()
             largest = max((int(row['member_id'][4:]) for row in ids if row['member_id'][4:].isdigit()), default=0)
             member_id = f'NTR-{largest + 1:05d}'
-            connection.execute('INSERT INTO members(member_id,display_name,pin_hash) VALUES(?,?,?)',
-                (member_id, display_name, pin_hash(payload.pin) if payload.pin else None))
+            profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin'}, exclude_none=True)
+            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,pin_hash) VALUES(?,?,?,?,?,?,?)',
+                (member_id, display_name, payload.nik, payload.phone, payload.email,
+                 json.dumps(profile, separators=(',', ':')), pin_hash(payload.pin) if payload.pin else None))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
-            audit(connection, 'member.create', 'member', member_id)
+            audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'MEMBER_CREATE_CONFLICT'}) from exc
     return {'member_id': member_id, 'display_name': display_name, 'account_id': account_id,
+            'nik': payload.nik, 'phone': payload.phone, 'email': payload.email,
             'balance_minor': 0, 'status': 'active', 'pin_configured': bool(payload.pin)}
 
 @app.get('/api/v2/members', dependencies=[Depends(require_admin)])
 def list_members(connection: DB):
-    rows = connection.execute('SELECT m.member_id,m.display_name,m.status,a.balance_minor FROM members m JOIN accounts a ON a.member_id=m.member_id ORDER BY m.created_at DESC').fetchall()
-    return {'items': [dict(row) for row in rows]}
+    rows = connection.execute('SELECT m.member_id,m.display_name,m.nik,m.phone,m.email,m.profile_json,m.status,a.account_id,a.balance_minor FROM members m JOIN accounts a ON a.member_id=m.member_id ORDER BY m.created_at DESC').fetchall()
+    items=[]
+    for row in rows:
+        item=dict(row)
+        profile=json.loads(item.pop('profile_json') or '{}')
+        item.update(profile)
+        items.append(item)
+    return {'items': items}
 
 @app.post('/api/v2/finance/top-ups', dependencies=[Depends(require_admin)])
 def top_up(payload: TopUpRequest, connection: DB):
