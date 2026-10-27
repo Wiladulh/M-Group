@@ -236,8 +236,9 @@ async function pollNfcRegistration(memberId,sessionId){
 $('nfcStart').onclick=async()=>{
   try{
   const memberId=$('memberId').value.trim();
+    await loadNfcCashierOptions();
     const cashier_hardware_id=$('nfcCashier').value;
-    if(!cashier_hardware_id){await loadNfcCashierOptions();throw new Error('Pilih Cashier aktif sebelum memulai registrasi NFC')}
+    if(!cashier_hardware_id)throw new Error('Pilih Cashier aktif sebelum memulai registrasi NFC')
     if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
     if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
