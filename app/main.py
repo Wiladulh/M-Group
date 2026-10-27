@@ -24,8 +24,9 @@ def create_app():
     @app.middleware("http")
     async def authenticate_admin_session(request: Request, call_next):
         request.state.admin_authenticated = False
+        request.state.admin_username = None
+        request.state.admin_role = None
         if request.url.path.startswith("/api/v1/"):
-            origin = request.headers.get("origin")
             token = request.cookies.get("m_group_session", "")
             if token:
                 from app.core.auth import hash_session_token
@@ -33,9 +34,12 @@ def create_app():
                 token_hash = hash_session_token(token)
                 with db.connect() as c:
                     row = c.execute(
-                        """SELECT session_hash FROM webui_sessions
-                           WHERE session_hash=? AND revoked_at IS NULL
-                             AND expires_at>? AND last_seen>?""",
+                        """SELECT s.session_hash,s.username,u.role
+                           FROM webui_sessions s
+                           JOIN admin_users u ON u.username=s.username
+                           WHERE s.session_hash=? AND s.revoked_at IS NULL
+                             AND s.expires_at>? AND s.last_seen>?
+                             AND u.is_active=1""",
                         (token_hash, now, now - 1800),
                     ).fetchone()
                     if row:
@@ -43,6 +47,8 @@ def create_app():
                                   (now, token_hash))
                         c.commit()
                         request.state.admin_authenticated = True
+                        request.state.admin_username = row["username"]
+                        request.state.admin_role = row["role"]
         return await call_next(request)
     webui_dir = Path(__file__).resolve().parent / "webui"
     app.mount("/assets", StaticFiles(directory=webui_dir / "assets"), name="webui-assets")
