@@ -346,6 +346,8 @@ def build_router(db, app_settings=None):
     @r.post("/admin/users/{username}/password")
     def reset_admin_user_password(username: str, q: AdminUserPasswordRequest, request: Request):
         require_super_admin(request)
+        if username == getattr(request.state, "admin_username", ""):
+            raise HTTPException(409, "use_self_service_for_current_admin")
         if len(q.password) < 12:
             raise HTTPException(400, "password_too_short")
         actor = getattr(request.state, "admin_username", "")
@@ -1969,6 +1971,7 @@ def build_router(db, app_settings=None):
     @r.post("/backup")
     def backup_create(request: Request):
         require_admin(request)
+        require_super_admin(request)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"backups"
         root.mkdir(parents=True,exist_ok=True)
         import datetime as dt
