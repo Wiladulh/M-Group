@@ -69,9 +69,9 @@ void finishRequest(const String& path,const String& body) {
   } else {
     // Keep the exact request ID and amount. Raw card UID/PIN are deliberately
     // not persisted; retry requires the member to tap again and re-enter PIN.
-    mode=pendingOp=="topup"?WAIT_CARD_TOPUP:WAIT_CARD_PAYMENT;
+    mode=pendingOp=="topup"?ENTER_OPERATOR_PIN:WAIT_CARD_PAYMENT;
     pendingCardUid="";
-    lines("HASIL BELUM ADA","Tap ulang; PIN ulang");
+    lines(pendingOp=="topup"?"TOPUP TERTUNDA":"HASIL BELUM ADA",pendingOp=="topup"?"Masukkan PIN op":"Tap ulang; PIN ulang");
   }
 }
 String cardUid() {
