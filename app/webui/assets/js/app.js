@@ -622,7 +622,7 @@ function unlockApp(username,role=null){
   ['financialForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
   if($('accountSettings'))$('accountSettings').hidden=role==='auditor';
   if($('productForm')){
-    ['productName','productPrice','productStock','productCapacity','productImageFile','productEnabled'].forEach(id=>{const el=$(id);if(el&&el.closest('label'))el.closest('label').hidden=!superAdmin;});
+    ['productName','productPrice','productStock','productCapacity','productImageFile','productEnabled'].forEach(id=>{const el=$(id);if(el&&el.closest('label'))el.closest('label').hidden=!superAdmin;else if(el)el.hidden=!superAdmin;});
     const submit=$('productForm').querySelector('button[type="submit"]');if(submit)submit.hidden=!superAdmin;
   }
   loadNfcCashierOptions();
