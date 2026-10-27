@@ -205,7 +205,6 @@ async function loadNfcCashierOptions(){
     if(!rows.length)select.innerHTML='<option value="">Tidak ada Cashier aktif</option>';
   }catch(err){select.innerHTML='<option value="">Gagal memuat Cashier</option>'}
 }
-loadNfcCashierOptions();
 let nfcPollTimer=null;
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
@@ -619,6 +618,7 @@ function showLogin(message=''){
 let currentAdminRole=null;
 function unlockApp(username,role=null){
   currentAdminRole=role;
+  loadNfcCashierOptions();
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
   $('activeUsername').textContent=(username||'Admin')+(role?' · '+role:'');
