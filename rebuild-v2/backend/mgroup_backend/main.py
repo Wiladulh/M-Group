@@ -1255,12 +1255,21 @@ def _transaction_window(period: str, date: str | None, start_date: str | None, e
     from zoneinfo import ZoneInfo
     jakarta=ZoneInfo('Asia/Jakarta')
     selected=dt.date.fromisoformat(date) if date else dt.datetime.now(jakarta).date()
+    period_alias={'1d':'day','1w':'week','1m':'month'}
+    period=period_alias.get(period,period)
     if period=='day':
         start=selected; end=start+dt.timedelta(days=1)
     elif period=='week':
         start=selected-dt.timedelta(days=selected.weekday()); end=start+dt.timedelta(days=7)
     elif period=='month':
         start=selected.replace(day=1); end=(start.replace(year=start.year+1,month=1) if start.month==12 else start.replace(month=start.month+1))
+    elif period in {'3m','5m','1y'}:
+        months={'3m':3,'5m':5,'1y':12}[period]
+        end=selected.replace(day=1)
+        index=end.year*12+(end.month-1)-(months-1)
+        start=dt.date(index//12,index%12+1,1)
+        end_index=end.year*12+end.month
+        end=dt.date(end_index//12,end_index%12+1,1)
     elif period=='custom':
         if not start_date or not end_date: raise HTTPException(status_code=400,detail={'code':'CUSTOM_RANGE_REQUIRED'})
         start=dt.date.fromisoformat(start_date); inclusive_end=dt.date.fromisoformat(end_date)
