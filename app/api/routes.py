@@ -1153,7 +1153,7 @@ def build_router(db, app_settings=None):
         require_device(hardware_id,x_m_group_device_key)
         with db.connect() as c:
             row = c.execute(
-                "SELECT device_type FROM device_registry WHERE hardware_id=?", (hardware_id,)
+                "SELECT device_type,display_name FROM device_registry WHERE hardware_id=?", (hardware_id,)
             ).fetchone()
             stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
             if not row or stored_type != device_type:
@@ -1164,6 +1164,11 @@ def build_router(db, app_settings=None):
             if location:
                 c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP,display_name=?,updated_at=CURRENT_TIMESTAMP WHERE hardware_id=?",
                           (location,hardware_id))
+                if row["display_name"] != location:
+                    c.execute(
+                        "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                        ("device:"+hardware_id,"device_location_updated",hardware_id,"installation_location_updated",int(time.time())),
+                    )
             else:
                 c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE hardware_id=?",
                           (hardware_id,))
