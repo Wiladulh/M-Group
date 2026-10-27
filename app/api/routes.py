@@ -1773,7 +1773,10 @@ def build_router(db, app_settings=None):
             queries.append("""SELECT f.transaction_id,f.created_at,'TOPUP' source,NULL hardware_id,a.member_id,f.account_id,
                               'TOPUP' transaction_type,f.amount,f.status,'CASH' payment_method,'local' payment_provider
                               FROM financial_transactions f JOIN financial_accounts a ON a.account_id=f.account_id
-                              WHERE f.transaction_type='credit' AND COALESCE(f.idempotency_key,'') NOT LIKE 'cashier-deposit:%'""")
+                              WHERE f.transaction_type='credit' AND a.member_id IS NOT NULL
+                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'cashier-deposit:%'
+                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'correction:%'
+                                AND COALESCE(f.idempotency_key,'') NOT LIKE 'vending-refund:%'""")
         if source in {"ALL","VENDING"}:
             queries.append("""SELECT v.transaction_id,v.created_at,'VENDING' source,m.hardware_id,a.member_id,
                               v.account_id,'PURCHASE' transaction_type,v.amount,v.status,
