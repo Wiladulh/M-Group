@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <time.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <Wire.h>
@@ -115,6 +116,7 @@ bool connectWifi(unsigned long timeoutMs=10000){
   unsigned long started=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs){delay(250);Serial.print(".");}
   if(WiFi.status()==WL_CONNECTED){
+    configTime(7*3600,0,"pool.ntp.org","time.google.com","time.cloudflare.com");
     Serial.printf("\nIP %s\n",WiFi.localIP().toString().c_str());
     return true;
   }
