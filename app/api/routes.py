@@ -167,6 +167,7 @@ class VendingProductRequest(BaseModel):
     servo_channel: int | None = None
 
 MAX_PRODUCT_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_OPTIMIZED_PRODUCT_IMAGE_BYTES = 64 * 1024
 
 class VendingBeginRequest(BaseModel):
     product_id: str
@@ -1390,21 +1391,30 @@ def build_router(db, app_settings=None):
                 raise HTTPException(413,"product_image_dimensions_too_large")
             source.verify()
             source=Image.open(io.BytesIO(raw)).convert("RGB")
-            source.thumbnail((1200,1200))
+            source.thumbnail((480,480))
             out=io.BytesIO()
             try:
-                source.save(out,format="WEBP",quality=82,method=6)
                 media_type="image/webp"
+                for quality in (72,64,56,48,40):
+                    out=io.BytesIO()
+                    source.save(out,format="WEBP",quality=quality,method=6)
+                    if out.tell()<=MAX_OPTIMIZED_PRODUCT_IMAGE_BYTES:
+                        break
             except Exception:
                 out=io.BytesIO()
-                source.save(out,format="JPEG",quality=85,optimize=True)
+                source.save(out,format="JPEG",quality=55,optimize=True)
                 media_type="image/jpeg"
             optimized=out.getvalue()
+            if len(optimized)>MAX_OPTIMIZED_PRODUCT_IMAGE_BYTES:
+                out=io.BytesIO()
+                source.save(out,format="JPEG",quality=40,optimize=True)
+                optimized=out.getvalue()
+                media_type="image/jpeg"
         except HTTPException:
             raise
         except (UnidentifiedImageError, OSError, ValueError):
             raise HTTPException(415,"invalid_or_corrupt_product_image")
-        if len(optimized)>MAX_PRODUCT_IMAGE_BYTES: raise HTTPException(413,"optimized_product_image_must_be_under_2mb")
+        if len(optimized)>MAX_OPTIMIZED_PRODUCT_IMAGE_BYTES: raise HTTPException(413,"optimized_product_image_must_be_under_64kb")
         digest=hashlib.sha256(optimized).hexdigest()
         with db.connect() as c:
             exists=c.execute("SELECT 1 FROM vending_products WHERE machine_id=? AND (CAST(product_id AS TEXT)=? OR CAST(slot AS TEXT)=?)",(machine["machine_id"],str(product_id),str(product_id))).fetchone()
