@@ -22,6 +22,8 @@
       <button type="submit">Generate Key</button>
     </form>
     <div id="deviceProvisionResult" class="result"></div>
+    <label>Device ID dari server
+      <input id="provisionedDeviceId" type="text" readonly autocomplete="off" placeholder="Belum ada Device ID baru"></label>
     <label>Device key (hanya ditampilkan setelah dibuat)
       <input id="provisionedDeviceKey" type="password" readonly autocomplete="off" placeholder="Belum ada key baru">
     </label>
@@ -29,6 +31,6 @@
       <button type="button" id="toggleDeviceKey">Tampilkan/Sembunyikan Key</button>
       <button type="button" id="copyDeviceKey">Salin Key</button>
     </div>
-    <p class="hint">Masukkan hanya Device Key ke WebUI mini perangkat. Device ID tidak perlu dimasukkan. Database hanya menyimpan hash key.</p>
+    <p class="hint">Masukkan Device ID dan Device Key dari server ke WebUI mini perangkat. Key ditampilkan satu kali; database hanya menyimpan hash key.</p>
   </section>
 </div>
