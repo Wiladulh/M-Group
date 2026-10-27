@@ -947,7 +947,12 @@ def build_router(db, app_settings=None):
         require_admin(request)
         require_super_admin(request)
         try:
-            return devices.soft_delete(hardware_id)
+            result=devices.soft_delete(hardware_id)
+            with db.connect() as c:
+                c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                          ("device","access_revoked",result.get("registry_id") or hardware_id,"device_key_invalidated;status=disabled"))
+                c.commit()
+            return result
         except ValueError as e:
             raise HTTPException(404,str(e))
 
