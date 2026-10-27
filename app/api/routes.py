@@ -141,7 +141,15 @@ class DeviceProvisionRequest(BaseModel):
 class FinancialRequest(BaseModel):
     amount: int
     reference: str | None = None
-    idempotency_key: str | None = None
+    idempotency_key: str
+
+    @__import__("pydantic").field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value):
+        value=value.strip()
+        if len(value)<8 or len(value)>128:
+            raise ValueError("invalid_idempotency_key")
+        return value
 
 class VendingRegisterRequest(BaseModel):
     machine_id: str
