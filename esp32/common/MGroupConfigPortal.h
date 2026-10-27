@@ -21,11 +21,12 @@ class MGroupConfigPortal {
     startPortal(needed);
   }
   bool active() const { return active_; }
+  void setStatusExtra(const String &jsonFields){statusExtra_=jsonFields;}
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
   const char *label_="M-Group Device"; bool active_=false,cashierMode_=false;
-  String sessionToken_=""; unsigned long pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
+  String sessionToken_="",statusExtra_=""; unsigned long pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
   bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
@@ -77,7 +78,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       pinFailures_=0;pinWindowStarted_=0;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
     });
     server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
-      String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+"}";
+      String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+statusExtra_+"}";
       req->send(200,"application/json; charset=utf-8",body);
     });
     server_.on("/test",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
