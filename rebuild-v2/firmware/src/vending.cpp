@@ -23,7 +23,7 @@ MFRC522 rfid(RFID_SS,RFID_RST);
 Adafruit_PN532 pn532(PN532_IRQ,PN532_RESET);
 Servo servos[SERVO_COUNT];
 bool displayReady=false,pn532Ready=false,rc522Ready=false,catalogOnline=false;
-struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0; };
+struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0;bool enabled=false; };
 Product products[5];
 int productCount=0,selected=0,currentDigit=0;
 String lastCardUid,pinDigits,pendingCardUid,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
@@ -65,7 +65,7 @@ bool validateCatalog(const JsonDocument& doc,Product out[5]) {
     int id=item["product_id"]|0;long price=item["price_minor"]|0L;int stock=item["stock"]|0;int capacity=item["capacity"]|0;
     if(id<1||id>SERVO_COUNT||seen[id]||price<0||stock<0||capacity<0||stock>capacity)return false;
     seen[id]=true;out[id-1].id=id;out[id-1].name=item["name"]|String("Produk ")+String(id);
-    out[id-1].price=price;out[id-1].stock=stock;out[id-1].capacity=capacity;
+    out[id-1].price=price;out[id-1].stock=stock;out[id-1].capacity=capacity;out[id-1].enabled=item["enabled"]|false;
   }
   for(int id=1;id<=SERVO_COUNT;id++)if(!seen[id])return false;
   return true;
@@ -159,6 +159,7 @@ void actuateAndVerify() {
 void beginPurchase() {
   if(!catalogOnline){draw("SERVER OFFLINE","Pembayaran mati","Coba lagi nanti");flow=SELECT_PRODUCT;return;}
   Product& p=products[selected];
+  if(!p.enabled){draw("PRODUK NONAKTIF","Aktifkan di WebUI");flow=SELECT_PRODUCT;return;}
   if(p.price<=0){draw("PRODUK BELUM SIAP","Atur harga di WebUI");flow=SELECT_PRODUCT;return;}
   if(p.stock<=0){draw("STOK HABIS",p.name,"Pilih produk lain");flow=SELECT_PRODUCT;return;}
   if(pendingRequestId.isEmpty())persistCreateRequest(p.id,p.price);
@@ -263,8 +264,8 @@ void loop() {
   }
   if(flow==SELECT_PRODUCT&&productCount) {
     Product& p=products[selected];
-    draw(String(p.id)+". "+p.name, p.price>0?("Rp "+String(p.price)):"Harga belum diatur",
-         catalogOnline?(p.stock>0?"Stok "+String(p.stock)+" | SELECT":"STOK HABIS"):"OFFLINE - BAYAR MATI");
+    draw(String(p.id)+". "+p.name, !p.enabled?"NONAKTIF":(p.price>0?("Rp "+String(p.price)):"Harga belum diatur"),
+         catalogOnline?(p.enabled&&p.stock>0?"Stok "+String(p.stock)+" | SELECT":(p.stock<=0?"STOK HABIS":"NONAKTIF")):"OFFLINE - BAYAR MATI");
   } else if(flow==SELECT_PRODUCT&&!productCount)draw("KATALOG KOSONG","Atur produk di WebUI");
   pollCard();handleButtons();delay(12);
 }
