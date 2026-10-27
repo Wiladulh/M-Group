@@ -2109,7 +2109,6 @@ def build_router(db, app_settings=None):
                     (actor,"backup_restore",None,"all_admin_sessions_revoked;pre_restore_backup="+snapshot.name,restored_at),
                 )
                 c.commit()
-            response=None
             return {"status":"restored","manifest":result,"pre_restore_backup":snapshot.name,"admin_sessions_revoked":True}
         except HTTPException:
             raise
