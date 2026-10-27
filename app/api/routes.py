@@ -1391,15 +1391,19 @@ def build_router(db, app_settings=None):
         device_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
         fingerprint=device_identity["fingerprint"]
         with db.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
             row=c.execute(
                 """SELECT session_id,member_id,status,hardware_id FROM nfc_registration_sessions
                    WHERE hardware_id IN ('*',?) AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
                      AND expires_at>CURRENT_TIMESTAMP ORDER BY created_at LIMIT 1""",(fingerprint,)
             ).fetchone()
             if row and row["hardware_id"]=="*":
-                c.execute("UPDATE nfc_registration_sessions SET hardware_id=? WHERE session_id=? AND hardware_id='*'",
-                          (fingerprint,row["session_id"]))
-                c.commit()
+                claimed=c.execute("UPDATE nfc_registration_sessions SET hardware_id=? WHERE session_id=? AND hardware_id='*'",
+                                  (fingerprint,row["session_id"]))
+                if claimed.rowcount!=1:
+                    c.rollback()
+                    return {"status":"idle"}
+            c.commit()
         if not row:
             return {"status":"idle"}
         return {"status":row["status"],"session_id":row["session_id"],"member_id":row["member_id"]}
