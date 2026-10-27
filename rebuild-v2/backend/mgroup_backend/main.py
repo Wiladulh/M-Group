@@ -205,7 +205,7 @@ def ensure_system_account(connection: sqlite3.Connection) -> str:
     if row:
         return row['account_id']
     account_id = new_id('acct')
-    connection.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'system',0)", (account_id,))
+    connection.execute("INSERT INTO accounts(account_id,account_type,label,balance_minor) VALUES(?,'system','System clearing',0)", (account_id,))
     return account_id
 
 
@@ -471,8 +471,8 @@ def create_merchant_account(payload: MerchantAccountCreate, connection: DB):
         raise HTTPException(status_code=422, detail={'code': 'INVALID_MERCHANT_LABEL'})
     account_id = new_id('merchant')
     with transaction(connection):
-        connection.execute("INSERT INTO accounts(account_id,account_type,balance_minor) VALUES(?,'merchant',0)",
-                           (account_id,))
+        connection.execute("INSERT INTO accounts(account_id,account_type,label,balance_minor) VALUES(?,'merchant',?,0)",
+                           (account_id,label))
         audit(connection, 'merchant.account.create', 'account', account_id, detail={'label': label})
     return {'account_id': account_id, 'label': label, 'account_type': 'merchant', 'currency': 'IDR', 'balance_minor': 0}
 
@@ -1194,7 +1194,7 @@ def finance_reconciliation(connection: DB):
 
 @app.get('/api/v2/admin/accounts', dependencies=[Depends(require_admin)])
 def admin_accounts(connection: DB):
-    rows=connection.execute("""SELECT a.account_id,a.member_id,m.display_name AS member_name,a.account_type,
+    rows=connection.execute("""SELECT a.account_id,a.member_id,m.display_name AS member_name,a.account_type,a.label,
         a.currency,a.balance_minor,a.status,a.updated_at FROM accounts a
         LEFT JOIN members m ON m.member_id=a.member_id ORDER BY a.account_type,a.created_at DESC""").fetchall()
     return {'items':[dict(row) for row in rows]}
