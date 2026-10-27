@@ -331,8 +331,8 @@ def build_router(db, app_settings=None):
         return result
 
     def require_super_admin(request: Request):
-        if not getattr(request.state, "admin_authenticated", False):
-            raise HTTPException(401, "admin_session_required")
+        # Reuse session, read-only role, and same-origin checks for all privileged routes.
+        require_admin(request)
         if getattr(request.state, "admin_role", None) != "super_admin":
             raise HTTPException(403, "admin_role_forbidden")
 
