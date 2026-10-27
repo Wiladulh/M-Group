@@ -175,6 +175,8 @@ class VendingBeginRequest(BaseModel):
     idempotency_key: str
     payment_method: str = "NFC"
     payment_provider: str = "local"
+    # Firmware submits the price it displayed; reject a changed catalog price.
+    expected_amount: int | None = None
 
 class VendingDispenseRequest(BaseModel):
     success: bool = True
@@ -1259,7 +1261,7 @@ def build_router(db, app_settings=None):
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
-            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider))
+            return public_vending_transaction(vending.begin(machine["machine_id"],q.product_id,q.credential_id,q.account_id,q.idempotency_key,q.payment_method,q.payment_provider,q.expected_amount))
         except ValueError as e:raise HTTPException(409 if str(e) in {"out_of_stock","machine_not_active","qris_payment_provider_not_activated"} else 400,str(e))
 
     @r.get("/vending/transactions/{transaction_id}")
