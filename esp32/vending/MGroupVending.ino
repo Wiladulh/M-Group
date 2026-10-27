@@ -140,10 +140,33 @@ String jsonStringBetween(const String&json,const String&key,int start,int end){
   p+=marker.length();int e=json.indexOf('"',p);if(e<0||e>end)return "";
   return json.substring(p,e);
 }
+String productAssetToken(const String&productId){
+  uint8_t digest[32];mbedtls_sha256((const unsigned char*)productId.c_str(),productId.length(),digest,0);
+  char token[11];for(int i=0;i<5;i++)sprintf(token+i*2,"%02x",digest[i]);token[10]=0;
+  return String(token);
+}
+int countCachedProductImages(const String&catalog){
+  if(!productImageFsReady||catalog.isEmpty())return 0;
+  int pos=0,count=0;
+  while(true){
+    int idPos=catalog.indexOf("\\"product_id\\":\\"",pos);if(idPos<0)break;
+    int objectStart=catalog.lastIndexOf('{',idPos);int objectEnd=catalog.indexOf('}',idPos);
+    if(objectStart<0||objectEnd<0)break;
+    String id=jsonStringBetween(catalog,"product_id",objectStart,objectEnd);
+    String imageUrl=jsonStringBetween(catalog,"image_url",objectStart,objectEnd);
+    if(id.length()&&imageUrl.length()){
+      String path="/p_"+productAssetToken(id)+".img";
+      if(LittleFS.exists(path.c_str()))count++;
+    }
+    pos=objectEnd+1;
+  }
+  return count;
+}
 bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const String&productId){
   if(!productImageFsReady||relativeUrl.isEmpty()||expectedHash.length()!=64)return false;
-  String prefKey="img_"+productId+"_sha";
-  String finalPath="/product_"+productId+".img",tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
+  String token=productAssetToken(productId);
+  String prefKey="p"+token+"s";
+  String finalPath="/p_"+token+".img",tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
   if(LittleFS.exists(backupPath.c_str())){
     if(!LittleFS.exists(finalPath.c_str())&&!LittleFS.rename(backupPath.c_str(),finalPath.c_str()))return false;
     else LittleFS.remove(backupPath.c_str());
@@ -240,7 +263,7 @@ bool products(){
     vendingPrefs.putString("catalog_hash",catalogHash);vendingPrefs.putString("catalog_version",catalogHash);
     catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");
     syncProductImages(reply);
-    int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;
+    int cachedImages=countCachedProductImages(reply);
     configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
   }else{
     catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
