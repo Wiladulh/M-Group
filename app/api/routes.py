@@ -18,6 +18,7 @@ from pathlib import Path
 from uuid import uuid4
 import time
 from urllib.parse import urlsplit
+from PIL import Image, UnidentifiedImageError
 from app.core.auth import hash_password, hash_session_token, new_session_token, verify_password
 
 MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -135,6 +136,7 @@ class DeviceRegisterRequest(BaseModel):
 
 class DeviceProvisionRequest(BaseModel):
     device_type: str
+    location: str
 
 class FinancialRequest(BaseModel):
     amount: int
@@ -163,6 +165,8 @@ class VendingProductRequest(BaseModel):
     slot: int | None = None
     capacity: int | None = None
     servo_channel: int | None = None
+
+MAX_PRODUCT_IMAGE_BYTES = 2 * 1024 * 1024
 
 class VendingBeginRequest(BaseModel):
     product_id: str
@@ -789,6 +793,9 @@ def build_router(db, app_settings=None):
     @r.post("/devices/provision")
     def device_provision_auto(request: Request, q:DeviceProvisionRequest):
         require_admin(request)
+        location = q.location.strip()
+        if not location or len(location) > 120:
+            raise HTTPException(400, "device_location_required_max_120_chars")
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
@@ -802,15 +809,15 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (registry_id,hardware_id,device_type,mac_address,display_name,status,last_seen,
                     auth_key_hash,auth_key_hint,created_at,updated_at)
-                   VALUES(?,NULL,?,NULL,'Lokasi belum ditentukan','awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (registry_id,device_type,digest,key[-6:]),
+                   VALUES(?,NULL,?,NULL,?,'awaiting_device_registration',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+                (registry_id,device_type,location,digest,key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
-                ("device","provisioned",registry_id,f"type={device_type};location=unassigned"),
+                ("device","provisioned",registry_id,f"type={device_type};location={location}"),
             )
             c.commit()
-        return {"registry_id":registry_id,"display_name":"Lokasi belum ditentukan",
+        return {"registry_id":registry_id,"display_name":location,"location":location,
                 "device_type":device_type,"device_key":key,
                 "status":"awaiting_device_registration","key_shown_once":True}
 
@@ -1106,7 +1113,71 @@ def build_router(db, app_settings=None):
                 item["discount_amount"] = discount
                 item["effective_price"] = item["price"] - discount
                 item["promo_id"] = promo["promo_id"]
+        with db.connect() as c:
+            image_rows=c.execute("SELECT product_id,sha256,byte_size,content_type FROM vending_product_images WHERE machine_id=?",(machine["machine_id"],)).fetchall()
+        images={str(x["product_id"]):dict(x) for x in image_rows}
+        for item in catalog:
+            image=images.get(str(item["product_id"]))
+            item["image_url"]=("/api/v1/vending/"+machine["machine_id"]+"/products/"+str(item["product_id"])+"/image?v="+image["sha256"] if image else None)
+            item["image_sha256"]=image["sha256"] if image else None
+            item["image_size"]=image["byte_size"] if image else 0
         return {"machine": machine, "products": catalog}
+
+    @r.get("/vending/{machine_id}/products/{product_id}/image")
+    def vending_product_image(machine_id: str, product_id: str, request: Request, v: str | None = None):
+        machine=resolve_vending_machine(machine_id)
+        if request.headers.get("x-m-group-device-key"):
+            identity=require_device_by_key(request.headers.get("x-m-group-device-key"), {"esp32-vending","esp32-s3-vending","vending"})
+            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+                raise HTTPException(403,"machine_hardware_identity_mismatch")
+        else:
+            require_admin(request)
+        with db.connect() as c:
+            row=c.execute("SELECT content_type,image_data,sha256 FROM vending_product_images WHERE machine_id=? AND product_id=?",(machine["machine_id"],str(product_id))).fetchone()
+        if not row: raise HTTPException(404,"product_image_not_found")
+        if v and v != row["sha256"]: raise HTTPException(409,"product_image_version_changed")
+        return Response(content=bytes(row["image_data"]),media_type=row["content_type"],headers={"ETag":'"'+row["sha256"]+'"',"Cache-Control":"public, max-age=31536000, immutable"})
+
+    @r.post("/vending/{machine_id}/products/{product_id}/image")
+    async def vending_product_image_upload(request: Request, machine_id: str, product_id: str, file: UploadFile = File(...)):
+        require_admin(request)
+        machine=resolve_vending_machine(machine_id)
+        if str(product_id) not in VendingService.PRODUCT_IDS: raise HTTPException(400,"product_id_must_be_1_to_5")
+        raw=await file.read(MAX_PRODUCT_IMAGE_BYTES+1)
+        if not raw or len(raw)>MAX_PRODUCT_IMAGE_BYTES: raise HTTPException(413,"product_image_must_be_under_2mb")
+        try:
+            source=Image.open(io.BytesIO(raw))
+            if source.format not in {"PNG","JPEG","WEBP"}: raise HTTPException(415,"unsupported_product_image_format")
+            source.verify()
+            source=Image.open(io.BytesIO(raw)).convert("RGB")
+            source.thumbnail((1200,1200))
+            out=io.BytesIO()
+            try:
+                source.save(out,format="WEBP",quality=82,method=6)
+                media_type="image/webp"
+            except Exception:
+                out=io.BytesIO()
+                source.save(out,format="JPEG",quality=85,optimize=True)
+                media_type="image/jpeg"
+            optimized=out.getvalue()
+        except HTTPException:
+            raise
+        except (UnidentifiedImageError, OSError, ValueError):
+            raise HTTPException(415,"invalid_or_corrupt_product_image")
+        if len(optimized)>MAX_PRODUCT_IMAGE_BYTES: raise HTTPException(413,"optimized_product_image_must_be_under_2mb")
+        digest=hashlib.sha256(optimized).hexdigest()
+        with db.connect() as c:
+            exists=c.execute("SELECT 1 FROM vending_products WHERE machine_id=? AND (CAST(product_id AS TEXT)=? OR CAST(slot AS TEXT)=?)",(machine["machine_id"],str(product_id),str(product_id))).fetchone()
+            if not exists: raise HTTPException(404,"product_not_found")
+            c.execute("""INSERT INTO vending_product_images(machine_id,product_id,content_type,image_data,sha256,byte_size,updated_at)
+                         VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                         ON CONFLICT(machine_id,product_id) DO UPDATE SET content_type=excluded.content_type,image_data=excluded.image_data,
+                         sha256=excluded.sha256,byte_size=excluded.byte_size,updated_at=CURRENT_TIMESTAMP""",
+                      (machine["machine_id"],str(product_id),media_type,optimized,digest,len(optimized)))
+            c.execute("INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
+                      ("inventory","product_image_updated",machine["machine_id"]+":"+str(product_id),"sha256="+digest+";bytes="+str(len(optimized))))
+            c.commit()
+        return {"machine_id":machine["machine_id"],"product_id":str(product_id),"image_url":"/api/v1/vending/"+machine["machine_id"]+"/products/"+str(product_id)+"/image?v="+digest,"sha256":digest,"byte_size":len(optimized),"content_type":media_type}
 
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(request: Request, machine_id,product_id,q:VendingProductRequest):
