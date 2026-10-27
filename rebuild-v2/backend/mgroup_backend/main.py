@@ -386,7 +386,7 @@ def create_member(payload: MemberCreate, connection: DB):
 
 @app.get('/api/v2/members', dependencies=[Depends(require_admin)])
 def list_members(connection: DB):
-    rows = connection.execute('SELECT m.member_id,m.display_name,m.nik,m.phone,m.email,m.profile_json,m.status,a.account_id,a.balance_minor,(SELECT COUNT(*) FROM member_cards c WHERE c.member_id=m.member_id AND c.status='active') AS active_cards FROM members m JOIN accounts a ON a.member_id=m.member_id ORDER BY m.created_at DESC').fetchall()
+    rows = connection.execute("SELECT m.member_id,m.display_name,m.nik,m.phone,m.email,m.profile_json,m.status,a.account_id,a.balance_minor,(SELECT COUNT(*) FROM member_cards c WHERE c.member_id=m.member_id AND c.status='active') AS active_cards FROM members m JOIN accounts a ON a.member_id=m.member_id ORDER BY m.created_at DESC").fetchall()
     items=[]
     for row in rows:
         item=dict(row)
