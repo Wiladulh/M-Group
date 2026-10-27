@@ -1645,6 +1645,14 @@ def build_router(db, app_settings=None):
         transactions=[dict(x) for x in rows]
         if hardware_id and hardware_id!="ALL":
             transactions=[x for x in transactions if x.get("hardware_id")==hardware_id]
+        for transaction in transactions:
+            created=transaction.get("created_at")
+            if created:
+                try:
+                    parsed=dt.datetime.strptime(str(created)[:19],"%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
+                    transaction["created_at"]=parsed.astimezone(jakarta).strftime("%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    pass
         return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,"transactions":transactions}
 
     @r.get("/audit/export.xlsx")
