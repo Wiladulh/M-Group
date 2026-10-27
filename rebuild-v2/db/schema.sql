@@ -41,6 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_device_events_hardware_time
 CREATE TABLE IF NOT EXISTS members (
     member_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
+    nik TEXT UNIQUE,
+    phone TEXT,
+    email TEXT,
+    profile_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'suspended', 'closed')),
     pin_hash TEXT,
@@ -122,3 +126,85 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_entity_time
     ON audit_events(entity_type, entity_id, created_at);
+
+CREATE TABLE IF NOT EXISTS product_slots (
+    registry_id TEXT NOT NULL,
+    product_id INTEGER NOT NULL CHECK (product_id BETWEEN 1 AND 5),
+    name TEXT NOT NULL,
+    price_minor INTEGER NOT NULL CHECK (price_minor >= 0),
+    stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    image_path TEXT,
+    nfc_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (nfc_promo_percent BETWEEN 0 AND 0),
+    qris_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (qris_promo_percent BETWEEN 0 AND 0),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (registry_id, product_id),
+    FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id)
+);
+
+CREATE TABLE IF NOT EXISTS product_images (
+    registry_id TEXT NOT NULL,
+    product_id INTEGER NOT NULL CHECK (product_id BETWEEN 1 AND 5),
+    content_type TEXT NOT NULL,
+    image_data BLOB NOT NULL,
+    sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size BETWEEN 1 AND 2097152),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (registry_id, product_id),
+    FOREIGN KEY (registry_id, product_id) REFERENCES product_slots(registry_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS pin_attempts (
+    card_hash TEXT NOT NULL,
+    hardware_id TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (card_hash, hardware_id)
+);
+
+CREATE TABLE IF NOT EXISTS pin_card_attempts (
+    card_hash TEXT PRIMARY KEY,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cashiers (
+    cashier_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cashier_device_config (
+    registry_id TEXT PRIMARY KEY,
+    operator_id TEXT NOT NULL,
+    operator_name TEXT NOT NULL,
+    operator_pin_hash TEXT NOT NULL,
+    settlement_account_id TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id),
+    FOREIGN KEY (settlement_account_id) REFERENCES accounts(account_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cashier_operator_binding ON cashier_device_config(operator_id);
+
+CREATE TABLE IF NOT EXISTS nfc_registration_sessions (
+    session_id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL,
+    registry_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('scan_pending','waiting_nfc','pin_pending','processing','completed','failed','expired')),
+    card_uid_hash TEXT,
+    card_uid_hint TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    completed_at TEXT,
+    error_code TEXT,
+    FOREIGN KEY (member_id) REFERENCES members(member_id),
+    FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nfc_registration_cashier_status
+    ON nfc_registration_sessions(registry_id,status,created_at);
+
+
