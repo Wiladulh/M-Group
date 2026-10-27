@@ -350,6 +350,7 @@ async function loadFinancialLedger(){
 }
 $('account').onchange=loadFinancialLedger;
 let financialPending=null;
+try{const savedFinancialPending=sessionStorage.getItem('mgroup-financial-pending');if(savedFinancialPending)financialPending=JSON.parse(savedFinancialPending)}catch(_){}
 $('financialForm').onsubmit=async e=>{
   e.preventDefault();
   const accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
@@ -363,7 +364,7 @@ $('financialForm').onsubmit=async e=>{
   const signature=JSON.stringify({accountId,amount,direction,reference});
   if(!financialPending||financialPending.signature!==signature){
     const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
-    financialPending={signature,key:'webui-financial:'+nonce};
+    financialPending={signature,key:'webui-financial:'+nonce};\n    try{sessionStorage.setItem('mgroup-financial-pending',JSON.stringify(financialPending))}catch(_){}
   }
   try{
     const q={amount,reference,idempotency_key:financialPending.key};
@@ -371,7 +372,7 @@ $('financialForm').onsubmit=async e=>{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
     });
     $('financialResult').textContent=JSON.stringify(d,null,2);
-    if(r.ok){financialPending=null;await load();await loadFinancialLedger()}
+    if(r.ok){financialPending=null;try{sessionStorage.removeItem('mgroup-financial-pending')}catch(_){}await load();await loadFinancialLedger()}
     else $('financialResult').textContent+='\\nJika hasil transaksi belum pasti, ulangi dengan data yang sama agar key idempotensi tetap digunakan.';
   }catch(err){
     $('financialResult').textContent='Hasil transaksi belum dapat dipastikan. Ulangi dengan data yang sama; key idempotensi tetap disimpan. '+err.message;
