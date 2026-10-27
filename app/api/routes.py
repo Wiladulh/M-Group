@@ -1364,12 +1364,23 @@ def build_router(db, app_settings=None):
         require_admin(request)
         with db.connect() as c:
             row=c.execute(
-                "SELECT session_id,member_id,status,card_uid,credential_id,created_at,completed_at "
+                "SELECT session_id,member_id,status,card_uid,credential_id,created_at,completed_at,expires_at "
                 "FROM nfc_registration_sessions WHERE session_id=? AND member_id=?",
                 (session_id,member_id)
             ).fetchone()
+            if row and row["status"] in {"scan_pending","waiting_nfc","pin_pending","processing"}:
+                now_utc=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                if row["expires_at"]<=now_utc:
+                    c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(session_id,))
+                    c.commit()
+                    row=c.execute(
+                        "SELECT session_id,member_id,status,card_uid,credential_id,created_at,completed_at,expires_at "
+                        "FROM nfc_registration_sessions WHERE session_id=? AND member_id=?",
+                        (session_id,member_id)
+                    ).fetchone()
         if not row: raise HTTPException(404,"registration_session_not_found")
-        return dict(row)
+        result=dict(row);result.pop("expires_at",None)
+        return result
 
     @r.get("/cashier/nfc-registration")
     def cashier_nfc_registration(x_m_group_device_key: str | None = Header(default=None)):
