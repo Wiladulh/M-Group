@@ -11,9 +11,9 @@ class MGroupConfigPortal {
   void begin(String &wifiSsid,String &wifiPassword,String &baseUrl,String &deviceId,String &deviceKey,const char *deviceLabel,const char *storageNamespace,bool forceSetup) {
     ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; id_=&deviceId; key_=&deviceKey; label_=deviceLabel;
     prefs_.begin(storageNamespace,false);
-    cashierMode_=true; // Every device-local WebUI requires PIN authentication.
-    if(cashierMode_&&!prefs_.isKey("webui_pin_hash")){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+"19929900"));}
-    if(cashierMode_)sessionToken_=randomToken();
+    pinProtected_=true; // Every device-local WebUI requires PIN authentication.
+    if(pinProtected_&&!prefs_.isKey("webui_pin_hash")){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+"19929900"));}
+    if(pinProtected_)sessionToken_=randomToken();
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
     *url_=prefs_.getString("server_url",*url_); *id_=prefs_.getString("device_id",*id_); *key_=prefs_.getString("device_key",*key_);
     // Initialize the station interface before reading its hardware MAC.
@@ -27,14 +27,14 @@ class MGroupConfigPortal {
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
-  const char *label_="M-Group Device"; bool active_=false,cashierMode_=false;
+  const char *label_="M-Group Device"; bool active_=false,pinProtected_=false;
   String sessionToken_="",statusExtra_=""; unsigned long sessionExpiresAt_=0,pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
-  bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!sessionExpiresAt_||(long)(millis()-sessionExpiresAt_)>=0||!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
+  bool authorized(AsyncWebServerRequest *req){if(!pinProtected_)return true;if(!sessionExpiresAt_||(long)(millis()-sessionExpiresAt_)>=0||!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
   bool pinMatches(const String &pin){String salt=prefs_.getString("webui_pin_salt","");String stored=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");return salt.isEmpty()?sha256Hex(pin)==stored:sha256Hex(salt+pin)==stored;}
   void storePin(const String &pin){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+pin));}
-  bool defaultPinActive(){return cashierMode_&&pinMatches("19929900");}
+  bool defaultPinActive(){return pinProtected_&&pinMatches("19929900");}
   String loginPage(){
     String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PIN WebUI M-Group</title><body style="font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7"><h2>WebUI M-Group</h2><p>Masukkan PIN konfigurasi untuk membuka pengaturan perangkat.</p><form method="post" action="/login"><input name="pin" type="password" maxlength="32" autocomplete="current-password" required style="padding:12px;width:95%"><button style="padding:12px;margin-top:12px">Masuk</button></form></body></html>)HTML";
     if(defaultPinActive())h.replace("</form></body></html>","</form><p>PIN awal 19929900 masih aktif. Ganti setelah masuk.</p></body></html>");
@@ -59,7 +59,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>\n<label>Sertifikat CA server (wajib untuk HTTPS)</label><textarea name="tls_ca" maxlength="3500" rows="5" style="box-sizing:border-box;width:100%;font:12px monospace" placeholder="-----BEGIN CERTIFICATE----- ..."></textarea><small>HTTPS tanpa CA yang valid akan ditolak; jangan gunakan mode insecure.</small>\n<label>Device ID dari server</label><input name="device_id" maxlength="64" required autocomplete="off">
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWaktu lokal WIB: '+s.local_time+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')+'\\nTLS CA: '+(s.tls_ca_configured?'Tersimpan':'Belum diatur')+(s.catalog_sync_status?'\\nSinkron katalog: '+s.catalog_sync_status:'')+(s.catalog_hash?'\\nHash katalog: '+s.catalog_hash:'')+(s.catalog_sync_at?'\\nSinkron terakhir WIB: '+new Date(s.catalog_sync_at*1000).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'')+(s.catalog_sync_error?'\\nError sinkron: '+s.catalog_sync_error:'')+(s.product_images_status?'\\nSinkron gambar produk: '+s.product_images_status:'')+(s.product_images_cached!==undefined?'\\nGambar produk tersimpan: '+s.product_images_cached:'')+(s.registration_status?'\\nStatus NFC: '+s.registration_status:'')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
-    if(cashierMode_){
+    if(pinProtected_){
       if(defaultPinActive()){String heading=String("<h2>Konfigurasi ")+label+"</h2>";h.replace(heading.c_str(),heading+"<p class=\"warn\">PIN masih default 19929900. Ganti PIN sebelum menyimpan konfigurasi.</p>");}
       String pinForm=R"HTML(<hr><h3>Keamanan WebUI perangkat</h3><form method="post" action="/change-pin"><label>PIN saat ini</label><input name="old_pin" type="password" maxlength="32" required><label>PIN baru (minimal 8 karakter)</label><input name="new_pin" type="password" minlength="8" maxlength="32" required><label>Ulangi PIN baru</label><input name="confirm_pin" type="password" minlength="8" maxlength="32" required><button type="submit">Ganti PIN WebUI</button></form>)HTML";
       h.replace("</main></html>",pinForm+"</main></html>");
@@ -77,9 +77,9 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       active_=false;
       Serial.println("M-GROUP DEVICE WEBUI will be available at the DHCP IP on port 80 after Wi-Fi connects.");
     }
-    server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){if(cashierMode_&&!authorized(req)){req->send(200,"text/html; charset=utf-8",loginPage());return;}req->send(200,"text/html; charset=utf-8",page(label_));});
+    server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){if(pinProtected_&&!authorized(req)){req->send(200,"text/html; charset=utf-8",loginPage());return;}req->send(200,"text/html; charset=utf-8",page(label_));});
     server_.on("/login",HTTP_POST,[this](AsyncWebServerRequest *req){
-      if(!cashierMode_){req->redirect("/");return;}
+      if(!pinProtected_){req->redirect("/");return;}
       if(millis()<pinLockedUntil_){req->send(429,"text/plain","Terlalu banyak percobaan. Coba lagi 15 menit.");return;}
       String pin=req->hasParam("pin",true)?req->getParam("pin",true)->value():"";
       if(pin.length()<4||!pinMatches(pin)){if(pinWindowStarted_==0||millis()-pinWindowStarted_>900000UL){pinWindowStarted_=millis();pinFailures_=0;}if(++pinFailures_>=5){pinLockedUntil_=millis()+900000UL;pinFailures_=0;pinWindowStarted_=0;}req->send(401,"text/html; charset=utf-8",loginPage()+"<p>PIN salah atau percobaan dibatasi.</p>");return;}
@@ -110,7 +110,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       delay(900);ESP.restart();
     });
     server_.on("/change-pin",HTTP_POST,[this](AsyncWebServerRequest *req){
-      if(!cashierMode_){req->send(404,"text/plain","Not found");return;}if(!authorized(req)){requireAuth(req);return;}
+      if(!pinProtected_){req->send(404,"text/plain","Not found");return;}if(!authorized(req)){requireAuth(req);return;}
       auto value=[req](const char *name)->String{return req->hasParam(name,true)?req->getParam(name,true)->value():"";};String oldPin=value("old_pin"),newPin=value("new_pin"),confirm=value("confirm_pin");
       if(!pinMatches(oldPin)){req->send(403,"text/plain","PIN saat ini salah.");return;}
       if(newPin.length()<8||newPin.length()>32||newPin!=confirm||newPin=="19929900"){req->send(400,"text/plain","PIN baru harus 8-32 karakter, cocok dengan konfirmasi, dan bukan PIN default.");return;}
