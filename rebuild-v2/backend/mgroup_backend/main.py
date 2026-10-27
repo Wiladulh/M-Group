@@ -100,6 +100,14 @@ class CardEnroll(BaseModel):
 class MemberBalanceLookup(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
 
+class DeviceEnrollment(BaseModel):
+    hardware_id: str = Field(min_length=1, max_length=128)
+    mac_address: str | None = Field(default=None, max_length=32)
+
+class DeviceProvision(BaseModel):
+    device_type: str = Field(pattern='^(cashier|vending)$')
+    display_name: str = Field(default='', max_length=120)
+
 
 class PurchaseRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
@@ -170,28 +178,54 @@ def readiness(connection: DB):
     return {'status': 'ready', 'database': 'ok'}
 
 @app.post('/api/v2/admin/devices', status_code=201, dependencies=[Depends(require_admin)])
-def register_device(payload: dict, connection: DB):
-    hardware_id = str(payload.get('hardware_id', '')).strip()
-    device_type = payload.get('device_type')
-    display_name = str(payload.get('display_name', '')).strip()
-    if not hardware_id or len(hardware_id) > 128 or device_type not in ('cashier', 'vending'):
-        raise HTTPException(status_code=422, detail={'code': 'INVALID_DEVICE_REGISTRATION'})
-    registry_id = new_id('reg')
-    device_key = secrets.token_urlsafe(32)
-    try:
-        with transaction(connection):
-            connection.execute('INSERT INTO device_registry(registry_id,hardware_id,device_type,display_name,status,device_key_hash,device_key_hint) VALUES(?,?,?,?,?,?,?)',
-                (registry_id, hardware_id, device_type, display_name, 'active', hash_secret(device_key, settings.device_key_pepper), device_key[-4:]))
-            connection.execute('INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?,?,?,?,?)',
-                (new_id('evt'), registry_id, hardware_id, 'device.provisioned', json.dumps({'device_type': device_type})))
-            if device_type == 'vending':
-                for product_id in range(1, 6):
-                    connection.execute('INSERT INTO product_slots(registry_id,product_id,name,price_minor,stock) VALUES(?,?,?,?,?)', (registry_id, product_id, f'Produk {product_id}', 0, 0))
-            connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)',
-                (new_id('aud'), 'admin', 'device.provision', 'device', registry_id, json.dumps({'hardware_id': hardware_id, 'device_type': device_type})))
-    except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail={'code': 'DEVICE_ALREADY_REGISTERED'}) from exc
-    return {'registry_id': registry_id, 'hardware_id': hardware_id, 'device_type': device_type, 'device_key': device_key, 'warning': 'Simpan device_key sekarang; nilainya tidak dapat dibaca ulang.'}
+def register_device(payload: DeviceProvision, connection: DB):
+    device_type=payload.device_type
+    display_name=payload.display_name.strip() or ('Cashier' if device_type=='cashier' else 'Vending')
+    registry_id=new_id('reg')
+    device_key=secrets.token_urlsafe(32)
+    with transaction(connection):
+        connection.execute("INSERT INTO device_registry(registry_id,hardware_id,device_type,display_name,status,device_key_hash,device_key_hint) VALUES(?,NULL,?,?,'pending',?,?)",
+            (registry_id,device_type,display_name,hash_secret(device_key,settings.device_key_pepper),device_key[-4:]))
+        connection.execute("INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?, ?, NULL, ?, ?)",
+            (new_id('evt'),registry_id,'device.provisioned',json.dumps({'device_type':device_type})))
+        if device_type=='vending':
+            for product_id in range(1,6):
+                connection.execute('INSERT INTO product_slots(registry_id,product_id,name,price_minor,stock) VALUES(?,?,?,?,?)',
+                    (registry_id,product_id,f'Produk {product_id}',0,0))
+        audit(connection,'device.provision','device',registry_id,detail={'device_type':device_type,'hardware_id_bound':False})
+    return {'registry_id':registry_id,'hardware_id':None,'device_type':device_type,'display_name':display_name,
+            'device_key':device_key,'key_shown_once':True,'status':'awaiting_device_enrollment',
+            'warning':'Simpan Device Key sekarang; key tidak dapat dibaca ulang.'}
+
+@app.post('/api/v2/device/register')
+def enroll_device(payload: DeviceEnrollment, connection: DB,
+                  x_device_key: Annotated[str | None, Header()] = None):
+    hardware_id=payload.hardware_id.strip()
+    mac=(payload.mac_address or '').strip().upper() or None
+    if not hardware_id:
+        raise HTTPException(status_code=422,detail={'code':'HARDWARE_ID_REQUIRED'})
+    if mac and (len(mac)>32 or any(ch not in '0123456789ABCDEF:' for ch in mac)):
+        raise HTTPException(status_code=422,detail={'code':'INVALID_MAC_ADDRESS'})
+    if not x_device_key or len(x_device_key)>256:
+        raise HTTPException(status_code=401,detail={'code':'DEVICE_UNAUTHORIZED'})
+    digest=hash_secret(x_device_key,settings.device_key_pepper)
+    with transaction(connection):
+        row=connection.execute('SELECT registry_id,hardware_id,status,device_type FROM device_registry WHERE device_key_hash=?',(digest,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=401,detail={'code':'DEVICE_UNAUTHORIZED'})
+        if row['status']=='active' and row['hardware_id']==hardware_id:
+            connection.execute('UPDATE device_registry SET mac_address=COALESCE(?,mac_address),last_seen_at=CURRENT_TIMESTAMP WHERE registry_id=?',(mac,row['registry_id']))
+            return {'registry_id':row['registry_id'],'hardware_id':hardware_id,'device_type':row['device_type'],'status':'active','idempotent_replay':True}
+        if row['status']!='pending' or row['hardware_id'] is not None:
+            raise HTTPException(status_code=409,detail={'code':'DEVICE_KEY_ALREADY_BOUND'})
+        try:
+            connection.execute("UPDATE device_registry SET hardware_id=?,mac_address=?,status='active',last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=? AND status='pending' AND hardware_id IS NULL",(hardware_id,mac,row['registry_id']))
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409,detail={'code':'HARDWARE_ID_ALREADY_REGISTERED'}) from exc
+        connection.execute('INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?,?,?,?,?)',
+            (new_id('evt'),row['registry_id'],hardware_id,'device.enrolled',json.dumps({'mac_address':mac})))
+        audit(connection,'device.enroll','device',row['registry_id'],detail={'hardware_id':hardware_id,'mac_address':mac})
+    return {'registry_id':row['registry_id'],'hardware_id':hardware_id,'device_type':row['device_type'],'status':'active','idempotent_replay':False}
 
 
 def authenticated_device(connection: sqlite3.Connection, device_key: str | None):
