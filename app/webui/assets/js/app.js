@@ -39,7 +39,7 @@ function renderAnalytics(d){
 async function loadDashboard(period=selectedAnalyticsPeriod){
   const {r,d}=await json('/api/v1/dashboard?period='+encodeURIComponent(period));
   if(!r.ok)throw new Error(d.detail||'Gagal memuat dashboard');
-  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','payment_channels']){
+  for(const key of ['members','accounts','payments','vending_transactions','loans','machines','products','devices','analytics','most_used_vending','best_selling_products','payment_channels']){
     if(!Array.isArray(d[key]))throw new Error('Format respons dashboard tidak valid: '+key);
   }
   const stats=d.stats||{};
@@ -67,7 +67,9 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   if(activeMembers.some(x=>x.member_id===currentMember))memberSelect.value=currentMember;
   else if(activeMembers.length)memberSelect.value=activeMembers[0].member_id;
   await loadPaymentMemberData(memberSelect.value);
-  $('mostUsedVending').innerHTML=table(d.most_used_vending.map(x=>({...x})),['name','machine_id','transactions']);
+  $('mostUsedVending').innerHTML=table(d.most_used_vending.map((x,i)=>({...x,rank:i+1,location:x.location||'—'})),['rank','name','machine_id','location','transactions']);
+  $('bestSellingProducts').innerHTML=table(d.best_selling_products.map(x=>({...x,revenue:money(x.revenue),location:x.location||'—'})),['product_name','product_id','vending_name','location','units_sold','revenue']);
+  $('bestSellingPeriod').textContent='Periode laporan: '+(d.analytics_period||selectedAnalyticsPeriod)+'; hanya transaksi vending berstatus completed.';
   $('paymentChannels').innerHTML=table(d.payment_channels.map(x=>({...x,amount:money(x.amount)})),['method','transactions','amount']);
   $('accounts').innerHTML=table(d.accounts.map(x=>({...x,balance:money(x.balance)})),['account_id','member_name','account_type','balance','status']);
   dashboardAccounts=d.accounts;
