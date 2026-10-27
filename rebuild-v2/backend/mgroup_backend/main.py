@@ -136,7 +136,7 @@ class DispenseResult(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    price_minor: int = Field(ge=0, le=100_000_000)
+    price_minor: int = Field(gt=0, le=100_000_000)
     stock: int = Field(ge=0, le=1_000_000)
 
 @app.get('/api/v2/health')
@@ -667,8 +667,16 @@ def get_products(registry_id: str, connection: DB):
     device = connection.execute("SELECT registry_id FROM device_registry WHERE registry_id=? AND device_type='vending'", (registry_id,)).fetchone()
     if not device:
         raise HTTPException(status_code=404, detail={'code': 'VENDING_DEVICE_NOT_FOUND'})
-    rows = connection.execute('SELECT product_id,name,price_minor,stock,image_path,nfc_promo_percent,qris_promo_percent FROM product_slots WHERE registry_id=? ORDER BY product_id', (registry_id,)).fetchall()
-    return {'registry_id': registry_id, 'items': [dict(row) for row in rows]}
+    rows = connection.execute("""SELECT p.product_id,p.name,p.price_minor,p.stock,p.nfc_promo_percent,p.qris_promo_percent,
+        i.sha256 AS image_sha256,i.byte_size AS image_size,i.content_type
+        FROM product_slots p LEFT JOIN product_images i ON i.registry_id=p.registry_id AND i.product_id=p.product_id
+        WHERE p.registry_id=? ORDER BY p.product_id""", (registry_id,)).fetchall()
+    items=[]
+    for row in rows:
+        item=dict(row)
+        item['image_url']=f"/api/v2/admin/vending/devices/{registry_id}/products/{item['product_id']}/image" if item.get('image_sha256') else None
+        items.append(item)
+    return {'registry_id': registry_id, 'items': items}
 
 @app.put('/api/v2/vending/devices/{registry_id}/products/{product_id}', dependencies=[Depends(require_admin)])
 def update_product(registry_id: str, product_id: int, payload: ProductUpdate, connection: DB):
@@ -683,6 +691,54 @@ def update_product(registry_id: str, product_id: int, payload: ProductUpdate, co
             raise HTTPException(status_code=404, detail={'code': 'PRODUCT_SLOT_NOT_FOUND'})
         connection.execute('INSERT INTO audit_events(audit_id,actor_type,action,entity_type,entity_id,detail_json) VALUES(?,?,?,?,?,?)', (new_id('aud'), 'admin', 'vending.product.update', 'product_slot', f'{registry_id}:{product_id}', json.dumps({**payload.model_dump(), 'name': normalized_name})))
     return {'registry_id': registry_id, 'product_id': product_id, **payload.model_dump(), 'name': normalized_name, 'nfc_promo_percent': 0, 'qris_promo_percent': 0}
+
+@app.post('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
+async def upload_product_image(registry_id: str, product_id: int, connection: DB, file: UploadFile = File(...)):
+    if product_id not in range(1,6):
+        raise HTTPException(status_code=422,detail={'code':'INVALID_PRODUCT_SLOT'})
+    raw=await file.read(2*1024*1024+1)
+    if not raw or len(raw)>2*1024*1024:
+        raise HTTPException(status_code=413,detail={'code':'IMAGE_MUST_BE_2MB_OR_SMALLER'})
+    try:
+        image=Image.open(BytesIO(raw))
+        if image.format not in ('PNG','JPEG','WEBP'):
+            raise HTTPException(status_code=415,detail={'code':'UNSUPPORTED_IMAGE_FORMAT'})
+        if image.width<1 or image.height<1 or image.width>4096 or image.height>4096 or image.width*image.height>16_000_000:
+            raise HTTPException(status_code=413,detail={'code':'IMAGE_DIMENSIONS_TOO_LARGE'})
+        image=ImageOps.exif_transpose(image)
+        image.load()
+        if image.mode not in ('RGB','RGBA'):
+            image=image.convert('RGBA' if 'A' in image.getbands() else 'RGB')
+        image.thumbnail((1600,1600),Image.Resampling.LANCZOS)
+        output=BytesIO()
+        image.save(output,format='WEBP',quality=84,method=6)
+        optimized=output.getvalue()
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError,OSError,ValueError) as exc:
+        raise HTTPException(status_code=415,detail={'code':'INVALID_IMAGE_CONTENT'}) from exc
+    if not optimized or len(optimized)>2*1024*1024:
+        raise HTTPException(status_code=413,detail={'code':'OPTIMIZED_IMAGE_MUST_BE_2MB_OR_SMALLER'})
+    digest=hashlib.sha256(optimized).hexdigest()
+    with transaction(connection):
+        slot=connection.execute("SELECT 1 FROM product_slots WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
+        if not slot:
+            raise HTTPException(status_code=404,detail={'code':'PRODUCT_SLOT_NOT_FOUND'})
+        connection.execute("""INSERT INTO product_images(registry_id,product_id,content_type,image_data,sha256,byte_size,updated_at)
+            VALUES(?,?, 'image/webp',?,?,?,CURRENT_TIMESTAMP)
+            ON CONFLICT(registry_id,product_id) DO UPDATE SET content_type=excluded.content_type,image_data=excluded.image_data,
+            sha256=excluded.sha256,byte_size=excluded.byte_size,updated_at=CURRENT_TIMESTAMP""",
+            (registry_id,product_id,optimized,digest,len(optimized)))
+        audit(connection,'vending.product.image.upload','product_slot',f'{registry_id}:{product_id}',
+              detail={'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'})
+    return {'registry_id':registry_id,'product_id':product_id,'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'}
+
+@app.get('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
+def get_product_image(registry_id: str, product_id: int, connection: DB):
+    row=connection.execute("SELECT image_data,sha256,content_type FROM product_images WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404,detail={'code':'PRODUCT_IMAGE_NOT_FOUND'})
+    return Response(content=bytes(row['image_data']),media_type=row['content_type'],headers={'ETag':'"'+row['sha256']+'"','Cache-Control':'private, max-age=300'})
 
 @app.post('/api/v2/members/{member_id}/cards', status_code=201, dependencies=[Depends(require_admin)])
 def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
