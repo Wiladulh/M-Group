@@ -235,15 +235,25 @@ async function loadDevices(){
     const rows=(d.devices||[]);
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
-      rows.map(x=>'<tr>'+
-        '<td><input data-device-name="'+esc(x.hardware_id)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+      rows.map(x=>{const ref=x.hardware_id||x.registry_id;return '<tr>'+
+        '<td><input data-device-name="'+esc(ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(x.hardware_id)+'">'+['pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td><select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td><button type="button" data-device-save="'+esc(x.hardware_id)+'">Simpan</button></td>'+
-      '</tr>').join('')+'</tbody></table>';
+        '<td>'+(x.hardware_id?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button>':'Lokasi tersimpan')+' <button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button></td>'+
+      '</tr>'}).join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
+    document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
   }catch(e){$('deviceAuthResult').textContent=e.message}
+}
+async function rotateDeviceKey(deviceRef){
+  if(!confirm('Rotasi Device Key? Key lama langsung tidak berlaku dan perangkat perlu diperbarui dengan key baru.'))return;
+  const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/rotate-key',{method:'POST'});
+  if(!r.ok){$('deviceAuthResult').textContent=d.detail||'Rotasi key gagal.';return}
+  $('provisionedDeviceKey').value=d.device_key;
+  $('provisionedDeviceKey').type='password';
+  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru.';
+  $('deviceAuthResult').textContent='Key lama telah dicabut.';
 }
 async function saveDevice(deviceId){
   const name=document.querySelector('[data-device-name="'+CSS.escape(deviceId)+'"]').value.trim();
