@@ -135,7 +135,7 @@ void parseProducts(const String&json){
   }
 }
 String jsonStringBetween(const String&json,const String&key,int start,int end){
-  String marker="\\""+key+"\\":\\"";int p=json.indexOf(marker,start);
+  String marker="\""+key+"\":\"";int p=json.indexOf(marker,start);
   if(p<0||p>=end)return "";
   p+=marker.length();int e=json.indexOf('"',p);if(e<0||e>end)return "";
   return json.substring(p,e);
@@ -187,7 +187,7 @@ void syncProductImages(const String&catalog){
   if(!productImageFsReady){productImageSyncStatus="Filesystem tidak tersedia";return;}
   int pos=0,success=0,requested=0;
   while(true){
-    int idPos=catalog.indexOf("\\"product_id\\":\\"",pos);if(idPos<0)break;
+    int idPos=catalog.indexOf("\"product_id\":\"",pos);if(idPos<0)break;
     int objectStart=catalog.lastIndexOf('{',idPos);int objectEnd=catalog.indexOf('}',idPos);
     if(objectStart<0||objectEnd<0)break;
     String id=jsonStringBetween(catalog,"product_id",objectStart,objectEnd);
@@ -198,7 +198,7 @@ void syncProductImages(const String&catalog){
   }
   productImageSyncStatus=requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia");
   int cached=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cached++;
-  configPortal.setStatusExtra(",\\"product_images_status\\":\\""+productImageSyncStatus+"\\",\\"product_images_cached\\":"+String(cached));
+  configPortal.setStatusExtra(",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cached));
 }
 
 void clearPendingCreateRequest(){
