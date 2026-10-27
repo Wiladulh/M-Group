@@ -96,6 +96,19 @@ class CashierTopUpRequest(BaseModel):
 class CardEnroll(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
 
+class NfcRegistrationStart(BaseModel):
+    registry_id: str = Field(min_length=1, max_length=128)
+    replace_existing: bool = False
+
+class NfcRegistrationProgress(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    status: str = Field(pattern='^(waiting_nfc|pin_pending|processing|failed)$')
+
+class NfcRegistrationComplete(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    card_uid: str = Field(min_length=4, max_length=128)
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
+
 
 class MemberBalanceLookup(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
@@ -689,6 +702,140 @@ def enroll_card(member_id: str, payload: CardEnroll, connection: DB):
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'CARD_ALREADY_ENROLLED'}) from exc
     return {'card_id': card_id, 'member_id': member_id, 'status': 'active'}
+
+
+@app.post('/api/v2/admin/members/{member_id}/nfc-registration', status_code=201, dependencies=[Depends(require_admin)])
+def start_nfc_registration(member_id: str, payload: NfcRegistrationStart, connection: DB):
+    with transaction(connection):
+        member=connection.execute("SELECT member_id,status FROM members WHERE member_id=?",(member_id,)).fetchone()
+        if not member:
+            raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
+        if member['status']!='active':
+            raise HTTPException(status_code=409,detail={'code':'MEMBER_NOT_ACTIVE'})
+        cashier=connection.execute("SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=? AND device_type='cashier'",(payload.registry_id,)).fetchone()
+        if not cashier or cashier['status']!='active':
+            raise HTTPException(status_code=409,detail={'code':'CASHIER_NOT_AVAILABLE'})
+        pending=connection.execute("""SELECT session_id FROM nfc_registration_sessions
+            WHERE registry_id=? AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
+            AND expires_at>CURRENT_TIMESTAMP""",(payload.registry_id,)).fetchone()
+        if pending:
+            raise HTTPException(status_code=409,detail={'code':'CASHIER_REGISTRATION_BUSY'})
+        session_id=new_id('nfc')
+        connection.execute("""INSERT INTO nfc_registration_sessions
+            (session_id,member_id,registry_id,status,expires_at,replace_existing)
+            VALUES(?,?,?,'scan_pending',datetime('now','+5 minutes'),?)""",
+            (session_id,member_id,payload.registry_id,int(payload.replace_existing)))
+        audit(connection,'member.nfc_registration.start','member',member_id,
+              detail={'session_id':session_id,'registry_id':payload.registry_id,'replace_existing':payload.replace_existing})
+    return {'session_id':session_id,'member_id':member_id,'registry_id':payload.registry_id,
+            'status':'scan_pending','expires_in_seconds':300}
+
+@app.get('/api/v2/admin/nfc-registration/{session_id}', dependencies=[Depends(require_admin)])
+def nfc_registration_status(session_id: str, connection: DB):
+    with transaction(connection):
+        row=connection.execute("""SELECT s.session_id,s.member_id,s.registry_id,s.status,s.created_at,s.expires_at,
+            s.completed_at,s.error_code,m.display_name,d.hardware_id,d.display_name AS cashier_name
+            FROM nfc_registration_sessions s JOIN members m ON m.member_id=s.member_id
+            JOIN device_registry d ON d.registry_id=s.registry_id WHERE s.session_id=?""",(session_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'NFC_SESSION_NOT_FOUND'})
+        if row['status'] in ('scan_pending','waiting_nfc','pin_pending','processing') and row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+            connection.execute("UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED' WHERE session_id=?",(session_id,))
+            row=connection.execute("""SELECT s.session_id,s.member_id,s.registry_id,s.status,s.created_at,s.expires_at,
+                s.completed_at,s.error_code,m.display_name,d.hardware_id,d.display_name AS cashier_name
+                FROM nfc_registration_sessions s JOIN members m ON m.member_id=s.member_id
+                JOIN device_registry d ON d.registry_id=s.registry_id WHERE s.session_id=?""",(session_id,)).fetchone()
+    return dict(row)
+
+@app.get('/api/v2/cashier/nfc-registration')
+def cashier_nfc_registration(connection: DB, x_device_key: Annotated[str | None, Header()] = None):
+    device=authenticated_device(connection,x_device_key)
+    if device['device_type']!='cashier':
+        raise HTTPException(status_code=403,detail={'code':'CASHIER_DEVICE_REQUIRED'})
+    with transaction(connection):
+        connection.execute("""UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED'
+            WHERE registry_id=? AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')
+            AND expires_at<=CURRENT_TIMESTAMP""",(device['registry_id'],))
+        row=connection.execute("""SELECT s.session_id,s.member_id,s.status,s.expires_at,m.display_name
+            FROM nfc_registration_sessions s JOIN members m ON m.member_id=s.member_id
+            WHERE s.registry_id=? AND s.status IN ('scan_pending','waiting_nfc','pin_pending','processing')
+            AND s.expires_at>CURRENT_TIMESTAMP ORDER BY s.created_at LIMIT 1""",(device['registry_id'],)).fetchone()
+    return dict(row) if row else {'status':'idle'}
+
+@app.post('/api/v2/cashier/nfc-registration/progress')
+def cashier_nfc_registration_progress(payload: NfcRegistrationProgress, connection: DB,
+                                      x_device_key: Annotated[str | None, Header()] = None):
+    device=authenticated_device(connection,x_device_key)
+    if device['device_type']!='cashier':
+        raise HTTPException(status_code=403,detail={'code':'CASHIER_DEVICE_REQUIRED'})
+    transitions={'scan_pending':{'waiting_nfc','failed'},'waiting_nfc':{'waiting_nfc','pin_pending','failed'},
+                 'pin_pending':{'pin_pending','processing','failed'},'processing':{'processing','failed'}}
+    expired=False
+    with transaction(connection):
+        row=connection.execute("SELECT status,expires_at FROM nfc_registration_sessions WHERE session_id=? AND registry_id=?",
+                               (payload.session_id,device['registry_id'])).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'NFC_SESSION_NOT_FOUND'})
+        if row['status'] not in transitions:
+            raise HTTPException(status_code=409,detail={'code':'NFC_SESSION_NOT_ACTIVE'})
+        if row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+            connection.execute("UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED' WHERE session_id=?",(payload.session_id,))
+            expired=True
+        elif payload.status not in transitions[row['status']]:
+            raise HTTPException(status_code=409,detail={'code':'INVALID_NFC_STATUS_TRANSITION'})
+        else:
+            connection.execute("UPDATE nfc_registration_sessions SET status=? WHERE session_id=?",(payload.status,payload.session_id))
+    if expired:
+        raise HTTPException(status_code=409,detail={'code':'NFC_SESSION_EXPIRED'})
+    return {'session_id':payload.session_id,'status':payload.status}
+
+@app.post('/api/v2/cashier/nfc-registration/complete')
+def cashier_nfc_registration_complete(payload: NfcRegistrationComplete, connection: DB,
+                                     x_device_key: Annotated[str | None, Header()] = None):
+    device=authenticated_device(connection,x_device_key)
+    if device['device_type']!='cashier':
+        raise HTTPException(status_code=403,detail={'code':'CASHIER_DEVICE_REQUIRED'})
+    digest=card_hash(payload.card_uid)
+    expired=False
+    result=None
+    with transaction(connection):
+        session=connection.execute("""SELECT session_id,member_id,status,expires_at,replace_existing
+            FROM nfc_registration_sessions WHERE session_id=? AND registry_id=?""",
+            (payload.session_id,device['registry_id'])).fetchone()
+        if not session:
+            raise HTTPException(status_code=404,detail={'code':'NFC_SESSION_NOT_FOUND'})
+        if session['status']=='completed':
+            prior=connection.execute("SELECT card_id FROM member_cards WHERE member_id=? AND card_uid_hash=? AND status='active'",
+                                     (session['member_id'],digest)).fetchone()
+            if prior:
+                return {'session_id':payload.session_id,'member_id':session['member_id'],'status':'completed','idempotent_replay':True}
+            raise HTTPException(status_code=409,detail={'code':'NFC_SESSION_ALREADY_COMPLETED'})
+        if session['status'] not in ('pin_pending','processing'):
+            raise HTTPException(status_code=409,detail={'code':'NFC_SESSION_NOT_READY'})
+        if session['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+            connection.execute("UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED' WHERE session_id=?",(payload.session_id,))
+            expired=True
+        else:
+            member=connection.execute("SELECT member_id,status FROM members WHERE member_id=?",(session['member_id'],)).fetchone()
+            if not member or member['status']!='active':
+                raise HTTPException(status_code=409,detail={'code':'MEMBER_NOT_ACTIVE'})
+            if connection.execute("SELECT 1 FROM member_cards WHERE card_uid_hash=? AND status='active'",(digest,)).fetchone():
+                raise HTTPException(status_code=409,detail={'code':'CARD_ALREADY_ENROLLED'})
+            if session['replace_existing']:
+                connection.execute("UPDATE member_cards SET status='revoked' WHERE member_id=? AND status='active'",(session['member_id'],))
+            connection.execute("INSERT INTO member_cards(card_id,member_id,card_uid_hash,status) VALUES(?,?,?,'active')",
+                               (new_id('card'),session['member_id'],digest))
+            connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
+                               (pin_hash(payload.pin),session['member_id']))
+            connection.execute("""UPDATE nfc_registration_sessions SET status='completed',card_uid_hash=?,card_uid_hint=?,
+                completed_at=CURRENT_TIMESTAMP,error_code=NULL WHERE session_id=?""",
+                (digest,payload.card_uid.strip()[-4:],payload.session_id))
+            audit(connection,'member.nfc_registration.complete','member',session['member_id'],
+                  detail={'session_id':payload.session_id,'registry_id':device['registry_id'],'card_uid_hint':payload.card_uid.strip()[-4:]})
+            result={'session_id':payload.session_id,'member_id':session['member_id'],'status':'completed','pin_configured':True,'idempotent_replay':False}
+    if expired:
+        raise HTTPException(status_code=409,detail={'code':'NFC_SESSION_EXPIRED'})
+    return result
 
 
 @app.post('/api/v2/vending/purchases', status_code=201)
