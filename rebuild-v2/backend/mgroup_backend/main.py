@@ -1375,7 +1375,21 @@ async def restore_backup(connection: DB, file: UploadFile = File(...)):
             'warning':'Database replaced atomically after all existing shared-lock connections completed.'}
 
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
-def list_audit(connection: DB, limit: int = 100):
-    limit = max(1, min(limit, 500))
-    rows = connection.execute('SELECT audit_id,actor_type,actor_id,action,entity_type,entity_id,request_id,detail_json,created_at FROM audit_events ORDER BY created_at DESC LIMIT ?', (limit,)).fetchall()
-    return {'items': [dict(row) for row in rows]}
+def list_audit(connection: DB, limit: int = 100, action: str = '', entity_type: str = '',
+               entity_id: str = '', request_id: str = ''):
+    limit=max(1,min(limit,500))
+    sql='SELECT audit_id,actor_type,actor_id,action,entity_type,entity_id,request_id,detail_json,created_at FROM audit_events WHERE 1=1'
+    args=[]
+    if action.strip(): sql+=' AND action LIKE ?';args.append('%'+action.strip()+'%')
+    if entity_type.strip(): sql+=' AND entity_type=?';args.append(entity_type.strip())
+    if entity_id.strip(): sql+=' AND entity_id LIKE ?';args.append('%'+entity_id.strip()+'%')
+    if request_id.strip(): sql+=' AND request_id LIKE ?';args.append('%'+request_id.strip()+'%')
+    sql+=' ORDER BY created_at DESC LIMIT ?';args.append(limit)
+    rows=connection.execute(sql,args).fetchall()
+    items=[]
+    for row in rows:
+        item=dict(row)
+        try:item['detail']=json.loads(item.pop('detail_json') or '{}')
+        except (TypeError,ValueError):item['detail']={}
+        items.append(item)
+    return {'items':items}
