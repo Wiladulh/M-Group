@@ -232,6 +232,9 @@ class AdminUserCreateRequest(BaseModel):
 class AdminUserStatusRequest(BaseModel):
     is_active: bool
 
+class AdminUserPasswordRequest(BaseModel):
+    password: str
+
 def request_is_https(request: Request) -> bool:
     return request.url.scheme.lower() == "https"
 
@@ -339,6 +342,28 @@ def build_router(db, app_settings=None):
             )
             c.commit()
         return {"created": True, "username": username, "role": q.role}
+
+    @r.post("/admin/users/{username}/password")
+    def reset_admin_user_password(username: str, q: AdminUserPasswordRequest, request: Request):
+        require_super_admin(request)
+        if len(q.password) < 12:
+            raise HTTPException(400, "password_too_short")
+        actor = getattr(request.state, "admin_username", "")
+        now = int(time.time())
+        with db.connect() as c:
+            target = c.execute("SELECT username,role,is_active FROM admin_users WHERE username=?", (username,)).fetchone()
+            if not target:
+                raise HTTPException(404, "admin_user_not_found")
+            if target["role"] == "super_admin" and not target["is_active"]:
+                raise HTTPException(409, "cannot_reset_disabled_super_admin")
+            c.execute("UPDATE admin_users SET password_hash=?,updated_at=? WHERE username=?", (hash_password(q.password), now, username))
+            c.execute("UPDATE webui_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL", (now, username))
+            c.execute(
+                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                (actor, "admin_password_reset", username, "sessions_revoked=1", now),
+            )
+            c.commit()
+        return {"updated": True, "username": username, "sessions_revoked": True}
 
     @r.patch("/admin/users/{username}/status")
     def set_admin_user_status(username: str, q: AdminUserStatusRequest, request: Request):
@@ -718,6 +743,7 @@ def build_router(db, app_settings=None):
     @r.delete("/members/{member_id}")
     def member_delete(request: Request, member_id):
         require_admin(request)
+        require_super_admin(request)
         try:
             return members.soft_delete(member_id)
         except ValueError as e:
@@ -726,6 +752,7 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/nfc-cards")
     def member_add_nfc(request: Request, member_id,q: NfcCardRequest):
         require_admin(request)
+        require_super_admin(request)
         try:
             return members.add_card(member_id,q.card_uid,q.credential_id)
         except ValueError as e:
@@ -735,6 +762,7 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/nfc-cards/{card_id}/revoke")
     def member_revoke_nfc(request: Request, member_id,card_id):
         require_admin(request)
+        require_super_admin(request)
         try:
             member = members.get(member_id)
             if member is None or not any(
@@ -756,6 +784,7 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/pin")
     def set_member_pin(request: Request, member_id,q:PinRequest):
         require_admin(request)
+        require_super_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         if not q.identity_verified:
@@ -775,6 +804,7 @@ def build_router(db, app_settings=None):
     @r.post("/members/{member_id}/topup-corrections")
     def member_topup_correction(request: Request, member_id,q:MemberCorrectionRequest):
         require_admin(request)
+        require_super_admin(request)
         if not q.operator_id.strip():
             raise HTTPException(400,"operator_id_required")
         try:
@@ -804,6 +834,7 @@ def build_router(db, app_settings=None):
     @r.patch("/devices/{hardware_id}")
     def device_update(request: Request, hardware_id,q: DeviceHeartbeatRequest):
         require_admin(request)
+        require_super_admin(request)
         try:
             return devices.update(hardware_id,q.device_type,q.status,q.display_name)
         except ValueError as e:
@@ -912,6 +943,7 @@ def build_router(db, app_settings=None):
     @r.delete("/devices/{hardware_id}")
     def device_delete(request: Request, hardware_id):
         require_admin(request)
+        require_super_admin(request)
         try:
             return devices.soft_delete(hardware_id)
         except ValueError as e:
@@ -920,6 +952,7 @@ def build_router(db, app_settings=None):
     @r.post("/devices/provision")
     def device_provision_auto(request: Request, q:DeviceProvisionRequest):
         require_admin(request)
+        require_super_admin(request)
         location = q.location.strip()
         if not location or len(location) > 120:
             raise HTTPException(400, "device_location_required_max_120_chars")
@@ -953,6 +986,7 @@ def build_router(db, app_settings=None):
     @r.post("/devices/{device_ref}/rotate-key")
     def device_rotate_key(request: Request, device_ref: str):
         require_admin(request)
+        require_super_admin(request)
         with db.connect() as c:
             row=c.execute("SELECT registry_id,hardware_id,device_type,status FROM device_registry WHERE (hardware_id=? OR registry_id=?) AND deleted_at IS NULL",(device_ref,device_ref)).fetchone()
             if not row:
@@ -973,6 +1007,7 @@ def build_router(db, app_settings=None):
     def device_provision_legacy(request: Request, hardware_id,q:DeviceProvisionRequest):
         """Deprecated compatibility endpoint; new firmware must use key-only provisioning."""
         require_admin(request)
+        require_super_admin(request)
         legacy_id = hardware_id.strip()
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
@@ -1138,6 +1173,7 @@ def build_router(db, app_settings=None):
     @r.post("/accounts/{account_id}/credit")
     def account_credit(request: Request, account_id,q:FinancialRequest):
         require_admin(request)
+        require_super_admin(request)
         try:return financial.credit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
@@ -1145,6 +1181,7 @@ def build_router(db, app_settings=None):
     @r.post("/accounts/{account_id}/debit")
     def account_debit(request: Request, account_id,q:FinancialRequest):
         require_admin(request)
+        require_super_admin(request)
         try:return financial.debit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
@@ -1161,6 +1198,7 @@ def build_router(db, app_settings=None):
     @r.post("/promotions")
     def promotion_create(request: Request, q: PromoRequest):
         require_admin(request)
+        require_super_admin(request)
         try:
             return promos.create(q.scope,q.machine_id,q.product_id,q.payment_method,
                                  q.payment_provider,q.discount_percent,q.starts_at,q.ends_at,
@@ -1189,6 +1227,7 @@ def build_router(db, app_settings=None):
     @r.patch("/promotions/{promo_id}")
     def promotion_update(request: Request, promo_id,q: PromoUpdateRequest):
         require_admin(request)
+        require_super_admin(request)
         try:
             return promos.update(promo_id,**q.model_dump(exclude_none=True))
         except ValueError as e:
@@ -1202,6 +1241,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending")
     def vending_register(request: Request, q:VendingRegisterRequest):
         require_admin(request)
+        require_super_admin(request)
         try:return vending.register(q.machine_id,q.name,q.location,q.hardware_id or q.hardware_id,q.status)
         except ValueError as e: raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
@@ -1214,18 +1254,21 @@ def build_router(db, app_settings=None):
     @r.patch("/vending/{machine_id}")
     def vending_update(request: Request, machine_id,q:VendingUpdateRequest):
         require_admin(request)
+        require_super_admin(request)
         try:return vending.update_machine(machine_id,q.name,q.location,q.hardware_id if q.hardware_id is not None else q.hardware_id,q.status)
         except ValueError as e:raise HTTPException(409 if "already" in str(e) else 400,str(e))
 
     @r.post("/vending/{machine_id}/enable")
     def vending_enable(request: Request, machine_id):
         require_admin(request)
+        require_super_admin(request)
         try:return vending.set_status(machine_id,"active")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
     @r.post("/vending/{machine_id}/disable")
     def vending_disable(request: Request, machine_id):
         require_admin(request)
+        require_super_admin(request)
         try:return vending.set_status(machine_id,"disabled")
         except ValueError as e:raise HTTPException(404 if str(e)=="machine_not_found" else 400,str(e))
 
@@ -1292,6 +1335,7 @@ def build_router(db, app_settings=None):
     @r.post("/vending/{machine_id}/products/{product_id}/image")
     async def vending_product_image_upload(request: Request, machine_id: str, product_id: str, file: UploadFile = File(...)):
         require_admin(request)
+        require_super_admin(request)
         machine=resolve_vending_machine(machine_id)
         if str(product_id) not in VendingService.PRODUCT_IDS: raise HTTPException(400,"product_id_must_be_1_to_5")
         raw=await file.read(MAX_PRODUCT_IMAGE_BYTES+1)
@@ -1335,6 +1379,7 @@ def build_router(db, app_settings=None):
     @r.put("/vending/{machine_id}/products/{product_id}")
     def vending_product(request: Request, machine_id,product_id,q:VendingProductRequest):
         require_admin(request)
+        require_super_admin(request)
         if product_id not in VendingService.PRODUCT_IDS:
             raise HTTPException(400,"product_id_must_be_1_to_5")
         if q.product_id!=product_id:raise HTTPException(400,"product_id_mismatch")
@@ -1420,6 +1465,7 @@ def build_router(db, app_settings=None):
     @r.post("/payments")
     def payment(request: Request, q:PaymentRequest):
         require_admin(request)
+        require_super_admin(request)
         if q.method == "NFC":
             if not q.pin:
                 raise HTTPException(403, "pin_required")
@@ -1674,6 +1720,7 @@ def build_router(db, app_settings=None):
     @r.post("/cashier/operator-pin")
     def cashier_operator_pin(request: Request, q:OperatorPinRequest):
         require_admin(request)
+        require_super_admin(request)
         if not q.pin.isdigit() or not 4 <= len(q.pin) <= 6:
             raise HTTPException(400,"pin_must_be_4_to_6_digits")
         salt=secrets.token_hex(16)
@@ -1912,6 +1959,7 @@ def build_router(db, app_settings=None):
     @r.post("/backup/restore")
     async def backup_restore(request: Request, file:UploadFile=File(...)):
         require_admin(request)
+        require_super_admin(request)
         if not file.filename or not file.filename.endswith(".mgroup.zip"):
             raise HTTPException(400,"invalid_backup_file")
         content = await file.read(MAX_BACKUP_UPLOAD_BYTES + 1)
@@ -1940,6 +1988,7 @@ def build_router(db, app_settings=None):
     @r.post("/backup/import-excel")
     async def backup_import_excel(request: Request, file:UploadFile=File(...)):
         require_admin(request)
+        require_super_admin(request)
         if not file.filename or not file.filename.lower().endswith(".xlsx"):
             raise HTTPException(400,"invalid_excel_file")
         content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
