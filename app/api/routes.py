@@ -1387,7 +1387,7 @@ def build_router(db, app_settings=None):
                 c.commit()
         if not row:
             return {"status":"idle"}
-        return {"status":"scan_pending","session_id":row["session_id"],"member_id":row["member_id"]}
+        return {"status":row["status"],"session_id":row["session_id"],"member_id":row["member_id"]}
 
     @r.post("/cashier/nfc-registration/progress")
     def cashier_nfc_registration_progress(q:NfcRegistrationProgressRequest,
