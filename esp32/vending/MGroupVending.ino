@@ -144,6 +144,10 @@ bool cacheProductImage(const String&relativeUrl,const String&expectedHash,const 
   if(!productImageFsReady||relativeUrl.isEmpty()||expectedHash.length()!=64)return false;
   String prefKey="img_"+productId+"_sha";
   String finalPath="/product_"+productId+".img",tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
+  if(LittleFS.exists(backupPath.c_str())){
+    if(!LittleFS.exists(finalPath.c_str()))LittleFS.rename(backupPath.c_str(),finalPath.c_str());
+    else LittleFS.remove(backupPath.c_str());
+  }
   if(vendingPrefs.getString(prefKey.c_str(),"")==expectedHash&&LittleFS.exists(finalPath))return true;
   String url=relativeUrl.startsWith("http://")||relativeUrl.startsWith("https://")?relativeUrl:String(M_GROUP_BASE_URL)+relativeUrl;
   HTTPClient http;WiFiClientSecure secureClient;http.setConnectTimeout(3000);http.setTimeout(10000);
