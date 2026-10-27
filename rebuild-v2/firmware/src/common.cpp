@@ -60,7 +60,7 @@ void MGroupV2Runtime::storeWebPin(const String& pin) {
 
 bool MGroupV2Runtime::pinMatches(const String& pin) {
   if(pin.length()<8||pin.length()>32)return false;
-  return mbedtls_ct_memcmp(sha256Hex(webPinSalt_+pin).c_str(),webPinHash_.c_str(),64)==0;
+  String candidate=sha256Hex(webPinSalt_+pin);\n  if(candidate.length()!=webPinHash_.length())return false;\n  uint8_t difference=0;for(size_t i=0;i<candidate.length();i++)difference|=(uint8_t)(candidate[i]^webPinHash_[i]);\n  return difference==0;
 }
 
 bool MGroupV2Runtime::wifiConnected() const { return WiFi.status()==WL_CONNECTED; }
@@ -243,7 +243,7 @@ bool MGroupV2Runtime::ensureRegistered() {
 }
 String MGroupV2Runtime::nextRequestId(const String& operation) {
   uint64_t seq=prefs_.getULong64("request_seq",0)+1;prefs_.putULong64("request_seq",seq);
-  return hardwareId_+"-"+operation+"-"+String((unsigned long long)seq);
+  return hardwareId_+"-"+operation+"-"+String((unsigned long)seq);
 }
 void MGroupV2Runtime::setRuntimeStatus(const String& status,const String& detail) {
   runtimeStatus_=status;runtimeDetail_=detail;
