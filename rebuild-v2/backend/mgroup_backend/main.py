@@ -110,7 +110,7 @@ class DispenseResult(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    price_minor: int = Field(ge=0, le=100_000_000)
+    price_minor: int = Field(gt=0, le=100_000_000)
     stock: int = Field(ge=0, le=1_000_000)
 
 @app.get('/api/v2/health')
@@ -667,7 +667,7 @@ def update_product(registry_id: str, product_id: int, payload: ProductUpdate, co
     return {'registry_id': registry_id, 'product_id': product_id, **payload.model_dump(), 'name': normalized_name, 'nfc_promo_percent': 0, 'qris_promo_percent': 0}
 
 @app.post('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin)])
-async def upload_product_image(registry_id: str, product_id: int, file: UploadFile = File(...), connection: DB = None):
+async def upload_product_image(registry_id: str, product_id: int, connection: DB, file: UploadFile = File(...)):
     if product_id not in range(1,6):
         raise HTTPException(status_code=422,detail={'code':'INVALID_PRODUCT_SLOT'})
     raw=await file.read(2*1024*1024+1)
