@@ -201,6 +201,7 @@ CREATE TABLE IF NOT EXISTS nfc_registration_sessions (
     expires_at TEXT NOT NULL,
     completed_at TEXT,
     error_code TEXT,
+    replace_existing INTEGER NOT NULL DEFAULT 0 CHECK (replace_existing IN (0,1)),
     FOREIGN KEY (member_id) REFERENCES members(member_id),
     FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id)
 );
