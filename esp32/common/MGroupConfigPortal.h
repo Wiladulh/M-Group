@@ -22,6 +22,7 @@ class MGroupConfigPortal {
   }
   bool active() const { return active_; }
   void setStatusExtra(const String &jsonFields){statusExtra_=jsonFields;}
+  String tlsCaCertificate() const {return prefs_.getString("tls_ca","");}
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
@@ -48,7 +49,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
-<label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>\n<label>Device ID dari server</label><input name="device_id" maxlength="64" required autocomplete="off">
+<label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>\n<label>Sertifikat CA server (wajib untuk HTTPS)</label><textarea name="tls_ca" maxlength="4096" rows="5" style="box-sizing:border-box;width:100%;font:12px monospace" placeholder="-----BEGIN CERTIFICATE----- ..."></textarea><small>HTTPS tanpa CA yang valid akan ditolak; jangan gunakan mode insecure.</small>\n<label>Device ID dari server</label><input name="device_id" maxlength="64" required autocomplete="off">
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')+(s.catalog_sync_status?'\\nSinkron katalog: '+s.catalog_sync_status:'')+(s.catalog_hash?'\\nHash katalog: '+s.catalog_hash:'')+(s.catalog_sync_at?'\\nSinkron terakhir WIB: '+new Date(s.catalog_sync_at*1000).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'')+(s.catalog_sync_error?'\\nError sinkron: '+s.catalog_sync_error:'')+(s.registration_status?'\\nStatus NFC: '+s.registration_status:'')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     if(String(label).indexOf("Cashier")>=0){
@@ -91,12 +92,12 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
     });
     server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}if(defaultPinActive()){req->send(403,"text/plain","Ganti PIN default 19929900 sebelum menyimpan konfigurasi perangkat.");return;}
       auto value=[req](const char *name)->String {return req->hasParam(name,true)?req->getParam(name,true)->value():"";};
-      String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceId=value("device_id"),deviceKey=value("device_key");
+      String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceId=value("device_id"),deviceKey=value("device_key"),tlsCa=value("tls_ca");
       ssid.trim();serverUrl.trim();deviceKey.trim();
-      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId.isEmpty()||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>64||serverUrl.length()>160||deviceKey.length()>128||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")) {
+      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId.isEmpty()||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>64||serverUrl.length()>160||deviceKey.length()>128||tlsCa.length()>4096||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")) {
         req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa semua kolom dan URL tanpa slash akhir.");return;
       }
-      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_id",deviceId);prefs_.putString("device_key",deviceKey);
+      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_id",deviceId);prefs_.putString("device_key",deviceKey);prefs_.putString("tls_ca",tlsCa);
       req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
       delay(900);ESP.restart();
     });
