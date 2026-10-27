@@ -16,6 +16,12 @@
 - If the outcome remains uncertain, the cashier blocks new payments and asks for the PIN again to retry the same transaction. This allows the server to return the original transaction if it was already processed.
 - A definitive HTTP response clears the pending request. Do not erase the device NVS while a payment is pending; reconcile with the server first.
 
+## Device-local WebUI over DHCP
+
+- After joining the configured Wi-Fi, open `http://<current-DHCP-IP>/` from a device on the same trusted LAN. The current DHCP address, Wi-Fi status, RSSI, server reachability, and local time are shown in the protected status page.
+- Every device-local WebUI requires the local PIN. The initial PIN is `19929900`; replace it before saving configuration. The PIN is stored as a salted hash in ESP32 NVS, and repeated failed login attempts are rate-limited.
+- First-time setup remains available through the temporary `MGroup-Setup-XXXXXX` access point at `http://192.168.4.1/`. The LAN WebUI remains available at the DHCP IP after Wi-Fi is configured.
+
 ## Member balance lookup (read-only)
 
 - At the main keypad menu, press `3` for **Cek Saldo Member** (`1` remains payment, `2` remains top-up).
