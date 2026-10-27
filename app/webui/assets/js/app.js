@@ -630,7 +630,8 @@ async function loadAdminUsers(){
   const {r,d}=await json('/api/v1/admin/users');
   if(!r.ok){target.textContent=d.detail||'Gagal memuat akun admin.';return}
   const users=Array.isArray(d.users)?d.users:[];
-  target.innerHTML=users.length?'<table><thead><tr><th>Username</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+esc(u.username)+'</td><td>'+esc(u.role)+'</td><td>'+(u.is_active?'Aktif':'Nonaktif')+'</td><td>'+(u.username=== $('activeUsername').textContent.split(' · ')[0]?'Akun aktif':('<button type="button" data-admin-toggle="'+esc(u.username)+'" data-active="'+(u.is_active?'1':'0')+'">'+(u.is_active?'Nonaktifkan':'Aktifkan')+'</button>'))+'</td></tr>').join('')+'</tbody></table>':'<p class="hint">Belum ada akun admin.</p>';
+  const current=$('activeUsername').textContent.split(' · ')[0];
+  target.innerHTML=users.length?'<table><thead><tr><th>Username</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+esc(u.username)+'</td><td>'+esc(u.role)+'</td><td>'+(u.is_active?'Aktif':'Nonaktif')+'</td><td>'+(u.username===current?'Akun aktif':'<button type="button" data-admin-toggle="'+esc(u.username)+'" data-active="'+(u.is_active?'1':'0')+'">'+(u.is_active?'Nonaktifkan':'Aktifkan')+'</button> <button type="button" data-admin-password="'+esc(u.username)+'">Atur ulang password</button>')+'</td></tr>').join('')+'</tbody></table>':'<p class="hint">Belum ada akun admin.</p>';
 }
 const adminCreateForm=$('adminUserCreateForm');
 if(adminCreateForm)adminCreateForm.addEventListener('submit',async e=>{
@@ -645,6 +646,16 @@ if(adminCreateForm)adminCreateForm.addEventListener('submit',async e=>{
 });
 const adminUsersTable=$('adminUsersTable');
 if(adminUsersTable)adminUsersTable.addEventListener('click',async e=>{
+  const passwordButton=e.target.closest('[data-admin-password]');
+  if(passwordButton){
+    const username=passwordButton.dataset.adminPassword;
+    const password=prompt('Masukkan password baru minimal 12 karakter untuk '+username+'. Sesi akun tersebut akan dicabut.');
+    if(password===null)return;
+    if(password.length<12){$('adminUserResult').textContent='Password minimal 12 karakter.';return}
+    const {r,d}=await json('/api/v1/admin/users/'+encodeURIComponent(username)+'/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+    $('adminUserResult').textContent=r.ok?'Password akun '+username+' diperbarui dan sesi lama dicabut.':(d.detail||'Gagal mengatur ulang password.');
+    return;
+  }
   const button=e.target.closest('[data-admin-toggle]');
   if(!button)return;
   const username=button.dataset.adminToggle,active=button.dataset.active!=='1';
