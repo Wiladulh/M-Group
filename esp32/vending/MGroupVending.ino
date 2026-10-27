@@ -198,7 +198,7 @@ void syncProductImages(const String&catalog){
   }
   productImageSyncStatus=requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia");
   int cached=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cached++;
-  configPortal.setStatusExtra(",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cached));
+  vendingPrefs.putString("product_images_status",productImageSyncStatus);
 }
 
 void clearPendingCreateRequest(){
@@ -235,9 +235,13 @@ bool products(){
     catalogHash=String(hashHex);
     if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
     vendingPrefs.putString("catalog_hash",catalogHash);vendingPrefs.putString("catalog_version",catalogHash);
+    catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");
+    syncProductImages(reply);
+    int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;
+    configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
     catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
   }else{
-    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
+    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
     reply=vendingPrefs.getString("catalog_json","");
     fromCache=true;
     if(!reply.length()){showMessage("SERVER OFFLINE","No saved catalog","Payment unavailable");return false;}
@@ -361,6 +365,9 @@ void setup(){
   const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
   configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
   vendingPrefs.begin("M_GROUP-vend",false);
+  productImageFsReady=LittleFS.begin(false);
+  if(!productImageFsReady)Serial.println("PRODUCT IMAGE CACHE unavailable; preserving catalog and existing files");
+  productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");
   catalogHash=vendingPrefs.getString("catalog_hash","");catalogLastSyncEpoch=vendingPrefs.getULong("catalog_sync_at",0);catalogSyncStatus=vendingPrefs.getString("catalog_sync_status","Belum disinkronkan");catalogSyncError=vendingPrefs.getString("catalog_sync_error","");
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
