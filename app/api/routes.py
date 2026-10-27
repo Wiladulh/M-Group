@@ -1509,20 +1509,35 @@ def build_router(db, app_settings=None):
             c.commit()
         return {"status":"pin_updated"}
 
-    def verify_operator_pin(pin):
+    def verify_operator_pin(pin, hardware_id):
+        now=int(time.time())
+        client_key="operator-pin:"+str(hardware_id)
         with db.connect() as c:
+            failures=c.execute(
+                "SELECT COUNT(*) FROM webui_login_attempts WHERE client_key=? AND succeeded=0 AND attempted_at>=?",
+                (client_key,now-900),
+            ).fetchone()[0]
+            if failures>=5:
+                raise HTTPException(429,"operator_pin_rate_limited",headers={"Retry-After":"900"})
             row=c.execute("SELECT value FROM system_meta WHERE key='cashier_operator_pin_hash'").fetchone()
-        if not row or not row["value"] or ":" not in row["value"]: return False
-        salt,digest=row["value"].split(":",1)
-        got=hashlib.pbkdf2_hmac("sha256",pin.encode(),salt.encode(),120000).hex()
-        return secrets.compare_digest(got,digest)
+        valid=False
+        if row and row["value"] and ":" in row["value"]:
+            salt,digest=row["value"].split(":",1)
+            got=hashlib.pbkdf2_hmac("sha256",pin.encode(),salt.encode(),120000).hex()
+            valid=secrets.compare_digest(got,digest)
+        with db.connect() as c:
+            c.execute("INSERT INTO webui_login_attempts(client_key,attempted_at,succeeded) VALUES(?,?,?)",
+                      (client_key,now,1 if valid else 0))
+            c.execute("DELETE FROM webui_login_attempts WHERE attempted_at<?",(now-86400,))
+            c.commit()
+        return valid
 
     @r.post("/cashier/deposits")
     def cashier_deposit(q:CashierDepositRequest,x_m_group_device_key: str | None = Header(default=None)):
         # Device-key fingerprint is the cashier identity; no device ID header or registry lookup is needed.
         cashier_identity=require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
         hardware_id = cashier_identity["hardware_id"]
-        if not verify_operator_pin(q.operator_pin):
+        if not verify_operator_pin(q.operator_pin, hardware_id):
             raise HTTPException(403,"invalid_operator_pin")
         if not q.idempotency_key:
             raise HTTPException(400,"idempotency_key_required")
