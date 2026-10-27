@@ -1,18 +1,55 @@
 from contextlib import contextmanager
 from pathlib import Path
+import fcntl
+import os
 import sqlite3
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / 'db' / 'schema.sql'
 
 
+class LockedConnection(sqlite3.Connection):
+    """Connection that holds a shared process lock until closed."""
+    _lock_fd = None
+
+    def close(self):
+        lock_fd=self._lock_fd
+        self._lock_fd=None
+        try:
+            return super().close()
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd,fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
+
+
 def connect(database_path: str) -> sqlite3.Connection:
-    if database_path != ':memory:':
-        Path(database_path).parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database_path, timeout=10, isolation_level=None, check_same_thread=False)
-    connection.row_factory = sqlite3.Row
-    connection.execute('PRAGMA foreign_keys = ON')
-    connection.execute('PRAGMA busy_timeout = 10000')
-    return connection
+    if database_path == ':memory:':
+        connection=sqlite3.connect(database_path,timeout=10,isolation_level=None,check_same_thread=False,factory=LockedConnection)
+        connection.row_factory=sqlite3.Row
+        connection.execute('PRAGMA foreign_keys = ON')
+        connection.execute('PRAGMA busy_timeout = 10000')
+        return connection
+    path=Path(database_path)
+    path.parent.mkdir(parents=True,exist_ok=True)
+    lock_path=Path(str(path)+'.lock')
+    lock_fd=os.open(lock_path,os.O_CREAT|os.O_RDWR,0o600)
+    os.fchmod(lock_fd,0o600)
+    try:
+        fcntl.flock(lock_fd,fcntl.LOCK_SH)
+        connection=sqlite3.connect(database_path,timeout=10,isolation_level=None,check_same_thread=False,factory=LockedConnection)
+        connection._lock_fd=lock_fd
+        connection.row_factory=sqlite3.Row
+        connection.execute('PRAGMA foreign_keys = ON')
+        connection.execute('PRAGMA busy_timeout = 10000')
+        return connection
+    except Exception:
+        try:
+            fcntl.flock(lock_fd,fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
+        raise
 
 
 def initialize(database_path: str) -> None:
