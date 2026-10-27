@@ -253,9 +253,10 @@ async function rotateDeviceKey(deviceRef){
   if(!confirm('Rotasi Device Key? Key lama langsung tidak berlaku dan perangkat perlu diperbarui dengan key baru.'))return;
   const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/rotate-key',{method:'POST'});
   if(!r.ok){$('deviceAuthResult').textContent=d.detail||'Rotasi key gagal.';return}
+  $('provisionedDeviceId').value=d.hardware_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru.';
+  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan ID dan key baru.';
   $('deviceAuthResult').textContent='Key lama telah dicabut.';
 }
 async function saveDevice(deviceId){
@@ -279,16 +280,17 @@ $('deviceProvisionForm').onsubmit=async e=>{
   const location=$('provisionDeviceLocation').value.trim();
   const result=$('deviceProvisionResult');
   if(!location){result.textContent='Lokasi pemasangan wajib diisi.';return}
-  if(!confirm('Generate key autentikasi untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+'? Device ID dibuat otomatis oleh perangkat saat registrasi.'))return;
+  if(!confirm('Buat Device ID dan Device Key baru untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+' di lokasi '+location+'?'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({device_type:deviceType,location})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
+  $('provisionedDeviceId').value=d.hardware_id||d.device_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Key autentikasi dibuat untuk lokasi '+(d.location||location)+'. Salin key ke WebUI perangkat; Device ID dibuat otomatis saat registrasi pertama.';
+  result.textContent='Device ID dan key dibuat server untuk lokasi '+(d.location||location)+'. Masukkan keduanya ke WebUI perangkat. Key hanya ditampilkan satu kali.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
