@@ -11,6 +11,18 @@
     </form>
     <div id="accountSettingsResult" class="result"></div>
   </section>
+  <section class="section" id="adminUserManagement" hidden>
+    <h2>Manajemen Akun dan Hak Akses</h2>
+    <p class="hint">Khusus super admin. Auditor hanya dapat membaca data; operator menjalankan operasional sesuai endpoint yang diizinkan.</p>
+    <form id="adminUserCreateForm">
+      <label>Username<input id="managedAdminUsername" minlength="3" maxlength="64" required autocomplete="off"></label>
+      <label>Password awal (minimal 12 karakter)<input id="managedAdminPassword" type="password" minlength="12" required autocomplete="new-password"></label>
+      <label>Peran<select id="managedAdminRole" required><option value="operator">Operator</option><option value="auditor">Auditor</option><option value="super_admin">Super Admin</option></select></label>
+      <button type="submit">Buat Akun Admin</button>
+    </form>
+    <div id="adminUserResult" class="result" role="status"></div>
+    <div id="adminUsersTable"></div>
+  </section>
   <section class="section">
     <h2>Konfigurasi Sesi WebUI</h2>
     <div class="grid">
