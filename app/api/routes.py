@@ -1777,8 +1777,24 @@ def build_router(db, app_settings=None):
         source_code={"ALL":"All","CASHIER":"Cash","VENDING":"Vend","TOPUP":"Tup"}.get(data["source"],"All")
         import datetime as dt
         end_inclusive=(dt.date.fromisoformat(data["end"])-dt.timedelta(days=1)).isoformat()
-        path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}.xlsx"
-        export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"]})
+        stem=f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}"
+        # Reserve a collision-safe sequence number atomically. Two admins
+        # exporting the same report at once must never overwrite each other's
+        # XLSX artifact.
+        sequence=1
+        while True:
+            path=root/f"{stem}-{sequence:02d}.xlsx"
+            try:
+                with path.open("xb"):
+                    pass
+                break
+            except FileExistsError:
+                sequence+=1
+        try:
+            export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"],"timezone":"Asia/Jakarta"})
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
