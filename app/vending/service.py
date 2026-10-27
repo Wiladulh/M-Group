@@ -127,23 +127,35 @@ class VendingService:
             if slot is not None and slot != fixed_slot:
                 raise ValueError("product_slot_mismatch")
             slot = fixed_slot
-        elif slot is None:
-            with self.db.connect() as c:
-                existing=c.execute("SELECT slot FROM vending_products WHERE product_id=? AND machine_id=?",(product_id,machine_id)).fetchone()
-                if existing and existing["slot"] is not None:
-                    slot=existing["slot"]
-                else:
-                    used={r[0] for r in c.execute("SELECT slot FROM vending_products WHERE machine_id=? AND slot IS NOT NULL",(machine_id,)).fetchall()}
-                    free=[x for x in range(1,6) if x not in used]
-                    if not free: raise ValueError("no_free_slot")
-                    slot=free[0]
-        if not isinstance(slot,int) or isinstance(slot,bool) or slot<1 or slot>5: raise ValueError("slot_must_be_1_to_5")
         if capacity is None: capacity=max(stock,0)
         if not isinstance(capacity,int) or isinstance(capacity,bool) or capacity<0: raise ValueError("capacity_must_be_nonnegative_integer")
         if stock>capacity: raise ValueError("stock_exceeds_capacity")
-        if servo_channel is None: servo_channel=slot
-        if servo_channel != slot: raise ValueError("servo_must_match_slot")
+
         with self.db.connect() as c:
+            # Slot allocation and product writes must share one write lock.
+            # Otherwise two concurrent registrations can both select the same
+            # free slot based on stale reads before either one inserts.
+            c.execute("BEGIN IMMEDIATE")
+            if not fixed_slot_id and slot is None:
+                existing=c.execute(
+                    "SELECT slot FROM vending_products WHERE product_id=? AND machine_id=?",
+                    (product_id,machine_id)
+                ).fetchone()
+                if existing and existing["slot"] is not None:
+                    slot=existing["slot"]
+                else:
+                    used={r[0] for r in c.execute(
+                        "SELECT slot FROM vending_products WHERE machine_id=? AND slot IS NOT NULL",
+                        (machine_id,)
+                    ).fetchall()}
+                    free=[x for x in range(1,6) if x not in used]
+                    if not free: raise ValueError("no_free_slot")
+                    slot=free[0]
+            if not isinstance(slot,int) or isinstance(slot,bool) or slot<1 or slot>5:
+                raise ValueError("slot_must_be_1_to_5")
+            if servo_channel is None: servo_channel=slot
+            if servo_channel != slot: raise ValueError("servo_must_match_slot")
+
             if fixed_slot_id:
                 existing_at_slot=c.execute(
                     "SELECT product_id FROM vending_products WHERE machine_id=? AND slot=?",
