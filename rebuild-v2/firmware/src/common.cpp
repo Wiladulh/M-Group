@@ -29,7 +29,7 @@ void MGroupV2Runtime::loadConfiguration() {
   prefs_.begin("mgroup-v2",false);
   ssid_=prefs_.getString("wifi_ssid","");
   wifiPassword_=prefs_.getString("wifi_pass","");
-  serverUrl_=prefs_.getString("server_url","http://192.168.1.10:8011");
+  serverUrl_=prefs_.getString("server_url","");
   deviceKey_=prefs_.getString("device_key","");
   tlsCa_=prefs_.getString("tls_ca","");
   registryId_=prefs_.getString("registry_id","");
