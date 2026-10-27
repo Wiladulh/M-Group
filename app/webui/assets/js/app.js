@@ -87,9 +87,9 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
 }
 async function load(){
  try{
+  await loadNfcCashiers();
   const h=await fetch('/api/v1/health').then(r=>{if(!r.ok)throw new Error('health_http_'+r.status);return r.json()});
   $('status').textContent='● '+(h.status||'online');
-  await loadNfcCashiers();
   await loadDashboard(selectedAnalyticsPeriod);
  }catch(e){
   console.error('M-Group WebUI load failed:',e);
