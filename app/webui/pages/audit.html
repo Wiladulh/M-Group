@@ -11,14 +11,17 @@
       <select id="auditPeriod">
         <option value="day">Harian</option>
         <option value="week">Mingguan</option>
-        <option value="month">Bulanan</option>
+        <option value="month">Bulan kalender</option>
+        <option value="custom">Rentang tanggal manual</option>
       </select>
       <select id="auditMethod">
         <option value="ALL">Semua metode</option>
         <option value="NFC">NFC / saldo member</option>
         <option value="QRIS">QRIS</option>
       </select>
-      <input id="auditDate" type="date">
+      <label id="auditSingleDateLabel">Tanggal acuan<input id="auditDate" type="date"></label>
+      <label id="auditStartDateLabel" hidden>Tanggal mulai<input id="auditStartDate" type="date"></label>
+      <label id="auditEndDateLabel" hidden>Tanggal akhir (termasuk)<input id="auditEndDate" type="date"></label>
       <button type="submit">Tampilkan Audit</button>
     </form>
     <div id="auditResult" class="scroll" style="margin-top:12px"></div>
