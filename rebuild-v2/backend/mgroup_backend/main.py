@@ -4,11 +4,16 @@ import hmac
 import secrets
 import json
 import sqlite3
+import os
+import tempfile
+import zipfile
+import fcntl
 from io import BytesIO
 from typing import Annotated
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import settings
@@ -1254,6 +1259,120 @@ def admin_dashboard(connection: DB, period: str = 'week'):
         'analytics':[],'most_used_vending':[{'hardware_id':k,'device_name':names.get(k,k),'transactions':v} for k,v in sorted(used.items(),key=lambda x:x[1],reverse=True)[:10]],
         'best_selling_products':sorted(products.values(),key=lambda x:x['units_sold'],reverse=True)[:10],
         'recent_transactions':[dict(r) for r in recent]}
+
+@app.get('/api/v2/admin/reports/transactions.xlsx', dependencies=[Depends(require_admin)])
+def export_transactions_xlsx(connection: DB, period: str = 'week', date: str | None = None,
+                             start_date: str | None = None, end_date: str | None = None,
+                             source: str = 'ALL', status: str = 'ALL', transaction_type: str = 'ALL',
+                             member_id: str = '', hardware_id: str = '', transaction_id: str = '',
+                             limit: int = 1000):
+    from openpyxl import Workbook
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    data=admin_transactions(connection,period,date,start_date,end_date,source,status,transaction_type,
+                            member_id,hardware_id,transaction_id,limit)
+    workbook=Workbook()
+    sheet=workbook.active
+    sheet.title='Transactions'
+    columns=['transaction_id','request_id','created_at','completed_at','member_id','member_name','hardware_id',
+             'device_name','transaction_type','amount_minor','currency','status','metadata']
+    sheet.append(columns)
+    for item in data['items']:
+        sheet.append([json.dumps(item.get(key),ensure_ascii=False,separators=(',',':')) if key=='metadata' else item.get(key) for key in columns])
+    for cell in sheet[1]:
+        cell.font=__import__('openpyxl').styles.Font(bold=True)
+    sheet.freeze_panes='A2'
+    sheet.auto_filter.ref=sheet.dimensions
+    meta=workbook.create_sheet('Report metadata')
+    for key,value in [('timezone','Asia/Jakarta'),('period',period),('source',source.upper()),('status',status.lower()),
+                      ('transaction_type',transaction_type.lower()),('member_id',member_id),('hardware_id',hardware_id),
+                      ('transaction_id_filter',transaction_id),('start_utc',data['start_utc']),('end_utc_exclusive',data['end_utc_exclusive']),
+                      ('exported_at',datetime.now(ZoneInfo('Asia/Jakarta')).isoformat()),('row_count',len(data['items']))]:
+        meta.append([key,value or ''])
+    stream=BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    stamp=datetime.now(ZoneInfo('Asia/Jakarta')).strftime('%Y%m%d_%H%M%S')
+    filename=f"M-Group_Transactions_{source.upper()}_{stamp}_{new_id('rpt')[-6:]}.xlsx"
+    return StreamingResponse(stream,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition':f'attachment; filename="{filename}"'})
+
+@app.post('/api/v2/admin/backup', dependencies=[Depends(require_admin)])
+def create_backup(connection: DB):
+    from datetime import datetime, timezone
+    database_bytes=connection.serialize()
+    if not database_bytes:
+        raise HTTPException(status_code=500,detail={'code':'DATABASE_SNAPSHOT_EMPTY'})
+    manifest={'format':'mgroup-v2-native-backup','schema':'clean-room-v2','created_at_utc':datetime.now(timezone.utc).isoformat(),
+              'sha256':hashlib.sha256(database_bytes).hexdigest(),'size_bytes':len(database_bytes)}
+    stream=BytesIO()
+    with zipfile.ZipFile(stream,'w',compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('database.sqlite3',database_bytes)
+        archive.writestr('manifest.json',json.dumps(manifest,sort_keys=True,indent=2))
+    stream.seek(0)
+    filename='M-Group_BACKUP_'+datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')+'.mgroup.zip'
+    return StreamingResponse(stream,media_type='application/zip',headers={'Content-Disposition':f'attachment; filename="{filename}"'})
+
+@app.post('/api/v2/admin/backup/restore', dependencies=[Depends(require_admin)])
+async def restore_backup(connection: DB, file: UploadFile = File(...)):
+    max_bytes=100*1024*1024
+    raw=await file.read(max_bytes+1)
+    if not raw or len(raw)>max_bytes:
+        raise HTTPException(status_code=413,detail={'code':'BACKUP_ARCHIVE_TOO_LARGE'})
+    try:
+        with zipfile.ZipFile(BytesIO(raw),'r') as archive:
+            names=set(archive.namelist())
+            if names!={'database.sqlite3','manifest.json'}:
+                raise HTTPException(status_code=400,detail={'code':'INVALID_BACKUP_CONTENTS'})
+            if archive.getinfo('database.sqlite3').file_size>max_bytes:
+                raise HTTPException(status_code=413,detail={'code':'BACKUP_DATABASE_TOO_LARGE'})
+            database_bytes=archive.read('database.sqlite3')
+            manifest=json.loads(archive.read('manifest.json').decode('utf-8'))
+    except (zipfile.BadZipFile,KeyError,UnicodeDecodeError,json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400,detail={'code':'INVALID_BACKUP_ARCHIVE'}) from exc
+    if manifest.get('format')!='mgroup-v2-native-backup' or manifest.get('sha256')!=hashlib.sha256(database_bytes).hexdigest():
+        raise HTTPException(status_code=400,detail={'code':'BACKUP_CHECKSUM_MISMATCH'})
+    target=Path(settings.database_path)
+    if str(target)==':memory:':
+        raise HTTPException(status_code=409,detail={'code':'RESTORE_REQUIRES_FILE_DATABASE'})
+    target.parent.mkdir(parents=True,exist_ok=True)
+    temp_path=None
+    try:
+        with tempfile.NamedTemporaryFile(prefix='.mgroup-restore-',suffix='.sqlite3',dir=target.parent,delete=False) as temp:
+            temp.write(database_bytes);temp.flush();os.fsync(temp.fileno());temp_path=Path(temp.name)
+        check=sqlite3.connect(str(temp_path))
+        try:
+            check.execute('PRAGMA foreign_keys=ON')
+            integrity=check.execute('PRAGMA integrity_check').fetchone()[0]
+            fk_errors=check.execute('PRAGMA foreign_key_check').fetchall()
+            if integrity!='ok' or fk_errors:
+                raise HTTPException(status_code=400,detail={'code':'RESTORED_DATABASE_INTEGRITY_FAILED'})
+            required={'device_registry','members','member_cards','accounts','transactions','ledger_entries','audit_events','product_slots'}
+            found={row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not required.issubset(found):
+                raise HTTPException(status_code=400,detail={'code':'BACKUP_SCHEMA_NOT_COMPATIBLE'})
+        finally:
+            check.close()
+        # Release this request's shared database lock, then take an exclusive
+        # file lock so other API connections finish before the atomic file swap.
+        connection.close()
+        lock_path=Path(str(target)+'.lock')
+        lock_fd=os.open(lock_path,os.O_CREAT|os.O_RDWR,0o600)
+        try:
+            fcntl.flock(lock_fd,fcntl.LOCK_EX)
+            os.replace(temp_path,target);temp_path=None
+            os.chmod(target,0o600)
+            for sidecar in (Path(str(target)+'-wal'),Path(str(target)+'-shm')):
+                try: sidecar.unlink()
+                except FileNotFoundError: pass
+        finally:
+            fcntl.flock(lock_fd,fcntl.LOCK_UN);os.close(lock_fd)
+    finally:
+        if temp_path is not None:
+            try: temp_path.unlink()
+            except FileNotFoundError: pass
+    return {'status':'restored','integrity_check':'ok','foreign_key_errors':0,'backup_sha256':manifest['sha256'],
+            'warning':'Database replaced atomically after all existing shared-lock connections completed.'}
 
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin)])
 def list_audit(connection: DB, limit: int = 100):
