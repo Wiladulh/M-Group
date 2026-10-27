@@ -4,11 +4,15 @@
 #include <Preferences.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <mbedtls/sha256.h>
 class MGroupConfigPortal {
  public:
   void begin(String &wifiSsid,String &wifiPassword,String &baseUrl,String &deviceId,String &deviceKey,const char *deviceLabel,const char *storageNamespace,bool forceSetup) {
     ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; id_=&deviceId; key_=&deviceKey; label_=deviceLabel;
     prefs_.begin(storageNamespace,false);
+    cashierMode_=String(deviceLabel).indexOf("Cashier")>=0;
+    if(cashierMode_&&!prefs_.isKey("webui_pin_hash"))prefs_.putString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");
+    if(cashierMode_)sessionToken_=randomToken();
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
     *url_=prefs_.getString("server_url",*url_); *id_=prefs_.getString("device_id",*id_); *key_=prefs_.getString("device_key",*key_);
     // Initialize the station interface before reading its hardware MAC.
@@ -20,7 +24,13 @@ class MGroupConfigPortal {
  private:
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
-  const char *label_="M-Group Device"; bool active_=false;
+  const char *label_="M-Group Device"; bool active_=false,cashierMode_=false;
+  String sessionToken_=""; unsigned long pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
+  static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
+  static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
+  bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
+  static String loginPage(){return String(F("<!doctype html><html lang=\"id\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>PIN WebUI Cashier</title><body style=\"font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7\"><h2>WebUI Cashier</h2><p>Masukkan PIN konfigurasi.</p><form method=\"post\" action=\"/login\"><input name=\"pin\" type=\"password\" maxlength=\"32\" required style=\"padding:12px;width:95%\"><button style=\"padding:12px;margin-top:12px\">Masuk</button></form><p>PIN awal: 19929900. Ganti setelah login.</p></body></html>"));}
+  void requireAuth(AsyncWebServerRequest *req){req->send(401,"application/json","{\"ok\":false,\"detail\":\"login_required\"}");}
   static String page(const char *label) {
     String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Konfigurasi M-Group</title><style>
