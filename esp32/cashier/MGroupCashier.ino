@@ -278,7 +278,7 @@ void registrationScan(const String& session){
   String body="{\"session_id\":\""+session+"\",\"card_uid\":\""+credential.substring(4)+"\",\"pin\":\""+pin+"\"}";
   int code=0; String reply=postJson(String("/api/v1/cashier/nfc-registration/complete"),body,code);
   Serial.printf("NFC REG %d %s\\n",code,reply.c_str());
-  if(code==200){configPortal.setStatusExtra(",\\\"registration_status\\\":\\\"completed\\\"");lcdShow("REGISTRASI","BERHASIL");}
+  if(code==200){configPortal.setStatusExtra(",\"registration_status\":\"completed\"");lcdShow("REGISTRASI","BERHASIL");}
   else {registrationProgress(session,"failed");lcdShow("REGISTRASI","GAGAL");}
   delay(1800);
 }
