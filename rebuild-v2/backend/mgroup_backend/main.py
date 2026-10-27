@@ -977,6 +977,8 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
     device = authenticated_device(connection, x_device_key)
     if device['device_type'] != 'vending':
         raise HTTPException(status_code=403, detail={'code': 'VENDING_DEVICE_REQUIRED'})
+    if payload.payment_method == 'qris':
+        raise HTTPException(status_code=409, detail={'code': 'QRIS_PROVIDER_NOT_CONFIGURED'})
     digest = card_hash(payload.card_uid)
     # Persist throttling in its own transaction so a rejected PIN does not roll
     # back the security counter with the purchase transaction.
@@ -1058,7 +1060,8 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                 raise HTTPException(status_code=409, detail={'code': 'SYSTEM_ACCOUNT_INSUFFICIENT_BALANCE'})
             transaction_id = new_id('txn')
             metadata = {'product_id': payload.product_id, 'registry_id': device['registry_id'],
-                        'card_hash': digest, 'product_name': product['name'], 'dispense_status': 'pending'}
+                        'card_hash': digest, 'product_name': product['name'], 'payment_method': payload.payment_method,
+                        'dispense_status': 'pending'}
             connection.execute("INSERT INTO transactions(transaction_id,request_id,hardware_id,member_id,transaction_type,amount_minor,status,metadata_json) VALUES(?,?,?,?,'purchase',?,'pending',?)",
                 (transaction_id, payload.request_id, device['hardware_id'], member['member_id'], amount, json.dumps(metadata)))
             debited = connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
