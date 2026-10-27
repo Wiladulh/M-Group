@@ -243,6 +243,138 @@ def audit(connection, action, entity_type, entity_id, request_id=None, detail=No
         (new_id('aud'), 'server', action, entity_type, entity_id, request_id, json.dumps(detail or {}, separators=(',', ':'))))
 
 
+def require_admin_session(connection: DB, authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401,detail={'code':'ADMIN_AUTH_REQUIRED'})
+    token=authorization[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401,detail={'code':'ADMIN_AUTH_REQUIRED'})
+    if hmac.compare_digest(token,settings.admin_token):
+        return {'admin_id':None,'username':'bootstrap','role':'super_admin','session_id':None,'token':token,'bootstrap':True}
+    digest=hash_secret(token,settings.device_key_pepper)
+    row=connection.execute("""SELECT s.session_id,s.admin_id,u.username,u.role,u.status,s.expires_at
+        FROM admin_sessions s JOIN admin_users u ON u.admin_id=s.admin_id
+        WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP
+        AND u.status='active'""",(digest,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=401,detail={'code':'ADMIN_SESSION_INVALID_OR_EXPIRED'})
+    connection.execute("UPDATE admin_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?",(row['session_id'],))
+    result=dict(row);result['token']=token;result['bootstrap']=False
+    return result
+
+def require_roles(*allowed_roles):
+    def dependency(user=Depends(require_admin_session)):
+        if user['role'] not in allowed_roles:
+            raise HTTPException(status_code=403,detail={'code':'ADMIN_ROLE_FORBIDDEN','required_roles':list(allowed_roles)})
+        return user
+    return dependency
+
+@app.post('/api/v2/admin/auth/login')
+def admin_login(payload: AdminLogin, connection: DB):
+    username=payload.username.strip().lower()
+    now_locked=False;error_status=0;token=None;user_result=None
+    with transaction(connection):
+        attempt=connection.execute("SELECT failed_attempts,locked_until FROM admin_login_attempts WHERE username=?",(username,)).fetchone()
+        if attempt and attempt['locked_until'] and connection.execute("SELECT julianday(?)>julianday('now')",(attempt['locked_until'],)).fetchone()[0]:
+            now_locked=True;error_status=429
+        else:
+            user=connection.execute("SELECT admin_id,username,password_hash,role,status FROM admin_users WHERE username=?",(username,)).fetchone()
+            valid=bool(user and user['status']=='active' and verify_pin(payload.password,user['password_hash']))
+            if not valid:
+                failures=(attempt['failed_attempts'] if attempt else 0)+1
+                locked=failures>=5
+                connection.execute("""INSERT INTO admin_login_attempts(username,failed_attempts,locked_until,updated_at)
+                    VALUES(?,?,CASE WHEN ? THEN datetime('now','+15 minutes') ELSE NULL END,CURRENT_TIMESTAMP)
+                    ON CONFLICT(username) DO UPDATE SET failed_attempts=excluded.failed_attempts,
+                    locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP""",(username,failures,int(locked)))
+                error_status=429 if locked else 401
+            else:
+                connection.execute("DELETE FROM admin_login_attempts WHERE username=?",(username,))
+                token=secrets.token_urlsafe(32);session_id=new_id('ses')
+                connection.execute("""INSERT INTO admin_sessions(session_id,admin_id,token_hash,expires_at)
+                    VALUES(?,?,?,datetime('now','+8 hours'))""",
+                    (session_id,user['admin_id'],hash_secret(token,settings.device_key_pepper)))
+                connection.execute("UPDATE admin_users SET last_login_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",(user['admin_id'],))
+                audit(connection,'admin.login','admin_user',user['admin_id'],detail={'username':username,'role':user['role']})
+                user_result={'admin_id':user['admin_id'],'username':user['username'],'role':user['role'],'session_id':session_id}
+    if error_status:
+        raise HTTPException(status_code=error_status,detail={'code':'ADMIN_LOGIN_RATE_LIMITED' if error_status==429 else 'INVALID_ADMIN_CREDENTIALS'})
+    return {'access_token':token,'token_type':'Bearer','expires_in':28800,'user':user_result}
+
+@app.get('/api/v2/admin/auth/me',dependencies=[Depends(require_admin_session)])
+def admin_me(user=Depends(require_admin_session)):
+    return {'admin_id':user['admin_id'],'username':user['username'],'role':user['role'],'expires_at':user.get('expires_at'),'bootstrap':user['bootstrap']}
+
+@app.post('/api/v2/admin/auth/logout',dependencies=[Depends(require_admin_session)])
+def admin_logout(connection: DB,user=Depends(require_admin_session)):
+    if user.get('session_id'):
+        with transaction(connection):
+            connection.execute("UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE session_id=? AND revoked_at IS NULL",(user['session_id'],))
+            audit(connection,'admin.logout','admin_user',user['admin_id'],detail={'session_id':user['session_id']})
+    return {'logged_out':bool(user.get('session_id'))}
+
+@app.post('/api/v2/admin/auth/change-password',dependencies=[Depends(require_roles('super_admin','operator','auditor'))])
+def admin_change_password(payload: AdminPasswordChange, connection: DB, user=Depends(require_admin_session)):
+    if not user.get('admin_id'):
+        raise HTTPException(status_code=409,detail={'code':'BOOTSTRAP_TOKEN_HAS_NO_USER_PASSWORD'})
+    if payload.new_password!=payload.confirm_password:
+        raise HTTPException(status_code=422,detail={'code':'PASSWORD_CONFIRMATION_MISMATCH'})
+    with transaction(connection):
+        row=connection.execute("SELECT password_hash FROM admin_users WHERE admin_id=? AND status='active'",(user['admin_id'],)).fetchone()
+        if not row or not verify_pin(payload.current_password,row['password_hash']):
+            raise HTTPException(status_code=403,detail={'code':'CURRENT_PASSWORD_INVALID'})
+        connection.execute("UPDATE admin_users SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",
+                           (pin_hash(payload.new_password),user['admin_id']))
+        connection.execute("UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE admin_id=? AND session_id<>? AND revoked_at IS NULL",
+                           (user['admin_id'],user.get('session_id') or ''))
+        audit(connection,'admin.password.change','admin_user',user['admin_id'])
+    return {'password_changed':True,'other_sessions_revoked':True}
+
+@app.get('/api/v2/admin/users',dependencies=[Depends(require_roles('super_admin'))])
+def admin_users(connection: DB):
+    rows=connection.execute("SELECT admin_id,username,role,status,created_at,updated_at,last_login_at FROM admin_users ORDER BY created_at").fetchall()
+    return {'items':[dict(row) for row in rows]}
+
+@app.post('/api/v2/admin/users',status_code=201,dependencies=[Depends(require_roles('super_admin'))])
+def create_admin_user(payload: AdminUserCreate,connection: DB):
+    username=payload.username.strip().lower()
+    admin_id=new_id('adm')
+    try:
+        with transaction(connection):
+            connection.execute("INSERT INTO admin_users(admin_id,username,password_hash,role,status) VALUES(?,?,?,?, 'active')",
+                (admin_id,username,pin_hash(payload.password),payload.role))
+            audit(connection,'admin.user.create','admin_user',admin_id,detail={'username':username,'role':payload.role})
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409,detail={'code':'ADMIN_USERNAME_CONFLICT'}) from exc
+    return {'admin_id':admin_id,'username':username,'role':payload.role,'status':'active'}
+
+@app.post('/api/v2/admin/users/{admin_id}/disable',dependencies=[Depends(require_roles('super_admin'))])
+def disable_admin_user(admin_id: str,connection: DB,user=Depends(require_admin_session)):
+    with transaction(connection):
+        target=connection.execute("SELECT admin_id,username,role,status FROM admin_users WHERE admin_id=?",(admin_id,)).fetchone()
+        if not target:
+            raise HTTPException(status_code=404,detail={'code':'ADMIN_USER_NOT_FOUND'})
+        if target['admin_id']==user.get('admin_id'):
+            raise HTTPException(status_code=409,detail={'code':'CANNOT_DISABLE_CURRENT_ADMIN'})
+        if target['role']=='super_admin' and target['status']=='active':
+            count=connection.execute("SELECT COUNT(*) FROM admin_users WHERE role='super_admin' AND status='active'").fetchone()[0]
+            if count<=1:raise HTTPException(status_code=409,detail={'code':'CANNOT_DISABLE_LAST_SUPER_ADMIN'})
+        connection.execute("UPDATE admin_users SET status='disabled',updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",(admin_id,))
+        connection.execute("UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE admin_id=? AND revoked_at IS NULL",(admin_id,))
+        audit(connection,'admin.user.disable','admin_user',admin_id,detail={'username':target['username']})
+    return {'admin_id':admin_id,'status':'disabled','sessions_revoked':True}
+
+@app.post('/api/v2/admin/users/{admin_id}/reset-password',dependencies=[Depends(require_roles('super_admin'))])
+def reset_admin_password(admin_id: str,payload: AdminPasswordReset,connection: DB):
+    with transaction(connection):
+        target=connection.execute("SELECT admin_id,username FROM admin_users WHERE admin_id=? AND status='active'",(admin_id,)).fetchone()
+        if not target:raise HTTPException(status_code=404,detail={'code':'ADMIN_USER_NOT_FOUND'})
+        connection.execute("UPDATE admin_users SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",
+                           (pin_hash(payload.new_password),admin_id))
+        connection.execute("UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE admin_id=? AND revoked_at IS NULL",(admin_id,))
+        audit(connection,'admin.password.reset','admin_user',admin_id,detail={'username':target['username']})
+    return {'admin_id':admin_id,'password_reset':True,'sessions_revoked':True}
+
 @app.get('/api/v2/ready')
 def readiness(connection: DB):
     try:
