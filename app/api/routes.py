@@ -1414,7 +1414,7 @@ def build_router(db, app_settings=None):
                 raise HTTPException(404,"registration_session_not_found")
             if session["status"] not in {"scan_pending","waiting_nfc","pin_pending","processing"}:
                 raise HTTPException(409,"registration_session_not_active")
-            if session["expires_at"]<=__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
+            if session["expires_at"]<=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
                 c.commit()
                 raise HTTPException(409,"registration_session_expired")
@@ -1438,7 +1438,7 @@ def build_router(db, app_settings=None):
             ).fetchone()
             if not session: raise HTTPException(404,"registration_session_not_found")
             if session["status"]!="scan_pending": raise HTTPException(409,"registration_session_not_pending")
-            if session["expires_at"]<=__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
+            if session["expires_at"]<=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
                 c.execute("UPDATE nfc_registration_sessions SET status='expired' WHERE session_id=?",(q.session_id,))
                 c.commit()
                 raise HTTPException(409,"registration_session_expired")
