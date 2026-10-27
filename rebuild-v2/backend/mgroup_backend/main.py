@@ -303,9 +303,11 @@ def revoke_device_key(registry_id: str, connection: DB):
         row=connection.execute("SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",(registry_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404,detail={'code':'DEVICE_NOT_FOUND'})
-        connection.execute("UPDATE device_registry SET status='revoked',device_key_hash=NULL,device_key_hint=NULL,revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",(registry_id,))
+        connection.execute('INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?,?,?,?,?)',
+            (new_id('evt'),registry_id,row['hardware_id'],'device.revoked',json.dumps({'previous_status':row['status']})))
+        connection.execute("UPDATE device_registry SET hardware_id=NULL,status='revoked',device_key_hash=NULL,device_key_hint=NULL,revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",(registry_id,))
         connection.execute("UPDATE nfc_registration_sessions SET status='failed',error_code='CASHIER_REVOKED' WHERE registry_id=? AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')",(registry_id,))
-        audit(connection,'device.key.revoke','device',registry_id,detail={'hardware_id':row['hardware_id']})
+        audit(connection,'device.key.revoke','device',registry_id,detail={'previous_hardware_id':row['hardware_id']})
     return {'registry_id':registry_id,'status':'revoked'}
 
 def authenticated_device(connection: sqlite3.Connection, device_key: str | None):
