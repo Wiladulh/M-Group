@@ -17,7 +17,7 @@ class MGroupConfigPortal {
     String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
     *id_=prefix+mac;
     bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
-    if(needed) startPortal();
+    startPortal(needed);
   }
   bool active() const { return active_; }
  private:
@@ -35,22 +35,39 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 </style><main><h2>Konfigurasi )HTML";
     h+=label;
     h+=R"HTML(</h2><p>Masukkan Wi-Fi, alamat server, dan Device Key dari Dashboard Management M-Group.</p>
-<p class="warn">Device ID dibuat otomatis dari seluruh MAC address perangkat dan tidak perlu dimasukkan.</p>
+<p class="warn">Device ID dibuat otomatis dari seluruh MAC address perangkat dan tidak perlu dimasukkan.</p><section><h3>Status perangkat</h3><pre id="status">Memuat status...</pre><button type="button" onclick="fetch('/test').then(r=>r.json()).then(x=>alert(x.detail+' ('+x.host+':'+x.port+')')).catch(()=>alert('Uji koneksi gagal'))">Uji koneksi server</button></section>
 <form method="post" action="/save">
 <label>Wi-Fi SSID</label><input name="ssid" maxlength="64" required autocomplete="off">
 <label>Password Wi-Fi</label><input name="wifi_password" type="password" maxlength="128" required>
 <label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" required autocomplete="off">
-<small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form></main></html>)HTML";
+<small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     return h;
   }
-  void startPortal() {
-    WiFi.mode(WIFI_AP_STA);
-    uint64_t mac=ESP.getEfuseMac(); char suffix[7]; snprintf(suffix,sizeof(suffix),"%06X",(uint32_t)(mac&0xFFFFFF));
-    String apName=String("MGroup-Setup-")+suffix; char pass[17]; snprintf(pass,sizeof(pass),"%08X%08X",(uint32_t)esp_random(),(uint32_t)esp_random());
-    WiFi.softAP(apName.c_str(),pass); active_=true;
-    Serial.printf("\nM-GROUP CONFIG PORTAL: %s\nPassword setup: %s\nBuka http://192.168.4.1/\n",apName.c_str(),pass);
+  void startPortal(bool setupAp=true) {
+    if(setupAp) {
+      WiFi.mode(WIFI_AP_STA);
+      uint64_t mac=ESP.getEfuseMac(); char suffix[7]; snprintf(suffix,sizeof(suffix),"%06X",(uint32_t)(mac&0xFFFFFF));
+      String apName=String("MGroup-Setup-")+suffix; char pass[17]; snprintf(pass,sizeof(pass),"%08X%08X",(uint32_t)esp_random(),(uint32_t)esp_random());
+      WiFi.softAP(apName.c_str(),pass); active_=true;
+      Serial.printf("\nM-GROUP CONFIG PORTAL: %s\nPassword setup: %s\nBuka http://192.168.4.1/\n",apName.c_str(),pass);
+    } else {
+      active_=false;
+      Serial.println("M-GROUP DEVICE WEBUI will be available at the DHCP IP on port 80 after Wi-Fi connects.");
+    }
     server_.on("/",HTTP_GET,[this](AsyncWebServerRequest *req){req->send(200,"text/html; charset=utf-8",page(label_));});
+    server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){
+      String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+"}";
+      req->send(200,"application/json; charset=utf-8",body);
+    });
+    server_.on("/test",HTTP_GET,[this](AsyncWebServerRequest *req){
+      if(WiFi.status()!=WL_CONNECTED){req->send(503,"application/json","{\"ok\":false,\"detail\":\"wifi_disconnected\"}");return;}
+      String host=*url_; host.replace("https://","");host.replace("http://","");int slash=host.indexOf('/');if(slash>=0)host=host.substring(0,slash);
+      uint16_t port=url_->startsWith("https://")?443:80;int colon=host.lastIndexOf(':');if(colon>0){port=(uint16_t)host.substring(colon+1).toInt();host=host.substring(0,colon);}
+      WiFiClient client;client.setTimeout(3000);bool ok=client.connect(host.c_str(),port);if(ok)client.stop();
+      String body=String("{\"ok\":")+(ok?"true":"false")+",\"detail\":\""+(ok?"tcp_reachable":"server_unreachable")+"\",\"host\":\""+host+"\",\"port\":"+String(port)+"}";
+      req->send(ok?200:503,"application/json; charset=utf-8",body);
+    });
     server_.on("/save",HTTP_POST,[this](AsyncWebServerRequest *req){
       auto value=[req](const char *name)->String {return req->hasParam(name,true)?req->getParam(name,true)->value():"";};
       String ssid=value("ssid"),wifiPass=value("wifi_password"),serverUrl=value("server_url"),deviceKey=value("device_key");
