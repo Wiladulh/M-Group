@@ -4,7 +4,10 @@ import hmac
 import secrets
 import json
 import sqlite3
+import hashlib
+from io import BytesIO
 from typing import Annotated
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -38,6 +41,24 @@ Admin = Annotated[None, Depends(require_admin)]
 
 class MemberCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
+    nik: str | None = Field(default=None, min_length=16, max_length=16, pattern=r'^[0-9]{16}$')
+    phone: str | None = Field(default=None, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
+    address: str | None = Field(default=None, max_length=300)
+    birth_place: str | None = Field(default=None, max_length=100)
+    birth_date: str | None = Field(default=None, max_length=10)
+    sex: str | None = Field(default=None, max_length=24)
+    rt: str | None = Field(default=None, max_length=8)
+    rw: str | None = Field(default=None, max_length=8)
+    village: str | None = Field(default=None, max_length=100)
+    district: str | None = Field(default=None, max_length=100)
+    city_regency: str | None = Field(default=None, max_length=100)
+    province: str | None = Field(default=None, max_length=100)
+    religion: str | None = Field(default=None, max_length=50)
+    marital_status: str | None = Field(default=None, max_length=50)
+    occupation: str | None = Field(default=None, max_length=100)
+    citizenship: str | None = Field(default='WNI', max_length=32)
+    registration_date: str | None = Field(default=None, max_length=10)
     pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 class TopUpRequest(BaseModel):
