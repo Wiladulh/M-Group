@@ -369,6 +369,9 @@ class VendingService:
         # Claim the refund path before crediting. The ledger idempotency key
         # makes recovery safe if the process stops between credit and status.
         with self.db.connect() as c:
+            # Serialize the refund claim so concurrent failure reports cannot
+            # both observe an authorized transaction and race the state change.
+            c.execute("BEGIN IMMEDIATE")
             current=c.execute("SELECT status FROM vending_transactions WHERE transaction_id=?",(transaction_id,)).fetchone()
             if not current: raise ValueError("transaction_not_found")
             if current["status"] in {"completed","refunded","failed"}: return self.get(transaction_id)
