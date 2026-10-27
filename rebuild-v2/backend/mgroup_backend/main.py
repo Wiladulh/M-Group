@@ -8,6 +8,7 @@ import os
 import tempfile
 import zipfile
 import fcntl
+from pathlib import Path
 from io import BytesIO
 from typing import Annotated
 from PIL import Image, ImageOps, UnidentifiedImageError
