@@ -180,7 +180,7 @@ class VendingDispenseRequest(BaseModel):
     success: bool = True
 
 class NfcRegistrationStartRequest(BaseModel):
-    # Optional compatibility field. The cashier binds itself through its device key.
+    # Selected active cashier; the session is bound to its server-held key fingerprint.
     cashier_hardware_id: str | None = None
     operator_id: str = "admin"
 
