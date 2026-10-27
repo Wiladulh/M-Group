@@ -1448,8 +1448,10 @@ async def restore_backup(connection: DB, file: UploadFile = File(...)):
     try:
         with zipfile.ZipFile(BytesIO(raw),'r') as archive:
             names=set(archive.namelist())
-            if names!={'database.sqlite3','manifest.json'}:
+            if len(archive.infolist())!=2 or names!={'database.sqlite3','manifest.json'}:
                 raise HTTPException(status_code=400,detail={'code':'INVALID_BACKUP_CONTENTS'})
+            if archive.getinfo('manifest.json').file_size>65536:
+                raise HTTPException(status_code=413,detail={'code':'BACKUP_MANIFEST_TOO_LARGE'})
             if archive.getinfo('database.sqlite3').file_size>max_bytes:
                 raise HTTPException(status_code=413,detail={'code':'BACKUP_DATABASE_TOO_LARGE'})
             database_bytes=archive.read('database.sqlite3')
