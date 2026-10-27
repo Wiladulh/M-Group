@@ -1620,7 +1620,7 @@ def build_router(db, app_settings=None):
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
         path=root/f"audit-{data['source'].lower()}-{data['period']}{method_segment}-{data['start']}.xlsx"
-        export_rows_excel(data["transactions"],path)
+        export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":data["end"],"method":data["method"]})
         return FileResponse(path,filename=path.name,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @r.post("/backup")
