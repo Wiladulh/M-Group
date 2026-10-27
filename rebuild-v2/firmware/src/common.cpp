@@ -161,6 +161,8 @@ void MGroupV2Runtime::startWebUI() {
       server_.send(400,"text/plain","Konfigurasi tidak valid. HTTPS membutuhkan CA tepercaya dan URL tanpa slash akhir.");return;
     }
     prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",password);prefs_.putString("server_url",url);prefs_.putString("device_key",key);prefs_.putString("tls_ca",ca);
+    prefs_.remove("registry_id");
+    registryId_="";
     server_.send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
     delay(700);ESP.restart();
   });
