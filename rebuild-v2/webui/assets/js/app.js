@@ -451,6 +451,7 @@
   }
   async function loadAll() {
     $("status").textContent="● Terhubung";
+    if($("loans"))$("loans").innerHTML='<p class="hint">Modul pinjaman belum diaktifkan karena kebijakan bunga, tenor, jadwal angsuran, dan pencatatan pencairan/pelunasan belum ditetapkan dalam kontrak v2. Tidak ada transaksi pinjaman simulasi yang dibuat.</p>';
     await Promise.allSettled([loadDashboard(),loadMembers(),loadAccounts(),loadDevices(),loadVendingDevices(),loadAudit()]);
   }
   function loadTab(tab) {
