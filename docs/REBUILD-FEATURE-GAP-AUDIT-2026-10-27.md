@@ -49,16 +49,13 @@ This is a source-level gap audit, not a claim that the complete test suite or ph
 **Search filters implemented in source; validation pending.** Audit report and XLSX export now share period/date-range, source/type, payment method, device, member ID, status, and transaction-ID filters. Status options distinguish completed, pending, authorized, failed, cancelled, refunding, refunded, and created. Cross-links to ledger records remain limited by the available transaction schema; verify reconciliation references during final audit.
 
 ### P2 — Timezone and financial invariants
-The README says audit supports day/week/month, but timezone and boundary semantics need explicit validation. Use Asia/Jakarta for report boundaries, UTC storage for timestamps, and one documented meaning for “1 month”. Check ledger balance remains authoritative and top-up/debit/stock updates are atomic/idempotent. Do not rerun unrelated previously passing CI jobs; run affected tests after changes.
+**Source implementation complete; validation pending.** Audit boundaries use Asia/Jakarta with UTC timestamp storage; week means a rolling seven-day window, and month means the selected calendar month. Manual credit/debit and payment API requests require idempotency keys; the WebUI preserves keys across uncertain network outcomes and only exposes an explicit reset after the operator confirms they checked the ledger/history. Verify balance authority, atomic ledger posting, stock updates, and duplicate-request behavior during the final financial audit.
 
-## Suggested implementation sequence
-1. Trace the current cashier-bound NFC registration endpoints, UI handlers, schema, and firmware protocol; close the end-to-end workflow.
-2. Inspect local portal source for DHCP LAN access, local PIN, persistence, and NTP/timezone; implement missing requirements per firmware capabilities.
-3. Complete server-side product image upload/optimization and catalog version/hash, then device differential/atomic sync where supported.
-4. Extend report filters and workbook generation to match report types, date ranges, timezone, filenames, and revenue status rules.
-5. Add/verify best-selling product aggregation and expose machine location in most-used vending.
-6. Audit transaction filters, member/top-up UX, key revocation/rotation, and backup restore safeguards.
-7. Run only relevant tests for changed components; run the final full suite once the rebuild is ready. Physical NFC/keypad/DHCP/network interruption tests remain explicitly pending until performed on real devices.
+## Remaining work sequence
+1. Finish the source-only completeness review across API contracts, migrations, WebUI, device firmware, and recovery paths. No test/build/GitHub Actions run has been initiated in this implementation phase.
+2. Resolve any source-level mismatches found during that review, especially firmware partition sizing, image-cache recovery, role guards, and transaction idempotency.
+3. Once implementation is declared complete, run the relevant tests/builds and then the full suite; verify exported XLSX workbooks by reopening them.
+4. Only after automated checks pass, perform physical NFC/keypad, DHCP/LAN portal, key revocation, and network-interruption acceptance tests. Do not describe hardware behavior as passed before those tests occur.
 
 ## Release gate
 Do not merge while any P1 is unresolved, any financial invariant lacks test evidence, any report export has not been reopened/validated as XLSX, or any physical-device behavior is described as passed without real-device evidence.
