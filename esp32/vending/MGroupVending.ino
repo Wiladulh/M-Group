@@ -59,6 +59,7 @@ bool pendingCreateRequest=false;
 String pendingCreateProduct="",pendingCreateCredential="";
 unsigned long pendingCreateSequence=0;
 int pendingCreateServo=0;
+long pendingCreateAmount=0;
 bool createRequestRejected=false;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
@@ -134,18 +135,19 @@ void parseProducts(const String&json){
 void clearPendingCreateRequest(){
   vendingPrefs.putBool("create_pending",false);
   vendingPrefs.remove("create_product");vendingPrefs.remove("create_credential");
-  vendingPrefs.remove("create_seq");vendingPrefs.remove("create_servo");
+  vendingPrefs.remove("create_seq");vendingPrefs.remove("create_servo");vendingPrefs.remove("create_amount");
   pendingCreateRequest=false;pendingCreateProduct="";pendingCreateCredential="";
-  pendingCreateSequence=0;pendingCreateServo=0;
+  pendingCreateSequence=0;pendingCreateServo=0;pendingCreateAmount=0;
 }
-void savePendingCreateRequest(const String&product,const String&credential,unsigned long seq,int servoChannel){
+void savePendingCreateRequest(const String&product,const String&credential,unsigned long seq,int servoChannel,long expectedAmount){
   vendingPrefs.putString("create_product",product);
   vendingPrefs.putString("create_credential",credential);
   vendingPrefs.putULong("create_seq",seq);
   vendingPrefs.putInt("create_servo",servoChannel);
+  vendingPrefs.putLong("create_amount",expectedAmount);
   vendingPrefs.putBool("create_pending",true);
   pendingCreateRequest=true;pendingCreateProduct=product;pendingCreateCredential=credential;
-  pendingCreateSequence=seq;pendingCreateServo=servoChannel;
+  pendingCreateSequence=seq;pendingCreateServo=servoChannel;pendingCreateAmount=expectedAmount;
 }
 void clearPendingTransaction(){
   vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");
@@ -215,9 +217,9 @@ bool products(){
   else showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));
   return true;
 }
-String beginTransaction(const String&product,const String&credential,const String&seq){
+String beginTransaction(const String&product,const String&credential,const String&seq,long expectedAmount){
   createRequestRejected=false;
-  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\"}";
+  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\",\"expected_amount\":"+String(expectedAmount)+"}";
   String path=String("/api/v1/vending/")+HARDWARE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
@@ -305,8 +307,8 @@ void scanCard(){
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
-  savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel);
-  String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
+  savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel,x.price);
+  String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence),pendingCreateAmount);
   if(!tx.length()){
     if(createRequestRejected){clearPendingCreateRequest();showMessage("TRANSACTION REJECTED","Check stock/card");}
     else showMessage("CREATE PENDING","Retry same request");
@@ -339,7 +341,8 @@ void setup(){
     pendingCreateCredential=vendingPrefs.getString("create_credential","");
     pendingCreateSequence=vendingPrefs.getULong("create_seq",0);
     pendingCreateServo=vendingPrefs.getInt("create_servo",0);
-    if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
+    pendingCreateAmount=vendingPrefs.getLong("create_amount",0);
+    if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT||pendingCreateAmount<=0){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
   }
   pendingDispenseReport=vendingPrefs.getBool("disp_pending",false);
   if(pendingDispenseReport){
