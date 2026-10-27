@@ -186,6 +186,26 @@ $('members').addEventListener('click',async e=>{
   }catch(err){$('memberAuthResult').textContent=err.message}
 });
 
+async function loadNfcCashierOptions(){
+  const select=$('nfcCashier');
+  if(!select)return;
+  const previous=select.value;
+  select.innerHTML='<option value="">Memuat Cashier aktif...</option>';
+  try{
+    const {r,d}=await json('/api/v1/devices',{});
+    if(!r.ok)throw new Error(d.detail||'Gagal memuat daftar Cashier');
+    const rows=(Array.isArray(d.devices)?d.devices:[]).filter(x=>
+      ['esp32-cashier','cashier'].includes(String(x.device_type||'').toLowerCase())&&
+      x.status==='active'&&x.hardware_id
+    );
+    select.innerHTML='<option value="">Pilih Cashier aktif</option>'+rows.map(x=>
+      '<option value="'+esc(x.hardware_id)+'">'+esc(x.display_name||x.hardware_id)+' · '+esc(x.hardware_id)+'</option>'
+    ).join('');
+    if(previous&&rows.some(x=>x.hardware_id===previous))select.value=previous;
+    if(!rows.length)select.innerHTML='<option value="">Tidak ada Cashier aktif</option>';
+  }catch(err){select.innerHTML='<option value="">Gagal memuat Cashier</option>'}
+}
+loadNfcCashierOptions();
 let nfcPollTimer=null;
 async function pollNfcRegistration(memberId,sessionId){
   clearInterval(nfcPollTimer);
@@ -211,17 +231,19 @@ async function pollNfcRegistration(memberId,sessionId){
 $('nfcStart').onclick=async()=>{
   try{
   const memberId=$('memberId').value.trim();
+    const cashier_hardware_id=$('nfcCashier').value;
+    if(!cashier_hardware_id){await loadNfcCashierOptions();throw new Error('Pilih Cashier aktif sebelum memulai registrasi NFC')}
     if(!memberId)throw new Error('Simpan atau pilih member terlebih dahulu');
     const memberResponse=await json('/api/v1/members/'+encodeURIComponent(memberId),{});
     if(!memberResponse.r.ok)throw new Error(memberResponse.d.detail||'Member belum tersimpan di server');
     const hasActiveCard=(memberResponse.d.nfc_cards||[]).some(card=>card.status==='active');
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
-    let body={};
+    let body={cashier_hardware_id};
     if(hasActiveCard){
       const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
       if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={operator_id};
+      body={operator_id,cashier_hardware_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
