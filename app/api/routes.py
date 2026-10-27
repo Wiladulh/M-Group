@@ -449,8 +449,10 @@ def build_router(db, app_settings=None):
         now = int(time.time())
         with db.connect() as c:
             row = c.execute(
-                """SELECT username FROM webui_sessions
-                   WHERE session_hash=? AND revoked_at IS NULL AND expires_at>? AND last_seen>?""",
+                """SELECT s.username,u.role FROM webui_sessions s
+                   JOIN admin_users u ON u.username=s.username
+                   WHERE s.session_hash=? AND s.revoked_at IS NULL AND s.expires_at>?
+                     AND s.last_seen>? AND u.is_active=1""",
                 (hash_session_token(token), now, now - 1800),
             ).fetchone()
             if row:
@@ -459,7 +461,7 @@ def build_router(db, app_settings=None):
                 c.commit()
         if not row:
             raise HTTPException(401, "admin_session_expired")
-        return {"authenticated": True, "username": row["username"], "role": getattr(request.state, "admin_role", None)}
+        return {"authenticated": True, "username": row["username"], "role": row["role"]}
 
     @r.post("/auth/account")
     def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
