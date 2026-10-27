@@ -349,6 +349,7 @@ async function loadFinancialLedger(){
   $('financialLedger').innerHTML=r.ok?table((d.entries||[]).map(x=>({...x,amount:money(x.amount)})),['created_at','direction','amount','reference','id']):'<p class="hint" style="padding:12px">'+esc(d.detail||'Gagal memuat ledger')+'</p>';
 }
 $('account').onchange=loadFinancialLedger;
+let financialPending=null;
 $('financialForm').onsubmit=async e=>{
   e.preventDefault();
   const accountId=$('account').value,amount=Number($('amount').value),direction=$('direction').value,reference=$('reference').value.trim();
@@ -359,13 +360,22 @@ $('financialForm').onsubmit=async e=>{
   const selectedAccount=dashboardAccounts.find(x=>x.account_id===accountId);
   const memberLabel=selectedAccount?.member_name||accountId;
   if(!confirm('Konfirmasi '+action+' sebesar Rp '+money(amount)+' untuk '+memberLabel+'?'))return;
-  const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
-  const q={amount,reference,idempotency_key:'webui-financial:'+nonce};
-  const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
-  });
-  $('financialResult').textContent=JSON.stringify(d,null,2);
-  if(r.ok){await load();await loadFinancialLedger()}
+  const signature=JSON.stringify({accountId,amount,direction,reference});
+  if(!financialPending||financialPending.signature!==signature){
+    const nonce=window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+    financialPending={signature,key:'webui-financial:'+nonce};
+  }
+  try{
+    const q={amount,reference,idempotency_key:financialPending.key};
+    const {r,d}=await json('/api/v1/accounts/'+encodeURIComponent(accountId)+'/'+direction,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)
+    });
+    $('financialResult').textContent=JSON.stringify(d,null,2);
+    if(r.ok){financialPending=null;await load();await loadFinancialLedger()}
+    else $('financialResult').textContent+='\\nJika hasil transaksi belum pasti, ulangi dengan data yang sama agar key idempotensi tetap digunakan.';
+  }catch(err){
+    $('financialResult').textContent='Hasil transaksi belum dapat dipastikan. Ulangi dengan data yang sama; key idempotensi tetap disimpan. '+err.message;
+  }
 };
 async function loadPaymentMemberData(memberId){
   const credentialSelect=$('credential'),accountSelect=$('payaccount');
