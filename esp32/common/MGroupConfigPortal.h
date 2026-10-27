@@ -26,10 +26,10 @@ class MGroupConfigPortal {
   AsyncWebServer server_{80}; Preferences prefs_;
   String *ssid_=nullptr,*password_=nullptr,*url_=nullptr,*id_=nullptr,*key_=nullptr;
   const char *label_="M-Group Device"; bool active_=false,cashierMode_=false;
-  String sessionToken_="",statusExtra_=""; unsigned long pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
+  String sessionToken_="",statusExtra_=""; unsigned long sessionExpiresAt_=0,pinLockedUntil_=0,pinWindowStarted_=0; uint8_t pinFailures_=0;
   static String sha256Hex(const String &v){uint8_t d[32];mbedtls_sha256((const unsigned char*)v.c_str(),v.length(),d,0);char h[65];for(int i=0;i<32;i++)sprintf(h+i*2,"%02x",d[i]);h[64]=0;return String(h);}
   static String randomToken(){String t;for(int i=0;i<4;i++){char b[9];snprintf(b,sizeof(b),"%08lx",(unsigned long)esp_random());t+=b;}return t;}
-  bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
+  bool authorized(AsyncWebServerRequest *req){if(!cashierMode_)return true;if(!sessionExpiresAt_||(long)(millis()-sessionExpiresAt_)>=0||!req->hasHeader("Cookie"))return false;return req->getHeader("Cookie")->value().indexOf(String("mg_session=")+sessionToken_)>=0;}
   bool defaultPinActive(){return cashierMode_&&prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356")=="9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356";}
   static String loginPage(){return String(F("<!doctype html><html lang=\"id\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>PIN WebUI Cashier</title><body style=\"font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7\"><h2>WebUI Cashier</h2><p>Masukkan PIN konfigurasi.</p><form method=\"post\" action=\"/login\"><input name=\"pin\" type=\"password\" maxlength=\"32\" required style=\"padding:12px;width:95%\"><button style=\"padding:12px;margin-top:12px\">Masuk</button></form><p>PIN awal: 19929900. Ganti setelah login.</p></body></html>"));}
   void requireAuth(AsyncWebServerRequest *req){req->send(401,"application/json","{\"ok\":false,\"detail\":\"login_required\"}");}
@@ -75,7 +75,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       if(millis()<pinLockedUntil_){req->send(429,"text/plain","Terlalu banyak percobaan. Coba lagi 15 menit.");return;}
       String pin=req->hasParam("pin",true)?req->getParam("pin",true)->value():"";String expected=prefs_.getString("webui_pin_hash","9171e6f9e69f02676755d9b255fc23c1e7fd9578446cc5fbceea501f20b91356");
       if(pin.length()<4||sha256Hex(pin)!=expected){if(pinWindowStarted_==0||millis()-pinWindowStarted_>900000UL){pinWindowStarted_=millis();pinFailures_=0;}if(++pinFailures_>=5){pinLockedUntil_=millis()+900000UL;pinFailures_=0;pinWindowStarted_=0;}req->send(401,"text/html; charset=utf-8",loginPage()+"<p>PIN salah atau percobaan dibatasi.</p>");return;}
-      pinFailures_=0;pinWindowStarted_=0;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
+      pinFailures_=0;pinWindowStarted_=0;sessionToken_=randomToken();sessionExpiresAt_=millis()+1800000UL;auto *response=req->beginResponse(303,"text/plain","Login berhasil.");response->addHeader("Location","/");response->addHeader("Set-Cookie",String("mg_session=")+sessionToken_+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800");req->send(response);
     });
     server_.on("/status",HTTP_GET,[this](AsyncWebServerRequest *req){if(!authorized(req)){requireAuth(req);return;}
       String body="{\"device_type\":\""+String(label_)+"\",\"device_id\":\""+*id_+"\",\"wifi_connected\":"+String(WiFi.status()==WL_CONNECTED?"true":"false")+",\"ip\":\""+WiFi.localIP().toString()+"\",\"rssi\":"+String(WiFi.status()==WL_CONNECTED?WiFi.RSSI():0)+",\"server_url\":\""+*url_+"\",\"device_key_configured\":"+String(key_&&!key_->isEmpty()?"true":"false")+statusExtra_+"}";
