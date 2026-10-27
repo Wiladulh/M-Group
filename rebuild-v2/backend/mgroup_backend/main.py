@@ -4,12 +4,11 @@ import hmac
 import secrets
 import json
 import sqlite3
-import hashlib
 from io import BytesIO
 from typing import Annotated
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel, Field
 
 from .config import settings
