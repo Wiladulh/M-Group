@@ -465,6 +465,8 @@ def build_router(db, app_settings=None):
 
     @r.post("/auth/account")
     def admin_account_update(q: AdminAccountUpdateRequest, request: Request):
+        if getattr(request.state, "admin_role", None) == "auditor":
+            raise HTTPException(403, "admin_role_read_only")
         origin = request.headers.get("origin")
         if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
             raise HTTPException(403, "same_origin_required")
