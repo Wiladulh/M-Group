@@ -26,7 +26,7 @@
       <label>Status Akun<select id="memberStatus"><option value="active">Aktif</option><option value="inactive">Nonaktif</option><option value="suspended">Ditangguhkan</option></select></label>
       <div class="section" style="grid-column:1/-1">
         <h3>Identitas NFC Member</h3>
-        <p class="hint">Simpan member terlebih dahulu, lalu mulai scan. Cashier aktif akan mengklaim sesi menggunakan device key; WebUI tidak memerlukan device ID Cashier. Cashier akan meminta member menempelkan kartu NFC dan memasukkan PIN transaksi 4 digit. UID dan PIN diverifikasi server.</p>
+        <p class="hint">Simpan member terlebih dahulu, pilih terminal Cashier aktif, lalu mulai scan. Hanya terminal yang dipilih dapat mengambil sesi menggunakan device key. Cashier akan meminta member menempelkan kartu NFC dan memasukkan PIN transaksi 4 digit. UID dan PIN diverifikasi server.</p>
         <label style="display:block;margin-top:10px">Terminal Cashier
           <select id="nfcCashier" required><option value="">Memuat daftar Cashier...</option></select>
         </label>
