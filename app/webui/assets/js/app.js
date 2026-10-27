@@ -669,7 +669,7 @@ async function loadAdminUsers(){
   if(!r.ok){target.textContent=d.detail||'Gagal memuat akun admin.';return}
   const users=Array.isArray(d.users)?d.users:[];
   const current=$('activeUsername').textContent.split(' · ')[0];
-  target.innerHTML=users.length?'<table><thead><tr><th>Username</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+esc(u.username)+'</td><td>'+esc(u.role)+'</td><td>'+(u.is_active?'Aktif':'Nonaktif')+'</td><td>'+(u.username===current?'Akun aktif':'<button type="button" data-admin-toggle="'+esc(u.username)+'" data-active="'+(u.is_active?'1':'0')+'">'+(u.is_active?'Nonaktifkan':'Aktifkan')+'</button> <button type="button" data-admin-password="'+esc(u.username)+'">Atur ulang password</button>')+'</td></tr>').join('')+'</tbody></table>':'<p class="hint">Belum ada akun admin.</p>';
+  target.innerHTML=users.length?'<table><thead><tr><th>Username</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+esc(u.username)+'</td><td>'+(u.username===current?esc(u.role):'<select data-admin-role="'+esc(u.username)+'"><option value="super_admin"'+(u.role==='super_admin'?' selected':'')+'>Super Admin</option><option value="operator"'+(u.role==='operator'?' selected':'')+'>Operator</option><option value="auditor"'+(u.role==='auditor'?' selected':'')+'>Auditor</option></select> <button type="button" data-admin-role-save="'+esc(u.username)+'">Simpan peran</button>')+'</td><td>'+(u.is_active?'Aktif':'Nonaktif')+'</td><td>'+(u.username===current?'Akun aktif':'<button type="button" data-admin-toggle="'+esc(u.username)+'" data-active="'+(u.is_active?'1':'0')+'">'+(u.is_active?'Nonaktifkan':'Aktifkan')+'</button> <button type="button" data-admin-password="'+esc(u.username)+'">Atur ulang password</button>')+'</td></tr>').join('')+'</tbody></table>':'<p class="hint">Belum ada akun admin.</p>';
 }
 const adminCreateForm=$('adminUserCreateForm');
 if(adminCreateForm)adminCreateForm.addEventListener('submit',async e=>{
@@ -684,6 +684,17 @@ if(adminCreateForm)adminCreateForm.addEventListener('submit',async e=>{
 });
 const adminUsersTable=$('adminUsersTable');
 if(adminUsersTable)adminUsersTable.addEventListener('click',async e=>{
+  const roleButton=e.target.closest('[data-admin-role-save]');
+  if(roleButton){
+    const username=roleButton.dataset.adminRoleSave;
+    const roleSelect=adminUsersTable.querySelector('[data-admin-role="'+CSS.escape(username)+'"]');
+    if(!roleSelect)return;
+    if(!confirm('Ubah peran '+username+' menjadi '+roleSelect.value+'? Sesi akun tersebut akan dicabut.'))return;
+    const {r,d}=await json('/api/v1/admin/users/'+encodeURIComponent(username)+'/role',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:roleSelect.value})});
+    $('adminUserResult').textContent=r.ok?(d.updated?'Peran akun diperbarui.':'Peran akun tidak berubah.'):(d.detail||'Gagal mengubah peran akun.');
+    if(r.ok)loadAdminUsers();
+    return;
+  }
   const passwordButton=e.target.closest('[data-admin-password]');
   if(passwordButton){
     const username=passwordButton.dataset.adminPassword;
