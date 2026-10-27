@@ -237,7 +237,7 @@ bool products(){
     catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");
     syncProductImages(reply);
     int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;
-  vendingPrefs.putString("product_images_status",productImageSyncStatus);
+    configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
   }else{
     catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");int cachedImages=0;for(int slot=1;slot<=5;slot++)if(LittleFS.exists("/product_"+String(slot)+".img"))cachedImages++;configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch)+",\"product_images_status\":\""+productImageSyncStatus+"\",\"product_images_cached\":"+String(cachedImages));
     reply=vendingPrefs.getString("catalog_json","");
