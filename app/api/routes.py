@@ -1546,7 +1546,7 @@ def build_router(db, app_settings=None):
 
     @r.get("/audit/report")
     def audit_report(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
         require_admin(request)
         source=source.upper()
         if source not in {"ALL","CASHIER","VENDING","TOPUP"}: raise HTTPException(400,"invalid_source")
@@ -1617,14 +1617,17 @@ def build_router(db, app_settings=None):
         args=[v for _ in queries for v in (query_start,query_end)]+[method,method]
         with db.connect() as c:
             rows=c.execute(sql,args).fetchall()
-        return {"source":source,"period":period,"method":method,"start":start,"end":end,"transactions":[dict(x) for x in rows]}
+        transactions=[dict(x) for x in rows]
+        if hardware_id and hardware_id!="ALL":
+            transactions=[x for x in transactions if x.get("hardware_id")==hardware_id]
+        return {"source":source,"period":period,"method":method,"start":start,"end":end,"hardware_id":hardware_id,"transactions":transactions}
 
     @r.get("/audit/export.xlsx")
     def audit_export(request: Request, source:str="ALL",period:str="day",date:str|None=None,method:str="ALL",
-                     start_date:str|None=None,end_date:str|None=None):
+                     start_date:str|None=None,end_date:str|None=None,hardware_id:str="ALL"):
         require_admin(request)
         # Reuse the endpoint's authorization and parameter validation.
-        data=audit_report(request, source, period, date, method, start_date, end_date)
+        data=audit_report(request, source, period, date, method, start_date, end_date, hardware_id)
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
