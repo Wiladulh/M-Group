@@ -47,7 +47,7 @@ Preferences vendingPrefs;
 unsigned long lastHeartbeat=0,lastCatalogRefresh=0,vendingSequence=0;
 String catalogSyncStatus="Belum disinkronkan",catalogSyncError="",catalogHash="";
 unsigned long catalogLastSyncEpoch=0;
-bool readerReady=false,displayReady=false,pendingDispenseReport=false,pendingDispenseSuccess=true,catalogOnline=false;
+bool readerReady=false,displayReady=false,pendingDispenseReport=false,pendingDispenseSuccess=true;
 String pendingDispenseTx="";
 int selectedIndex=0,productCount=0;
 bool pendingTransaction=false;
@@ -59,8 +59,7 @@ bool pendingCreateRequest=false;
 String pendingCreateProduct="",pendingCreateCredential="";
 unsigned long pendingCreateSequence=0;
 int pendingCreateServo=0;
-long pendingCreateAmount=0;
-bool createRequestRejected=false,createPriceChanged=false;
+bool createRequestRejected=false;
 
 struct Product{String id,name;long price;int stock;bool enabled;int servo_channel;};
 Product productsList[16];
@@ -135,19 +134,18 @@ void parseProducts(const String&json){
 void clearPendingCreateRequest(){
   vendingPrefs.putBool("create_pending",false);
   vendingPrefs.remove("create_product");vendingPrefs.remove("create_credential");
-  vendingPrefs.remove("create_seq");vendingPrefs.remove("create_servo");vendingPrefs.remove("create_amount");
+  vendingPrefs.remove("create_seq");vendingPrefs.remove("create_servo");
   pendingCreateRequest=false;pendingCreateProduct="";pendingCreateCredential="";
-  pendingCreateSequence=0;pendingCreateServo=0;pendingCreateAmount=0;
+  pendingCreateSequence=0;pendingCreateServo=0;
 }
-void savePendingCreateRequest(const String&product,const String&credential,unsigned long seq,int servoChannel,long expectedAmount){
+void savePendingCreateRequest(const String&product,const String&credential,unsigned long seq,int servoChannel){
   vendingPrefs.putString("create_product",product);
   vendingPrefs.putString("create_credential",credential);
   vendingPrefs.putULong("create_seq",seq);
   vendingPrefs.putInt("create_servo",servoChannel);
-  vendingPrefs.putLong("create_amount",expectedAmount);
   vendingPrefs.putBool("create_pending",true);
   pendingCreateRequest=true;pendingCreateProduct=product;pendingCreateCredential=credential;
-  pendingCreateSequence=seq;pendingCreateServo=servoChannel;pendingCreateAmount=expectedAmount;
+  pendingCreateSequence=seq;pendingCreateServo=servoChannel;
 }
 void clearPendingTransaction(){
   vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");
@@ -157,69 +155,33 @@ void savePendingTransaction(const String&tx,const String&phase,int servoChannel)
   vendingPrefs.putString("tx_id",tx);vendingPrefs.putString("tx_phase",phase);vendingPrefs.putInt("tx_servo",servoChannel);vendingPrefs.putBool("tx_pending",true);
   pendingTransaction=true;pendingTransactionId=tx;pendingTransactionPhase=phase;pendingServoChannel=servoChannel;
 }
-bool validCatalog(){
-  if(productCount!=SERVO_COUNT)return false;
-  bool seen[SERVO_COUNT+1]={false};
-  for(int i=0;i<productCount;i++){
-    Product&x=productsList[i];
-    int slot=x.id.toInt();
-    if(slot<1||slot>SERVO_COUNT||x.id!=String(slot)||seen[slot])return false;
-    if(x.price<=0||x.stock<0||x.servo_channel!=slot)return false;
-    seen[slot]=true;
-  }
-  for(int slot=1;slot<=SERVO_COUNT;slot++)if(!seen[slot])return false;
-  return true;
-}
 bool products(){
   int code=0;String reply=request("GET",String("/api/v1/vending/")+HARDWARE_ID+"/products","",code);
-  bool fromCache=false,serverCatalogValid=false;
-  String oldCatalog=vendingPrefs.getString("catalog_json","");
+  bool fromCache=false;
   Serial.printf("PRODUCTS %d bytes=%u\n",code,(unsigned)reply.length());
   if(code>=200&&code<300&&reply.length()){
-    // Parse and validate before replacing the last-known-good catalog. A
-    // truncated/error payload must never poison the persistent cache.
-    parseProducts(reply);
-    serverCatalogValid=validCatalog();
-    if(serverCatalogValid){
-      uint8_t digest[32];mbedtls_sha256((const unsigned char*)reply.c_str(),reply.length(),digest,0);
-      char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
-      catalogHash=String(hashHex);
-      if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
-      vendingPrefs.putString("catalog_hash",catalogHash);vendingPrefs.putString("catalog_version",catalogHash);
-      catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);
-      vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");
-      configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
-      catalogOnline=true;
-    }else{
-      catalogSyncStatus="Katalog server tidak valid";catalogSyncError="Struktur katalog tidak lengkap atau slot/servo tidak konsisten";
-      vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);
-      reply=oldCatalog;fromCache=true;catalogOnline=false;
-      configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
-    }
+    String oldCatalog=vendingPrefs.getString("catalog_json","");
+    uint8_t digest[32];mbedtls_sha256((const unsigned char*)reply.c_str(),reply.length(),digest,0);char hashHex[65];for(int i=0;i<32;i++)sprintf(hashHex+i*2,"%02x",digest[i]);hashHex[64]=0;
+    catalogHash=String(hashHex);
+    if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
+    vendingPrefs.putString("catalog_hash",catalogHash);vendingPrefs.putString("catalog_version",catalogHash);
+    catalogSyncStatus="Berhasil";catalogSyncError="";catalogLastSyncEpoch=(unsigned long)time(nullptr);vendingPrefs.putULong("catalog_sync_at",catalogLastSyncEpoch);vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error","");configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
   }else{
-    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";
-    vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);
-    configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
-    reply=oldCatalog;fromCache=true;catalogOnline=false;
+    catalogSyncStatus="Offline - menggunakan cache";catalogSyncError="Koneksi server/katalog gagal";vendingPrefs.putString("catalog_sync_status",catalogSyncStatus);vendingPrefs.putString("catalog_sync_error",catalogSyncError);configPortal.setStatusExtra(",\"catalog_sync_status\":\""+catalogSyncStatus+"\",\"catalog_sync_error\":\""+catalogSyncError+"\",\"catalog_hash\":\""+catalogHash+"\",\"catalog_sync_at\":"+String(catalogLastSyncEpoch));
+    reply=vendingPrefs.getString("catalog_json","");
+    fromCache=true;
+    if(!reply.length()){showMessage("SERVER OFFLINE","No saved catalog","Payment unavailable");return false;}
   }
-  if(fromCache){
-    parseProducts(reply);
-    if(!validCatalog()){
-      productCount=0;showMessage("SERVER OFFLINE","No valid catalog","Payment unavailable");return false;
-    }
-  }
-  if(!productCount||!validCatalog()){
-    productCount=0;catalogOnline=false;catalogSyncStatus="Katalog kosong";catalogSyncError="Lima slot produk yang valid tidak tersedia";
-    showMessage("VENDING","Catalog invalid","Payment unavailable");return false;
-  }
+  parseProducts(reply);
+  if(!productCount){catalogSyncStatus="Katalog kosong";if(!fromCache)catalogSyncError="Server tidak mengirim produk";showMessage("VENDING","Catalog empty");return false;}
   if(selectedIndex>=productCount)selectedIndex=0;Product&x=productsList[selectedIndex];
-  if(fromCache)showMessage("SAVED CATALOG",x.name,"Offline: payment disabled");
+  if(fromCache)showMessage("SAVED CATALOG",x.name,"Offline: payment unavailable");
   else showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));
   return true;
 }
-String beginTransaction(const String&product,const String&credential,const String&seq,long expectedAmount){
-  createRequestRejected=false;createPriceChanged=false;
-  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\",\"expected_amount\":"+String(expectedAmount)+"}";
+String beginTransaction(const String&product,const String&credential,const String&seq){
+  createRequestRejected=false;
+  String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\"}";
   String path=String("/api/v1/vending/")+HARDWARE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
@@ -227,7 +189,7 @@ String beginTransaction(const String&product,const String&credential,const Strin
     String tx=jsonString(reply,"transaction_id");
     Serial.printf("BEGIN attempt=%d code=%d %s\n",attempt,code,reply.c_str());
     if(tx.length())return tx;
-    if(code>=400 && code<500){createRequestRejected=true;createPriceChanged=reply.indexOf("catalog_price_changed")>=0;return "";}
+    if(code>=400 && code<500){createRequestRejected=true;return "";}
     delay(250);
   }
   return "";
@@ -300,17 +262,15 @@ bool dispense(const String&tx,int servoChannel){
   return detected;
 }
 void scanCard(){
-  if(!readerReady||!productCount)return;
-  if(!catalogOnline){showMessage("SERVER OFFLINE","Payment disabled","Reconnect to server");return;}
-  Product&x=productsList[selectedIndex];if(!x.enabled||x.stock<=0)return;
+  if(!readerReady||!productCount)return;Product&x=productsList[selectedIndex];if(!x.enabled||x.stock<=0)return;
   uint8_t uid[M_GROUP_MAX_UID_LENGTH]={0},len=0;if(!card.readUID(uid,len))return;
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
-  savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel,x.price);
-  String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence),pendingCreateAmount);
+  savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel);
+  String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
   if(!tx.length()){
-    if(createRequestRejected){clearPendingCreateRequest();showMessage(createPriceChanged?"PRICE CHANGED":"TRANSACTION REJECTED",createPriceChanged?"Refresh catalog":"Check stock/card");}
+    if(createRequestRejected){clearPendingCreateRequest();showMessage("TRANSACTION REJECTED","Check stock/card");}
     else showMessage("CREATE PENDING","Retry same request");
     delay(1200);return;
   }
@@ -341,8 +301,7 @@ void setup(){
     pendingCreateCredential=vendingPrefs.getString("create_credential","");
     pendingCreateSequence=vendingPrefs.getULong("create_seq",0);
     pendingCreateServo=vendingPrefs.getInt("create_servo",0);
-    pendingCreateAmount=vendingPrefs.getLong("create_amount",0);
-    if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT||pendingCreateAmount<=0){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
+    if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
   }
   pendingDispenseReport=vendingPrefs.getBool("disp_pending",false);
   if(pendingDispenseReport){
@@ -375,14 +334,14 @@ void loop(){
   }
   if(pendingCreateRequest){
     showMessage("CREATE PENDING","Retry same request");
-    String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence),pendingCreateAmount);
+    String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
     if(tx.length()){
       const int servoChannel=pendingCreateServo;
       clearPendingCreateRequest();
       savePendingTransaction(tx,"created",servoChannel);
     }else if(createRequestRejected){
       clearPendingCreateRequest();
-      showMessage(createPriceChanged?"PRICE CHANGED":"CREATE REJECTED",createPriceChanged?"Refresh catalog":"Ready to retry");
+      showMessage("CREATE REJECTED","Ready to retry");
     }
     delay(500);return;
   }
