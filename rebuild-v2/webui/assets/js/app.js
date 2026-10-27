@@ -292,7 +292,7 @@
       if(file) {
         if(file.size>2*1024*1024)throw new Error("Gambar maksimal 2 MiB.");
         const fd=new FormData();fd.append("file",file);
-        await request("/vending/devices/"+encodeURIComponent(registryId)+"/products/"+productId+"/image",{method:"POST",body:fd});
+        await request("/admin/vending/devices/"+encodeURIComponent(registryId)+"/products/"+productId+"/image",{method:"POST",body:fd});
         $("productImageFile").value="";
       }
       show("productResult","Produk tersimpan; promo NFC/QRIS tetap 0% dan nonaktif sampai implementasi promo disetujui.");
