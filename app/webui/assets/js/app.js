@@ -585,10 +585,15 @@ function showLogin(message=''){
   const error=$('loginError');if(error)error.textContent=message;
   const password=$('loginPassword');if(password)password.value='';
 }
-function unlockApp(username){
+let currentAdminRole=null;
+function unlockApp(username,role=null){
+  currentAdminRole=role;
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
-  $('activeUsername').textContent=username||'Admin';
+  $('activeUsername').textContent=(username||'Admin')+(role?' · '+role:'');
+  const adminManagement=$('adminUserManagement');
+  if(adminManagement)adminManagement.hidden=role!=='super_admin';
+  if(role==='super_admin')loadAdminUsers();
   if($('newAdminUsername'))$('newAdminUsername').value=username||'admin';
   $('loginError').textContent='';
   load();
@@ -604,7 +609,7 @@ $('loginForm').onsubmit=async e=>{
   });
   if(!r.ok){error.textContent=d.detail==='admin_login_not_configured'?'Login belum dikonfigurasi di server.':d.detail==='login_rate_limited'?'Terlalu banyak percobaan. Coba lagi nanti.':'Username atau password salah.';return}
   $('loginPassword').value='';
-  unlockApp(d.username);
+  unlockApp(d.username,d.role);
 };
 $('logoutButton').onclick=async()=>{
   const {r,d}=await json('/api/v1/auth/logout',{method:'POST'});
@@ -613,7 +618,38 @@ $('logoutButton').onclick=async()=>{
 };
 async function restoreSession(){
   const {r,d}=await json('/api/v1/auth/session');
-  if(r.ok)unlockApp(d.username);
+  if(r.ok)unlockApp(d.username,d.role);
   else showLogin('');
 }
 restoreSession();
+
+async function loadAdminUsers(){
+  if(currentAdminRole!=='super_admin')return;
+  const target=$('adminUsersTable');
+  if(!target)return;
+  const {r,d}=await json('/api/v1/admin/users');
+  if(!r.ok){target.textContent=d.detail||'Gagal memuat akun admin.';return}
+  const users=Array.isArray(d.users)?d.users:[];
+  target.innerHTML=users.length?'<table><thead><tr><th>Username</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+esc(u.username)+'</td><td>'+esc(u.role)+'</td><td>'+(u.is_active?'Aktif':'Nonaktif')+'</td><td>'+(u.username=== $('activeUsername').textContent.split(' · ')[0]?'Akun aktif':('<button type="button" data-admin-toggle="'+esc(u.username)+'" data-active="'+(u.is_active?'1':'0')+'">'+(u.is_active?'Nonaktifkan':'Aktifkan')+'</button>'))+'</td></tr>').join('')+'</tbody></table>':'<p class="hint">Belum ada akun admin.</p>';
+}
+const adminCreateForm=$('adminUserCreateForm');
+if(adminCreateForm)adminCreateForm.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const result=$('adminUserResult');
+  try{
+    const payload={username:$('managedAdminUsername').value.trim(),password:$('managedAdminPassword').value,role:$('managedAdminRole').value};
+    const {r,d}=await json('/api/v1/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    result.textContent=r.ok?'Akun '+d.username+' berhasil dibuat dengan peran '+d.role+'.':(d.detail||'Gagal membuat akun admin.');
+    if(r.ok){adminCreateForm.reset();loadAdminUsers()}
+  }catch(err){result.textContent=err.message}
+});
+const adminUsersTable=$('adminUsersTable');
+if(adminUsersTable)adminUsersTable.addEventListener('click',async e=>{
+  const button=e.target.closest('[data-admin-toggle]');
+  if(!button)return;
+  const username=button.dataset.adminToggle,active=button.dataset.active!=='1';
+  if(!confirm((active?'Aktifkan':'Nonaktifkan')+' akun '+username+'?'))return;
+  const {r,d}=await json('/api/v1/admin/users/'+encodeURIComponent(username)+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_active:active})});
+  $('adminUserResult').textContent=r.ok?'Status akun diperbarui.':(d.detail||'Gagal memperbarui akun.');
+  if(r.ok)loadAdminUsers();
+});
