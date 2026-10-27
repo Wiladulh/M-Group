@@ -11,7 +11,7 @@ class MGroupConfigPortal {
   void begin(String &wifiSsid,String &wifiPassword,String &baseUrl,String &deviceId,String &deviceKey,const char *deviceLabel,const char *storageNamespace,bool forceSetup) {
     ssid_=&wifiSsid; password_=&wifiPassword; url_=&baseUrl; id_=&deviceId; key_=&deviceKey; label_=deviceLabel;
     prefs_.begin(storageNamespace,false);
-    cashierMode_=String(deviceLabel).indexOf("Cashier")>=0;
+    cashierMode_=true; // Every device-local WebUI requires PIN authentication.
     if(cashierMode_&&!prefs_.isKey("webui_pin_hash")){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+"19929900"));}
     if(cashierMode_)sessionToken_=randomToken();
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
@@ -36,7 +36,7 @@ class MGroupConfigPortal {
   void storePin(const String &pin){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+pin));}
   bool defaultPinActive(){return cashierMode_&&pinMatches("19929900");}
   String loginPage(){
-    String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PIN WebUI Cashier</title><body style="font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7"><h2>WebUI Cashier</h2><p>Masukkan PIN konfigurasi untuk membuka pengaturan perangkat.</p><form method="post" action="/login"><input name="pin" type="password" maxlength="32" autocomplete="current-password" required style="padding:12px;width:95%"><button style="padding:12px;margin-top:12px">Masuk</button></form></body></html>)HTML";
+    String h=R"HTML(<!doctype html><html lang="id"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PIN WebUI M-Group</title><body style="font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px;background:#f3f5f7"><h2>WebUI M-Group</h2><p>Masukkan PIN konfigurasi untuk membuka pengaturan perangkat.</p><form method="post" action="/login"><input name="pin" type="password" maxlength="32" autocomplete="current-password" required style="padding:12px;width:95%"><button style="padding:12px;margin-top:12px">Masuk</button></form></body></html>)HTML";
     if(defaultPinActive())h.replace("</form></body></html>","</form><p>PIN awal 19929900 masih aktif. Ganti setelah masuk.</p></body></html>");
     return h;
   }
@@ -61,7 +61,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>document.getElementById('status').textContent='Device ID: '+s.device_id+'\\nIP DHCP: '+s.ip+'\\nWaktu lokal WIB: '+s.local_time+'\\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\\nRSSI: '+s.rssi+' dBm\\nServer: '+s.server_url+'\\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')+'\\nTLS CA: '+(s.tls_ca_configured?'Tersimpan':'Belum diatur')+(s.catalog_sync_status?'\\nSinkron katalog: '+s.catalog_sync_status:'')+(s.catalog_hash?'\\nHash katalog: '+s.catalog_hash:'')+(s.catalog_sync_at?'\\nSinkron terakhir WIB: '+new Date(s.catalog_sync_at*1000).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'')+(s.catalog_sync_error?'\\nError sinkron: '+s.catalog_sync_error:'')+(s.registration_status?'\\nStatus NFC: '+s.registration_status:'')).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     if(String(label).indexOf("Cashier")>=0){
       if(defaultPinActive()){String heading=String("<h2>Konfigurasi ")+label+"</h2>";h.replace(heading.c_str(),heading+"<p class=\"warn\">PIN masih default 19929900. Ganti PIN sebelum menyimpan konfigurasi.</p>");}
-      String pinForm=R"HTML(<hr><h3>Keamanan WebUI Cashier</h3><form method="post" action="/change-pin"><label>PIN saat ini</label><input name="old_pin" type="password" maxlength="32" required><label>PIN baru (minimal 8 karakter)</label><input name="new_pin" type="password" minlength="8" maxlength="32" required><label>Ulangi PIN baru</label><input name="confirm_pin" type="password" minlength="8" maxlength="32" required><button type="submit">Ganti PIN WebUI</button></form>)HTML";
+      String pinForm=R"HTML(<hr><h3>Keamanan WebUI perangkat</h3><form method="post" action="/change-pin"><label>PIN saat ini</label><input name="old_pin" type="password" maxlength="32" required><label>PIN baru (minimal 8 karakter)</label><input name="new_pin" type="password" minlength="8" maxlength="32" required><label>Ulangi PIN baru</label><input name="confirm_pin" type="password" minlength="8" maxlength="32" required><button type="submit">Ganti PIN WebUI</button></form>)HTML";
       h.replace("</main></html>",pinForm+"</main></html>");
     }
     return h;
