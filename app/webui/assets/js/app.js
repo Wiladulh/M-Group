@@ -246,10 +246,9 @@ $('nfcStart').onclick=async()=>{
     let endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-registration/start';
     let body={cashier_hardware_id};
     if(hasActiveCard){
-      const operator_id=prompt('ID petugas yang melakukan penggantian kartu:');if(!operator_id)return;
-      if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Lanjutkan?'))return;
+      if(!confirm('Kartu lama akan dicabut setelah kartu baru berhasil didaftarkan. Petugas dicatat dari sesi admin aktif. Lanjutkan?'))return;
       endpoint='/api/v1/members/'+encodeURIComponent(memberId)+'/nfc-replacement/start';
-      body={operator_id,cashier_hardware_id};
+      body={cashier_hardware_id};
     }
     const {r,d}=await json(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(d.detail||'Gagal memulai registrasi NFC');
