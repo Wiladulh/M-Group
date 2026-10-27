@@ -136,7 +136,7 @@ class DeviceRegisterRequest(BaseModel):
 
 class DeviceProvisionRequest(BaseModel):
     device_type: str
-    location: str
+    location: str = ""
 
 class FinancialRequest(BaseModel):
     amount: int
