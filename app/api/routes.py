@@ -1155,6 +1155,8 @@ def build_router(db, app_settings=None):
         try:
             source=Image.open(io.BytesIO(raw))
             if source.format not in {"PNG","JPEG","WEBP"}: raise HTTPException(415,"unsupported_product_image_format")
+            if source.width<1 or source.height<1 or source.width*source.height>20_000_000:
+                raise HTTPException(413,"product_image_dimensions_too_large")
             source.verify()
             source=Image.open(io.BytesIO(raw)).convert("RGB")
             source.thumbnail((1200,1200))
