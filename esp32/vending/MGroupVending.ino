@@ -152,11 +152,24 @@ void savePendingTransaction(const String&tx,const String&phase,int servoChannel)
 }
 bool products(){
   int code=0;String reply=request("GET",String("/api/v1/vending/")+HARDWARE_ID+"/products","",code);
-  Serial.printf("PRODUCTS %d %s\n",code,reply.c_str());
-  if(code<200||code>=300){showMessage("SERVER ERROR","Products unavailable");return false;}
-  parseProducts(reply);if(!productCount){showMessage("M-Group VENDING","No products");return false;}
+  bool fromCache=false;
+  Serial.printf("PRODUCTS %d bytes=%u\n",code,(unsigned)reply.length());
+  if(code>=200&&code<300&&reply.length()){
+    String oldCatalog=vendingPrefs.getString("catalog_json","");
+    if(reply!=oldCatalog)vendingPrefs.putString("catalog_json",reply);
+    String catalogHash=String(reply.length())+"-"+String((uint32_t)reply[0],HEX)+"-"+String((uint32_t)reply[reply.length()-1],HEX);
+    vendingPrefs.putString("catalog_version",catalogHash);
+  }else{
+    reply=vendingPrefs.getString("catalog_json","");
+    fromCache=true;
+    if(!reply.length()){showMessage("SERVER OFFLINE","No saved catalog","Payment unavailable");return false;}
+  }
+  parseProducts(reply);
+  if(!productCount){showMessage("VENDING","Catalog empty");return false;}
   if(selectedIndex>=productCount)selectedIndex=0;Product&x=productsList[selectedIndex];
-  showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));return true;
+  if(fromCache)showMessage("SAVED CATALOG",x.name,"Offline: payment unavailable");
+  else showMessage("SELECT PRODUCT",x.name,"Rp "+String(x.price));
+  return true;
 }
 String beginTransaction(const String&product,const String&credential,const String&seq){
   createRequestRejected=false;
