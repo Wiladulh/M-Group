@@ -120,7 +120,13 @@ function renderMemberRows(){
   const search=($('memberSearch')?.value||'').trim().toLowerCase();
   const status=$('memberStatusFilter')?.value||'ALL';
   const rows=memberListRows.filter(x=>(status==='ALL'||String(x.status).toLowerCase()===status)&&(!search||[x.member_id,x.name,x.nik].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td><button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button></td></tr>').join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
+  $('members').innerHTML=rows.length?'<table><thead><tr><th>Member ID</th><th>Nama</th><th>NIK</th><th>No. HP</th><th>Credential NFC</th><th>Interaksi Terakhir</th><th>Status Akun</th><th>Aksi</th></tr></thead><tbody>'+rows.map(x=>{
+    const edit='<button type="button" data-member-action="edit" data-member-id="'+esc(x.member_id)+'">Edit</button>';
+    const nfc='<button type="button" data-member-action="nfc" data-member-id="'+esc(x.member_id)+'">Daftar/Ganti NFC</button>';
+    const privileged='<button type="button" data-member-action="pin" data-member-id="'+esc(x.member_id)+'">Reset PIN</button> <button type="button" data-member-action="correction" data-member-id="'+esc(x.member_id)+'">Koreksi Top Up</button>';
+    const actions=currentAdminRole==='super_admin'?edit+' '+nfc+' '+privileged:currentAdminRole==='operator'?edit+' '+nfc:'Hanya baca';
+    return '<tr><td>'+esc(x.member_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.nik||'—')+'</td><td>'+esc(x.phone||'—')+'</td><td>'+esc(x.nfc_credential_status||'—')+'</td><td>'+esc(formatDateTime(x.last_interaction_at))+'</td><td>'+esc(x.status)+'</td><td>'+actions+'</td></tr>';
+  }).join('')+'</tbody></table>':'<p class="hint" style="padding:16px;">Belum ada member terdaftar.</p>';
 }
 $('memberSearch').oninput=renderMemberRows;
 $('memberStatusFilter').onchange=renderMemberRows;
