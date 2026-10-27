@@ -60,5 +60,19 @@ The README says audit supports day/week/month, but timezone and boundary semanti
 6. Audit transaction filters, member/top-up UX, key revocation/rotation, and backup restore safeguards.
 7. Run only relevant tests for changed components; run the final full suite once the rebuild is ready. Physical NFC/keypad/DHCP/network interruption tests remain explicitly pending until performed on real devices.
 
+## Implementation checkpoint — 2026-10-27 (source changes, not yet tested)
+
+The following source-level implementation changes have been committed after the initial gap review. These entries mean code was changed; they are not test or production evidence.
+
+- NFC registration/replacement start now requires a selected active, provisioned Cashier and binds the session to that Cashier's server-side key fingerprint. Active-session checks are serialized to avoid overlapping sessions for the same terminal. The member WebUI now offers an active Cashier selector and passes the selected hardware identity.
+- Vending catalog refresh now validates all five fixed product positions, positive prices, nonnegative stock, and slot-to-servo mapping before replacing the last-known-good cache. A cached/offline catalog remains viewable but physical purchases are disabled until a valid live server catalog is available.
+- Audit reports and XLSX exports now accept transaction status, transaction type, member ID, and transaction-ID search filters. Export files reserve a sequence-suffixed filename atomically to avoid overwriting concurrent or prior exports.
+- Top-up reporting excludes system-only credits, correction adjustments, and vending refund credits from member top-up totals.
+- Financial correction idempotency replay now requires the original correction's reason and operator metadata to match as well as the member, original transaction, and corrected amount.
+
+Still unresolved before declaring the rebuild feature-complete:
+- Pertamini is explicitly in scope, but the approved source specification for its hardware controls, measurement semantics, safety interlocks, and recovery behavior has not been found in the available repository/project files. Do not invent this contract. Recover the agreed specification before implementing its backend/firmware or accepting the feature as complete.
+- The source changes listed above still require the planned test phase. No claim of test pass, firmware build success, or physical-device validation is made here.
+
 ## Release gate
 Do not merge while any P1 is unresolved, any financial invariant lacks test evidence, any report export has not been reopened/validated as XLSX, or any physical-device behavior is described as passed without real-device evidence.
