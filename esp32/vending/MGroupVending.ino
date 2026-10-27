@@ -196,7 +196,7 @@ void syncProductImages(const String&catalog){
     if(id.length()&&imageUrl.length()&&imageHash.length()){requested++;if(cacheProductImage(imageUrl,imageHash,id))success++;}
     pos=objectEnd+1;
   }
-  productImageSyncStatus=requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia");
+  productImageSyncStatus=requested==0?"Tidak ada gambar":(requested==success?"Berhasil":(success?"Sebagian berhasil":"Tidak tersedia"));
   vendingPrefs.putString("product_images_status",productImageSyncStatus);
 }
 
