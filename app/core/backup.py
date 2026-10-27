@@ -272,32 +272,32 @@ def export_rows_excel(rows, target, metadata=None):
     completed=[r for r in rows if str(r.get("status","")).lower()=="completed"]
     failed=[r for r in rows if str(r.get("status","")).lower() in {"failed","error"}]
     canceled=[r for r in rows if str(r.get("status","")).lower() in {"canceled","cancelled","refunded"}]
-    ws["A6"]="Ringkasan"
+    ws["A7"]="Ringkasan"
     ws["A6"].font=Font(bold=True)
     ws.append(["Status","Jumlah transaksi","Total nominal"])
-    for cell in ws[7]:
+    for cell in ws[8]:
         cell.font=Font(bold=True,color="FFFFFF")
         cell.fill=PatternFill("solid",fgColor="1F4E78")
     for label,group in [("Berhasil",completed),("Gagal",failed),("Dibatalkan/Refund",canceled)]:
         ws.append([label,len(group),sum(int(r.get("amount") or 0) for r in group)])
-    ws["A12"]="Detail transaksi"
+    ws["A13"]="Detail transaksi"
     ws["A12"].font=Font(bold=True,size=12)
     headers=list(rows[0].keys()) if rows else ["transaction_id","created_at","source","hardware_id","member_id","account_id","transaction_type","amount","status","payment_method","payment_provider"]
     ws.append(headers)
-    header_row=13
+    header_row=14
     for cell in ws[header_row]:
         cell.font=Font(bold=True,color="FFFFFF")
         cell.fill=PatternFill("solid",fgColor="1F4E78")
         cell.alignment=Alignment(wrap_text=True)
     for row in rows:
         ws.append([row.get(h) for h in headers])
-    ws.freeze_panes="A14"
+    ws.freeze_panes="A15"
     ws.auto_filter.ref=f"A{header_row}:{ws.cell(ws.max_row, len(headers)).coordinate}"
     for col in ws.columns:
         letter=col[0].column_letter
         width=min(34,max(12,max((len(str(cell.value or "")) for cell in col),default=10)+2))
         ws.column_dimensions[letter].width=width
-    for row in ws.iter_rows(min_row=8,max_row=10,min_col=3,max_col=3):
+    for row in ws.iter_rows(min_row=9,max_row=11,min_col=3,max_col=3):
         for cell in row: cell.number_format='"Rp" #,##0'
     for row in ws.iter_rows(min_row=header_row+1,min_col=1,max_col=len(headers)):
         for cell in row:
