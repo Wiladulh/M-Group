@@ -423,6 +423,7 @@ $('paymentForm').onsubmit=async e=>{
   if(!confirm('Konfirmasi pembayaran '+money(amount)+' dari rekening '+accountId+' melalui '+method+'?'))return;
   let idem=$('idem').value.trim();
   if(!idem){idem=paymentPendingKey||('webui-payment:'+(window.crypto?.randomUUID?.()||(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))));$('idem').value=idem}
+  if(idem.length<8||idem.length>128){$('paymentResult').textContent='Idempotency key harus 8-128 karakter.';return}
   paymentPendingKey=idem;try{sessionStorage.setItem('mgroup-payment-pending-key',idem)}catch(_){}
   const q={credential_id:credentialId,account_id:accountId,amount,method,provider:$('provider').value||'local',idempotency_key:idem,pin:pin||null};
   const {r,d}=await json('/api/v1/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
