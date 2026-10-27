@@ -128,6 +128,35 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_entity_time
     ON audit_events(entity_type, entity_id, created_at);
 
+CREATE TABLE IF NOT EXISTS admin_users (
+    admin_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('super_admin','operator','auditor')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    session_id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TEXT,
+    FOREIGN KEY (admin_id) REFERENCES admin_users(admin_id)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_user_expiry ON admin_sessions(admin_id,expires_at,revoked_at);
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+    username TEXT PRIMARY KEY,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
 CREATE TABLE IF NOT EXISTS product_slots (
     registry_id TEXT NOT NULL,
     product_id INTEGER NOT NULL CHECK (product_id BETWEEN 1 AND 5),
