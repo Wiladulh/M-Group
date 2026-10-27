@@ -174,6 +174,10 @@ def restore_native_backup(db, archive):
         restored_db = Database(tmp)
         restored_db.migrate()
         with restored_db.connect() as check:
+            admin_count=check.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0]
+            active_super_admins=check.execute("SELECT COUNT(*) FROM admin_users WHERE role='super_admin' AND is_active=1").fetchone()[0]
+            if admin_count>0 and active_super_admins==0:
+                raise ValueError("restored_database_has_no_active_super_admin")
             integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
             foreign_key_errors = check.execute("PRAGMA foreign_key_check").fetchall()
             if integrity != "ok":
