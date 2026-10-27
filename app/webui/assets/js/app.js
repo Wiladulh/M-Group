@@ -259,18 +259,27 @@ async function loadDevices(){
     $('deviceAuthResult').textContent='Data perangkat berhasil dimuat.';
     const rows=(d.devices||[]);
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
+    const canManageDevices=currentAdminRole==='super_admin';
     $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>{const ref=x.hardware_id||x.registry_id;return '<tr>'+
-        '<td><input data-device-name="'+esc(ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location"></td>'+
+        '<td>'+(canManageDevices?'<input data-device-name="'+esc(ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location">':esc(x.display_name||ref))+'</td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
-        '<td><select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(s=>'<option value="'+s+'"'+(x.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td>'+(canManageDevices?'<select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(st=>'<option value="'+st+'"'+(x.status===st?' selected':'')+'>'+st+'</option>').join('')+'</select>':esc(x.status))+'</td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td>'+(x.hardware_id?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button>':'Lokasi tersimpan')+' <button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button></td>'+
+        '<td>'+(canManageDevices?(x.hardware_id?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button>':'Lokasi tersimpan')+' '+(x.hardware_id?'<button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button> <button type="button" data-device-disable="'+esc(ref)+'">Cabut / Nonaktifkan</button>':''):'Hanya baca')+'</td>'+
       '</tr>'}).join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
     document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
+    document.querySelectorAll('[data-device-disable]').forEach(b=>b.onclick=async()=>{
+      const id=b.dataset.deviceDisable;
+      if(!confirm('Cabut akses perangkat '+id+'? Semua permintaan dengan key saat ini akan ditolak.'))return;
+      const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(id),{method:'DELETE'});
+      $('deviceAuthResult').textContent=r.ok?'Akses perangkat dicabut.':(d.detail||'Gagal mencabut perangkat.');
+      if(r.ok)await loadDevices();
+    });
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
+
 async function rotateDeviceKey(deviceRef){
   if(!confirm('Rotasi Device Key? Key lama langsung tidak berlaku dan perangkat perlu diperbarui dengan key baru.'))return;
   const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/rotate-key',{method:'POST'});
