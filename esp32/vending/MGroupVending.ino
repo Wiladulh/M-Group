@@ -17,6 +17,7 @@ String WIFI_SSID="";
 String WIFI_PASSWORD="";
 String M_GROUP_BASE_URL="http://192.168.1.10:8011";
 String HARDWARE_ID="";
+String DEVICE_LOCATION="";
 bool deviceRegistered=false;
 String M_GROUP_DEVICE_KEY="";
 MGroupConfigPortal configPortal;
@@ -392,7 +393,7 @@ void setup(){
   Serial.begin(115200);delay(300);
   pinMode(BUTTON_SELECT,INPUT_PULLUP);delay(50);
   const bool forceConfigPortal=digitalRead(BUTTON_SELECT)==LOW;
-  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal);
+  configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Vending M-Group","mgroup-vending",forceConfigPortal,&DEVICE_LOCATION);
   vendingPrefs.begin("M_GROUP-vend",false);
   productImageFsReady=LittleFS.begin(true);
   if(!productImageFsReady)Serial.println("PRODUCT IMAGE CACHE unavailable; catalog remains available from NVS");
