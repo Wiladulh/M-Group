@@ -12,22 +12,22 @@ class DeviceManagementService:
                 f"""SELECT registry_id,hardware_id,device_type,mac_address,display_name,
                            status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
                     FROM device_registry {where}
-                    ORDER BY hardware_id"""
+                    ORDER BY registry_id"""
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get(self, hardware_id):
+    def get(self, device_ref):
         with self.db.connect() as c:
             row = c.execute(
                 """SELECT registry_id,hardware_id,device_type,mac_address,display_name,
                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
                    FROM device_registry WHERE hardware_id=? OR registry_id=?""",
-                (hardware_id, hardware_id),
+                (device_ref, device_ref),
             ).fetchone()
             return dict(row) if row else None
 
-    def update(self, hardware_id, device_type=None, status=None, display_name=None):
-        current = self.get(hardware_id)
+    def update(self, device_ref, device_type=None, status=None, display_name=None):
+        current = self.get(device_ref)
         if current is None:
             raise ValueError("device_not_found")
         if device_type is not None and device_type not in self.ALLOWED_TYPES:
@@ -49,10 +49,10 @@ class DeviceManagementService:
                 (new_type, new_status, new_name, current["registry_id"]),
             )
             c.commit()
-        return self.get(hardware_id)
+        return self.get(device_ref)
 
-    def soft_delete(self, hardware_id):
-        current = self.get(hardware_id)
+    def soft_delete(self, device_ref):
+        current = self.get(device_ref)
         if current is None:
             raise ValueError("device_not_found")
         with self.db.connect() as c:
