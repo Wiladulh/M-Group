@@ -351,6 +351,7 @@ class Database:
                         "promo_id": "TEXT",
                         "balance_before": "INTEGER",
                         "balance_after": "INTEGER",
+                        "transaction_source": "TEXT NOT NULL DEFAULT 'WEBUI'",
                     }
                     select_defaults = {
                         "method": "'NFC'",
@@ -365,6 +366,7 @@ class Database:
                         "promo_id": "NULL",
                         "balance_before": "NULL",
                         "balance_after": "NULL",
+                        "transaction_source": "'WEBUI'",
                     }
                     select_parts = [
                         name if name in columns else select_defaults.get(name, "NULL")
