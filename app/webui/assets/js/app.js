@@ -323,7 +323,7 @@ $('deviceProvisionForm').onsubmit=async e=>{
     body:JSON.stringify({device_type:deviceType,location})
   });
   if(!r.ok){result.textContent=d.detail||'Gagal membuat device key.';return}
-  $('provisionedDeviceId').value=d.hardware_id||d.device_id||'';
+  $('provisionedDeviceId').value=d.hardware_id||d.device_id||d.registry_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
   result.textContent='ID registry sementara dan Device Key dibuat untuk lokasi '+(d.location||location)+'. Masukkan hanya Device Key ke WebUI perangkat; hardware ID dibuat otomatis dari MAC. Key hanya ditampilkan satu kali.';
