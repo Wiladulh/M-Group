@@ -1496,7 +1496,7 @@ def build_router(db, app_settings=None):
     def vending_begin(machine_id,q:VendingBeginRequest,x_m_group_device_key: str | None = Header(default=None)):
         try:
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            machine = resolve_vending_machine(identity["hardware_id"])
+            machine = resolve_vending_machine(identity["registry_id"])
             if not machine.get("hardware_id") or machine["hardware_id"] != identity["registry_id"]:
                 raise HTTPException(403,"machine_device_identity_mismatch")
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
@@ -1536,8 +1536,9 @@ def build_router(db, app_settings=None):
         try:
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
-            if not machine.get("hardware_id"): raise HTTPException(403,"machine_device_not_configured")
-            require_device(machine["hardware_id"],x_m_group_device_key)
+            identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["registry_id"]:
+                raise HTTPException(403,"machine_device_identity_mismatch")
             return public_vending_transaction(vending.dispense(transaction_id,q.success))
         except ValueError as e:raise HTTPException(409,str(e))
 
