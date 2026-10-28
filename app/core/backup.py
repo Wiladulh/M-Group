@@ -229,29 +229,13 @@ def restore_native_backup(db, archive):
     return manifest
 
 def import_excel(db, source):
-    if load_workbook is None:
-        raise RuntimeError("openpyxl_required")
-    wb=load_workbook(source,data_only=True,read_only=True)
-    imported={}
-    with db.connect() as c:
-        if "cashier" in wb.sheetnames:
-            ws=wb["cashier"]
-            headers=[x.value for x in next(ws.iter_rows())]
-            idx={h:i for i,h in enumerate(headers)}
-            for row in ws.iter_rows(min_row=2,values_only=True):
-                tid=row[idx["transaction_id"]]
-                if not tid: continue
-                c.execute("""INSERT OR IGNORE INTO cashier_deposits
-                    (transaction_id,hardware_id,credential_id,member_id,account_id,amount,status,
-                     balance_before,balance_after,created_at,completed_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                    (tid,row[idx["hardware_id"]],row[idx["credential_id"]],row[idx["member_id"]],
-                     row[idx["account_id"]],int(row[idx["amount"]]),row[idx["status"]],
-                     row[idx["balance_before"]],row[idx["balance_after"]],row[idx["created_at"]],row[idx["created_at"]]))
-            imported["cashier"]=c.total_changes
-        c.commit()
-    return imported
+    """Excel exports are not transactionally complete restore images.
 
+    Import remains disabled until cashier deposits can be reconciled with their
+    financial ledger entries, payment idempotency keys, and audit records.
+    Use the native M-Group backup archive for recovery.
+    """
+    raise ValueError("excel_import_disabled_use_native_backup")
 
 def export_rows_excel(rows, target, metadata=None):
     if Workbook is None:
