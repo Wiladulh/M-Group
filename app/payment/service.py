@@ -31,6 +31,10 @@ class PaymentService:
             raise ValueError("invalid_transaction_source")
         if device_hardware_id is not None and (not isinstance(device_hardware_id, str) or not device_hardware_id.strip()):
             raise ValueError("invalid_device_hardware_id")
+        if transaction_source == "CASHIER" and not device_hardware_id:
+            raise ValueError("cashier_device_identity_required")
+        if transaction_source != "CASHIER" and device_hardware_id:
+            raise ValueError("device_identity_not_allowed_for_transaction_source")
         if not isinstance(device_authenticated_vending, bool):
             raise ValueError("invalid_device_authenticated_vending_flag")
         if method not in {"NFC", "QRIS", "CASH"}:
