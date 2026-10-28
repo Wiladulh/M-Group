@@ -548,7 +548,6 @@ class Database:
                 "provider_transaction_id": "TEXT",
                 "provider_reference": "TEXT",
                 "failure_reason": "TEXT",
-                "hardware_id": "TEXT",
             }
             for name, definition in additions.items():
                 if name not in columns:
