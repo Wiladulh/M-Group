@@ -1102,7 +1102,7 @@ def build_router(db, app_settings=None):
             stored_type={"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}.get(row["device_type"],row["device_type"]) if row else None
             if not row or stored_type!=device_type:
                 raise HTTPException(409,"device_type_mismatch")
-            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE registry_id=?",(row["hardware_id"],))
+            c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE registry_id=?",(row["registry_id"],))
             if location and location != row["display_name"]:
                 c.execute("UPDATE device_registry SET display_name=?,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",
                           (location,row["registry_id"]))
