@@ -63,4 +63,4 @@ class DeviceManagementService:
                 (current["registry_id"],),
             )
             c.commit()
-        return self.get(hardware_id)
+        return self.get(device_ref)
