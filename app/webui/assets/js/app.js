@@ -451,10 +451,48 @@ async function loadVendingMachines(){
     sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
+    $('machines').innerHTML=table(rows,['machine_id','name','location','hardware_id','status']);
+    const bindSel=$('bindMachineId'),oldBind=bindSel.value;
+    bindSel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+'</option>').join('');
+    if(rows.some(x=>x.machine_id===oldBind))bindSel.value=oldBind;
+    const deviceResponse=await json('/api/v1/devices',{});
+    if(!deviceResponse.r.ok)throw new Error(deviceResponse.d.detail||'Gagal memuat registry perangkat');
+    const devices=(deviceResponse.d.devices||[]).filter(x=>x.hardware_id&&x.status==='active'&&['esp32-vending','esp32-s3-vending','esp32-vending','vending'].includes(x.device_type));
+    const options='<option value="">Pilih perangkat aktif</option>'+devices.map(x=>'<option value="'+esc(x.hardware_id)+'">'+esc(x.display_name||x.hardware_id)+' — '+esc(x.hardware_id)+'</option>').join('');
+    const newDevice=$('newMachineDevice'),bindDevice=$('bindMachineDevice'),newCurrent=newDevice.value,bindCurrent=bindDevice.value;
+    newDevice.innerHTML=options;bindDevice.innerHTML=options;
+    if(devices.some(x=>x.hardware_id===newCurrent))newDevice.value=newCurrent;
+    if(devices.some(x=>x.hardware_id===bindCurrent))bindDevice.value=bindCurrent;
     if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
     $('productResult').textContent=rows.length?'Daftar mesin berhasil dimuat.':'Belum ada vending machine terdaftar.';
-  }catch(e){$('productResult').textContent=e.message}
+    $('machineResult').textContent=devices.length?'Perangkat Vending aktif tersedia untuk binding.':'Belum ada perangkat Vending aktif; selesaikan provisioning terlebih dahulu.';
+  }catch(e){$('productResult').textContent=e.message;$('machineResult').textContent=e.message;$('machineBindResult').textContent=e.message}
 }
+
+$('machineForm').onsubmit=async e=>{
+  e.preventDefault();
+  if(currentAdminRole!=='super_admin'){$('machineResult').textContent='Hanya Super Admin yang dapat mendaftarkan mesin.';return}
+  const payload={machine_id:$('newMachineId').value.trim(),name:$('newMachineName').value.trim(),
+    location:$('newMachineLocation').value.trim(),hardware_id:$('newMachineDevice').value,status:'active'};
+  if(!payload.hardware_id){$('machineResult').textContent='Pilih perangkat Vending aktif yang sudah terdaftar.';return}
+  const {r,d}=await json('/api/v1/vending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  $('machineResult').textContent=r.ok?'Mesin berhasil didaftarkan dan diikat ke hardware ID '+payload.hardware_id+'.':(d.detail||'Gagal mendaftarkan mesin.');
+  if(r.ok){$('machineForm').reset();await loadVendingMachines();await load()}
+};
+$('machineBindForm').onsubmit=async e=>{
+  e.preventDefault();
+  if(currentAdminRole!=='super_admin'){$('machineBindResult').textContent='Hanya Super Admin yang dapat mengubah binding.';return}
+  const machineId=$('bindMachineId').value,hardwareId=$('bindMachineDevice').value;
+  if(!machineId||!hardwareId){$('machineBindResult').textContent='Pilih mesin dan perangkat aktif.';return}
+  const current=await json('/api/v1/vending/'+encodeURIComponent(machineId),{});
+  if(!current.r.ok){$('machineBindResult').textContent=current.d.detail||'Gagal membaca mesin.';return}
+  const m=current.d.machine;
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId),{method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:m.name,location:m.location,hardware_id:hardwareId,status:m.status})});
+  $('machineBindResult').textContent=r.ok?'Binding perangkat berhasil diperbarui.':(d.detail||'Gagal memperbarui binding.');
+  if(r.ok){await loadVendingMachines();await load()}
+};
+
 $('loadVendingMachines').onclick=loadVendingMachines;
 $('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
 $('productId').onchange=()=>{
@@ -717,7 +755,7 @@ let currentAdminRole=null;
 function unlockApp(username,role=null){
   currentAdminRole=role;
   const superAdmin=role==='super_admin';
-  ['financialForm','paymentForm','promotionForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
+  ['financialForm','paymentForm','promotionForm','machineForm','machineBindForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
   if($('accountSettings'))$('accountSettings').hidden=role==='auditor';
   if($('memberForm'))$('memberForm').hidden=role==='auditor';
   if($('productForm')){
@@ -726,6 +764,7 @@ function unlockApp(username,role=null){
   }
   loadNfcCashierOptions();
   loadPromotions();
+  loadVendingMachines();
   loadAuditEvents();
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
