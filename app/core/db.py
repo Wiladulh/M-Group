@@ -576,6 +576,11 @@ class Database:
             # still have hardware_id; new schemas and application contracts do not.
             payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
             if "hardware_id" in payment_columns:
+                c.execute("""
+                    INSERT OR IGNORE INTO payment_device_associations(transaction_id,hardware_id)
+                    SELECT transaction_id,hardware_id FROM payment_transactions
+                    WHERE hardware_id IS NOT NULL AND hardware_id<>''
+                """)
                 payment_fields = [
                     "transaction_id", "credential_id", "account_id", "amount", "status",
                     "created_at", "method", "provider", "idempotency_key",
