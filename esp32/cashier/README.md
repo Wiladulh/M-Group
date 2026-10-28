@@ -20,7 +20,7 @@
 
 - After joining the configured Wi-Fi, open `http://<current-DHCP-IP>/` from a device on the same trusted LAN. The current DHCP address, Wi-Fi status, RSSI, server reachability, and local time are shown in the protected status page.
 - Every device-local WebUI requires the local PIN. The initial PIN is `19929900`; replace it before saving configuration. The PIN is stored as a salted hash in ESP32 NVS, and repeated failed login attempts are rate-limited.
-- First-time setup remains available through the temporary `MGroup-Setup-XXXXXX` access point at `http://192.168.4.1/`. The LAN WebUI remains available at the DHCP IP after Wi-Fi is configured.
+- First-time setup remains available through the temporary `MGroup-Setup-XXXXXX` access point at `http://192.168.4.1/`. For recovery after saved Wi-Fi settings stop working, press the keypad `D` key during the first ~900 ms after boot to force setup mode. The LAN WebUI remains available at the DHCP IP after Wi-Fi is configured.
 
 ## Member balance lookup (read-only)
 
