@@ -24,12 +24,11 @@ def test_nfc_payment_idempotency():
             balance=c.execute("SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) FROM financial_ledger WHERE account_id='acct-1'").fetchone()[0]
         assert balance == 75000
 
-def test_qris_is_a_supported_future_method():
+def test_qris_is_rejected_until_provider_verification_exists():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
-        result=PaymentService(db).pay("cred-1","acct-1",1000,method="QRIS",provider="future-qris",idempotency_key="q-1")
-        assert result["method"] == "QRIS"
-        assert result["provider"] == "future-qris"
+        with pytest.raises(ValueError, match="qris_payment_provider_not_activated"):
+            PaymentService(db).pay("cred-1","acct-1",1000,method="QRIS",provider="future-qris",idempotency_key="q-1")
 
 def test_payment_uses_financial_core_and_rejects_account_mismatch():
     with TemporaryDirectory() as d:
@@ -152,7 +151,7 @@ def test_concurrent_payment_retries_debit_exactly_once():
 
         def submit():
             return PaymentService(db).pay(
-                "cred-1", "acct-1", 25000, method="CASH",
+                "cred-1", "acct-1", 25000, method="NFC", pin="1234",
                 idempotency_key="concurrent-payment-1",
             )
 
