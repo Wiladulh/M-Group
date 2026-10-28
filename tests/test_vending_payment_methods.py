@@ -28,18 +28,14 @@ def test_vending_transaction_binds_payment_method_and_provider():
         done=f.dispense(f.authorize(tx["transaction_id"])["transaction_id"],True)
         assert done["payment_status"]=="completed"
 
-def test_vending_qris_is_stored_separately_but_not_activated():
+def test_vending_qris_is_rejected_before_creating_a_pending_transaction():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         f=VendingService(db)
-        tx=f.begin("pm-01","water","pm-nfc","pm-acct","pm-qris-1","QRIS","provider-x")
-        assert tx["payment_method"]=="QRIS"
-        assert tx["payment_provider"]=="provider-x"
         with pytest.raises(ValueError, match="qris_payment_provider_not_activated"):
-            f.authorize(tx["transaction_id"])
-        failed=f.get(tx["transaction_id"])
-        assert failed["payment_status"]=="failed"
-        assert failed["status"]=="failed"
+            f.begin("pm-01","water","pm-nfc","pm-acct","pm-qris-1","QRIS","provider-x")
+        with db.connect() as c:
+            assert c.execute("SELECT COUNT(*) FROM vending_transactions").fetchone()[0] == 0
 
 def test_vending_rejects_invalid_method_provider_pair():
     with TemporaryDirectory() as d:
