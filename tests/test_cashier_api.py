@@ -18,17 +18,25 @@ def test_cashier_heartbeat_and_nfc_payment():
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',50000,'seed')")
                 c.commit()
 
+            hardware_id = "cashier_aabbcc000001"
+            mac_address = "AA:BB:CC:00:00:01"
             provision = client.post(
-                "/api/v1/devices/cashier-01/provision",
-                json={"device_type": "esp32-cashier"},
+                "/api/v1/devices/provision",
+                json={"device_type": "esp32-cashier", "location": "Test Cashier"},
                 headers=login_admin(client),
             )
             assert provision.status_code == 200
             device_key = provision.json()["device_key"]
+            registration = client.post(
+                "/api/v1/devices/register",
+                json={"device_type": "esp32-cashier", "hardware_id": hardware_id,
+                      "mac_address": mac_address, "device_key": device_key},
+            )
+            assert registration.status_code == 200, registration.text
 
             assert client.post("/api/v1/members/m1/pin", json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"}, headers=login_admin(client)).status_code == 200
             h = client.post(
-                "/api/v1/devices/cashier-01/heartbeat",
+                "/api/v1/devices/heartbeat",
                 json={"device_type": "esp32-cashier", "status": "active"},
                 headers={"X-M-Group-Device-Key": device_key},
             )
@@ -37,7 +45,7 @@ def test_cashier_heartbeat_and_nfc_payment():
             q = {
                 "credential_id": "cred1", "account_id": "a1",
                 "amount": 10000, "method": "NFC", "provider": "local",
-                "idempotency_key": "cashier-01:1", "pin": "1234"
+                "idempotency_key": "cashier_aabbcc000001:1", "pin": "1234"
             }
             p = client.post("/api/v1/cashier/payments", json=q, headers={"X-M-Group-Device-Key": device_key})
             assert p.status_code == 200
@@ -52,7 +60,7 @@ def test_cashier_heartbeat_and_nfc_payment():
                 payment_row = c.execute("SELECT transaction_source FROM payment_transactions").fetchone()
                 assert payment_row["transaction_source"] == "CASHIER"
                 association = c.execute("SELECT hardware_id FROM payment_device_associations").fetchone()
-                assert association["hardware_id"] == "cashier-01"
+                assert association["hardware_id"] == "cashier_aabbcc000001"
                 assert "hardware_id" not in {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
         finally:
             main.get_settings = old
