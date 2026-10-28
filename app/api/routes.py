@@ -963,7 +963,11 @@ def build_router(db, app_settings=None):
                 stored_type = "esp32-s3-vending" if row["device_type"] == "esp32-vending" else row["device_type"]
                 if stored_type != device_type:
                     raise HTTPException(403,"device_type_mismatch")
-                if matched_by_key and row["hardware_id"] and row["hardware_id"] != hardware_id:
+                # Provisioning creates a temporary server-side registry handle.
+                # The first valid device-key registration replaces that handle with
+                # the canonical full-MAC hardware ID. Once a MAC is bound, neither
+                # the ID nor the MAC may be changed by key reuse.
+                if matched_by_key and row["mac_address"] and row["hardware_id"] != hardware_id:
                     raise HTTPException(409,"device_key_hardware_id_mismatch")
                 if matched_by_key and row["mac_address"] and row["mac_address"] != mac_address:
                     raise HTTPException(409,"device_key_already_bound")
@@ -1035,8 +1039,8 @@ def build_router(db, app_settings=None):
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
         registry_id="pending-"+uuid4().hex[:12]
-        hardware_prefix="cashier_" if device_type=="esp32-cashier" else "vending_"
-        hardware_id=hardware_prefix+secrets.token_hex(8)
+        # Temporary registry handle; firmware binds the canonical full-MAC ID on first registration.
+        hardware_id="pending_"+uuid4().hex[:12]
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
