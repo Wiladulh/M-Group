@@ -24,7 +24,13 @@ class PaymentService:
         discount_amount=0,
         promo_id=None,
         device_authenticated_vending=False,
+        transaction_source="WEBUI",
+        device_hardware_id=None,
     ):
+        if transaction_source not in {"WEBUI", "CASHIER"}:
+            raise ValueError("invalid_transaction_source")
+        if device_hardware_id is not None and (not isinstance(device_hardware_id, str) or not device_hardware_id.strip()):
+            raise ValueError("invalid_device_hardware_id")
         if not isinstance(device_authenticated_vending, bool):
             raise ValueError("invalid_device_authenticated_vending_flag")
         if method not in {"NFC", "QRIS", "CASH"}:
@@ -72,7 +78,7 @@ class PaymentService:
             if idempotency_key:
                 row = c.execute(
                     "SELECT transaction_id,status,credential_id,original_amount,discount_amount,final_amount,"
-                    "method,provider,account_id,balance_before,balance_after,promo_id "
+                    "method,provider,account_id,balance_before,balance_after,promo_id,transaction_source "
                     "FROM payment_transactions WHERE idempotency_key=?",
                     (idempotency_key,),
                 ).fetchone()
@@ -85,9 +91,23 @@ class PaymentService:
                         or row["original_amount"] != original_amount
                         or row["discount_amount"] != discount_amount
                         or row["promo_id"] != promo_id
+                        or row["transaction_source"] != transaction_source
                         or (reference is not None and row["transaction_id"] != reference)
                     ):
                         raise ValueError("idempotency_key_conflict")
+                    if device_hardware_id:
+                        association = c.execute(
+                            "SELECT hardware_id FROM payment_device_associations WHERE transaction_id=?",
+                            (row["transaction_id"],),
+                        ).fetchone()
+                        if association and association["hardware_id"] != device_hardware_id:
+                            raise ValueError("idempotency_key_conflict")
+                        if not association:
+                            c.execute(
+                                "INSERT INTO payment_device_associations(transaction_id,hardware_id) VALUES(?,?)",
+                                (row["transaction_id"], device_hardware_id),
+                            )
+                            c.commit()
                     return {
                         "transaction_id": row["transaction_id"],
                         "status": row["status"],
@@ -123,8 +143,8 @@ class PaymentService:
                 "INSERT INTO payment_transactions "
                 "(transaction_id,credential_id,account_id,amount,status,method,provider,"
                 "idempotency_key,original_amount,discount_amount,final_amount,"
-                "promo_id,balance_before,balance_after) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "promo_id,balance_before,balance_after,transaction_source) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     tx,
                     credential_id,
@@ -140,8 +160,14 @@ class PaymentService:
                     promo_id,
                     balance_before,
                     balance_after,
+                    transaction_source,
                 ),
             )
+            if device_hardware_id:
+                c.execute(
+                    "INSERT INTO payment_device_associations(transaction_id,hardware_id) VALUES(?,?)",
+                    (tx, device_hardware_id),
+                )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
                 "VALUES(?,?,?,?)",
