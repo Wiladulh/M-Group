@@ -37,4 +37,4 @@ Operational transactions are separated by source:
 - Cashier savings deposits require an explicitly configured operator PIN (set during system installation or from the admin WebUI) plus the member NFC PIN. There is no shared default operator PIN.
 - Native M-Group backup archives contain a database dump, manifest and checksum and may include an Excel-compatible export.
 - XLSX export is intended for audit/reporting and preserves stable transaction columns.
-- Excel import is validation-gated and is not the primary recovery format; native M-Group backup is the authoritative restore format.
+- Excel import is disabled until a ledger-aware, idempotent reconciliation workflow is implemented. XLSX files are for reporting only; native M-Group backup is the authoritative restore format.
