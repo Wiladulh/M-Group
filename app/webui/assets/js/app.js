@@ -289,7 +289,7 @@ async function rotateDeviceKey(deviceRef){
   if(!confirm('Rotasi Device Key? Key lama langsung tidak berlaku dan perangkat perlu diperbarui dengan key baru.'))return;
   const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/rotate-key',{method:'POST'});
   if(!r.ok){$('deviceAuthResult').textContent=d.detail||'Rotasi key gagal.';return}
-  $('provisionedDeviceId').value=d.hardware_id||'';
+  $('provisionedDeviceId').value=d.hardware_id||d.registry_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
   $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru; hardware ID berasal dari MAC perangkat.';
