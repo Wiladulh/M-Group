@@ -34,7 +34,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
             headers = login_admin(client)
             created = client.post(
                 "/api/v1/devices/provision",
-                json={"device_type": "esp32-cashier"},
+                json={"device_type": "esp32-cashier", "location": "Test Cashier"},
                 headers=headers,
             )
             assert created.status_code == 200
