@@ -263,9 +263,10 @@ async function loadDevices(){
     const rows=(d.devices||[]);
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     const canManageDevices=currentAdminRole==='super_admin';
-    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
+    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Hardware ID / Registry ID</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
       rows.map(x=>{const ref=x.hardware_id||x.registry_id;return '<tr>'+
         '<td>'+(canManageDevices?'<input data-device-name="'+esc(ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location">':esc(x.display_name||ref))+'</td>'+
+        '<td>'+esc(x.hardware_id||x.registry_id||'Belum terdaftar')+'</td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
         '<td>'+(canManageDevices?'<select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(st=>'<option value="'+st+'"'+(x.status===st?' selected':'')+'>'+st+'</option>').join('')+'</select>':esc(x.status))+'</td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
