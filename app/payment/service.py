@@ -184,7 +184,7 @@ class PaymentService:
                     "payment_transaction",
                     tx,
                     f"completed:{method}:{provider}:credential={credential_id}:"
-                    f"device_key_authenticated=true:original={original_amount}:"
+                    f"device_key_authenticated={str(bool(device_hardware_id or device_authenticated_vending)).lower()}:original={original_amount}:"
                     f"discount={discount_amount}:final={amount}:"
                     f"balance_before={balance_before}:balance_after={balance_after}:"
                     f"ledger={ledger_reference or '-'}:promo={promo_id or '-'}",
