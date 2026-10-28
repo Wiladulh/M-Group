@@ -319,6 +319,19 @@ class Database:
                                 c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
                     columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS payment_device_associations (
+                            transaction_id TEXT PRIMARY KEY,
+                            hardware_id TEXT NOT NULL,
+                            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    if "hardware_id" in columns:
+                        c.execute("""
+                            INSERT OR IGNORE INTO payment_device_associations(transaction_id,hardware_id)
+                            SELECT transaction_id,hardware_id FROM payment_transactions
+                            WHERE hardware_id IS NOT NULL AND hardware_id<>''
+                        """)
                     target = {
                         "transaction_id": "TEXT PRIMARY KEY",
                         "credential_id": "TEXT NOT NULL",
@@ -493,6 +506,14 @@ class Database:
                 c.execute("UPDATE vending_machines SET machine_id='legacy-' || rowid WHERE machine_id IS NULL")
                 c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_vending_machines_machine_id ON vending_machines(machine_id)")
 
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS payment_device_associations (
+                    transaction_id TEXT PRIMARY KEY,
+                    hardware_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS ix_payment_device_hardware ON payment_device_associations(hardware_id)")
             columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
             if "transaction_source" not in columns:
                 c.execute("ALTER TABLE payment_transactions ADD COLUMN transaction_source TEXT NOT NULL DEFAULT 'WEBUI'")
