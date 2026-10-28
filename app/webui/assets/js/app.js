@@ -271,7 +271,7 @@ async function loadDevices(){
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
         '<td>'+(canManageDevices?'<select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(st=>'<option value="'+st+'"'+(x.status===st?' selected':'')+'>'+st+'</option>').join('')+'</select>':esc(x.status))+'</td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td>'+(canManageDevices?(x.hardware_id?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button>':'Lokasi tersimpan')+' '+(x.hardware_id?'<button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button> <button type="button" data-device-disable="'+esc(ref)+'">Cabut / Nonaktifkan</button>':''):'Hanya baca')+'</td>'+
+        '<td>'+(canManageDevices?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button> <button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button> <button type="button" data-device-disable="'+esc(ref)+'">Cabut / Nonaktifkan</button>':'Hanya baca')+'</td>'+
       '</tr>'}).join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
     document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
