@@ -216,6 +216,7 @@ class VendingService:
         if machine["status"]!="active": raise ValueError("machine_not_active")
         if not idempotency_key: raise ValueError("idempotency_key_required")
         if payment_method not in {"NFC","QRIS"}: raise ValueError("unsupported_vending_payment_method")
+        if payment_method=="QRIS": raise ValueError("qris_payment_provider_not_activated")
         if payment_method=="NFC" and payment_provider!="local": raise ValueError("invalid_nfc_provider")
         if payment_method=="QRIS" and not payment_provider: raise ValueError("qris_provider_required")
         product_id = str(product_id)
