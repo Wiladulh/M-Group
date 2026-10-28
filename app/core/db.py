@@ -240,7 +240,6 @@ class Database:
 
                     device_columns = {row[1] for row in c.execute("PRAGMA table_info(device_registry)")}
                     additions = {
-                        "hardware_id": "TEXT",
                         "mac_address": "TEXT",
                         "display_name": "TEXT",
                         "created_at": "TEXT",
@@ -333,8 +332,7 @@ class Database:
                         "provider_transaction_id": "TEXT",
                         "provider_reference": "TEXT",
                         "failure_reason": "TEXT",
-                        "hardware_id": "TEXT",
-                        "original_amount": "INTEGER",
+                                "original_amount": "INTEGER",
                         "discount_amount": "INTEGER NOT NULL DEFAULT 0",
                         "final_amount": "INTEGER",
                         "promo_id": "TEXT",
@@ -348,7 +346,6 @@ class Database:
                         "provider_transaction_id": "NULL",
                         "provider_reference": "NULL",
                         "failure_reason": "NULL",
-                        "hardware_id": "NULL",
                         "original_amount": "amount",
                         "discount_amount": "0",
                         "final_amount": "amount",
@@ -556,6 +553,48 @@ class Database:
             for name, definition in additions.items():
                 if name not in columns:
                     c.execute(f"ALTER TABLE payment_transactions ADD COLUMN {name} {definition}")
+            # Remove the obsolete payment-level device identity while preserving
+            # every transaction and its financial/audit fields. Older installs may
+            # still have hardware_id; new schemas and application contracts do not.
+            payment_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
+            if "hardware_id" in payment_columns:
+                payment_fields = [
+                    "transaction_id", "credential_id", "account_id", "amount", "status",
+                    "created_at", "method", "provider", "idempotency_key",
+                    "provider_transaction_id", "provider_reference", "failure_reason",
+                    "original_amount", "discount_amount", "final_amount", "promo_id",
+                    "balance_before", "balance_after", "transaction_source",
+                ]
+                c.execute("""
+                    CREATE TABLE payment_transactions_new(
+                        transaction_id TEXT PRIMARY KEY,
+                        credential_id TEXT NOT NULL,
+                        account_id TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK(amount>=0),
+                        status TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        method TEXT NOT NULL DEFAULT 'NFC',
+                        provider TEXT NOT NULL DEFAULT 'local',
+                        idempotency_key TEXT,
+                        provider_transaction_id TEXT,
+                        provider_reference TEXT,
+                        failure_reason TEXT,
+                        original_amount INTEGER,
+                        discount_amount INTEGER NOT NULL DEFAULT 0,
+                        final_amount INTEGER,
+                        promo_id TEXT,
+                        balance_before INTEGER,
+                        balance_after INTEGER,
+                        transaction_source TEXT NOT NULL DEFAULT 'WEBUI'
+                    )
+                """)
+                field_list = ",".join(payment_fields)
+                c.execute(
+                    f"INSERT INTO payment_transactions_new({field_list}) "
+                    f"SELECT {field_list} FROM payment_transactions"
+                )
+                c.execute("DROP TABLE payment_transactions")
+                c.execute("ALTER TABLE payment_transactions_new RENAME TO payment_transactions")
             c.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_idempotency "
                 "ON payment_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL"
@@ -563,10 +602,6 @@ class Database:
             c.execute(
                 "CREATE INDEX IF NOT EXISTS ix_payment_provider_tx "
                 "ON payment_transactions(provider,provider_transaction_id)"
-            )
-            c.execute(
-                "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                "ON payment_transactions(hardware_id,created_at)"
             )
             # Authentication is no longer stored on a device_registry table.
             # Keep payment transaction schema upgrades independent of legacy device state.
