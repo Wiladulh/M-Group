@@ -12,8 +12,8 @@ def test_vending_registry_supports_many_machines_and_five_slots():
         f=VendingService(db)
         with db.connect() as c:
             for i in range(1,6):
-                c.execute("INSERT INTO device_registry(hardware_id,device_type,status) VALUES(?,?,?)",
-                          (f"esp32-{i}","esp32-s3-vending","active"))
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
+                          (f"esp32-{i}","esp32-s3-vending","active","test-hash"))
             c.commit()
         for i in range(1,6):
             m=f.register(f"vm-{i}",f"Vending {i}",f"Location {i}",f"esp32-{i}")
@@ -29,7 +29,7 @@ def test_vending_registry_isolates_machine_slots():
         f=VendingService(db)
         with db.connect() as c:
             c.executemany("INSERT INTO device_registry(hardware_id,device_type,status) VALUES(?,?,?)",
-                          [("dev-a","esp32-s3-vending","active"),("dev-b","esp32-s3-vending","active")])
+                          [("dev-a","esp32-s3-vending","active","test-hash"),("dev-b","esp32-s3-vending","active","test-hash")])
             c.commit()
         f.register("a","A",hardware_id="dev-a")
         f.register("b","B",hardware_id="dev-b")
@@ -45,7 +45,7 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         with db.connect() as c:
-            c.execute("INSERT INTO device_registry(hardware_id,device_type,status) VALUES('same','esp32-s3-vending','active')")
+            c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('same','esp32-s3-vending','active','test-hash')")
             c.commit()
         f.register("a","A",hardware_id="same")
         try: f.register("b","B",hardware_id="same")
@@ -63,7 +63,7 @@ def test_vending_registry_api():
             client=TestClient(main.create_app())
             admin=login_admin(client)
             with client.app.state.db.connect() as c:
-                c.execute("INSERT INTO device_registry(hardware_id,device_type,status) VALUES('api-esp32','esp32-s3-vending','active')")
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('api-esp32','esp32-s3-vending','active','test-hash')")
                 c.commit()
             created=client.post("/api/v1/vending",headers=admin,json={
                 "machine_id":"api-v1","name":"API Vending","location":"Lobby","hardware_id":"api-esp32"
