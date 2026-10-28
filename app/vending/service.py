@@ -38,7 +38,7 @@ class VendingService:
         if not machine_id.strip(): raise ValueError("machine_id_required")
         if not name.strip(): raise ValueError("name_required")
         if status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
-        hardware_id = hardware_id.strip().lower() if hardware_id else None
+        hardware_id = (hardware_id.strip().lower() or None) if hardware_id else None
         with self.db.connect() as c:
             if hardware_id:
                 self._require_registered_vending_device(c, hardware_id)
