@@ -1561,9 +1561,12 @@ def build_router(db, app_settings=None):
         if not cashier_hardware_id:
             raise HTTPException(400,"cashier_selection_required")
         with db.connect() as c:
-            cashier=c.execute("""SELECT hardware_id,auth_key_hash FROM device_registry
-                WHERE hardware_id=? AND device_type IN ('esp32-cashier','cashier')
-                  AND status='active' AND deleted_at IS NULL AND auth_key_hash IS NOT NULL""",(cashier_hardware_id,)).fetchone()
+            cashier=c.execute("""SELECT registry_id,hardware_id,auth_key_hash FROM device_registry
+                WHERE (registry_id=? OR hardware_id=?)
+                  AND device_type IN ('esp32-cashier','cashier')
+                  AND status='active' AND deleted_at IS NULL AND auth_key_hash IS NOT NULL
+                ORDER BY CASE WHEN registry_id=? THEN 0 ELSE 1 END LIMIT 1""",
+                (cashier_hardware_id,cashier_hardware_id.upper(),cashier_hardware_id)).fetchone()
         if not cashier:
             raise HTTPException(409,"cashier_not_available")
         cashier_fingerprint=cashier["auth_key_hash"]
