@@ -15,7 +15,7 @@ def test_server_key_provisions_mac_derived_hardware_identity():
             headers = login_admin(client)
             provision = client.post(
                 "/api/v1/devices/provision",
-                json={"device_type": "esp32-cashier"},
+                json={"device_type": "esp32-cashier", "location": "Test Cashier"},
                 headers=headers,
             )
             assert provision.status_code == 200
