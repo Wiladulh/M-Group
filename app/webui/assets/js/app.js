@@ -326,7 +326,7 @@ $('deviceProvisionForm').onsubmit=async e=>{
   $('provisionedDeviceId').value=d.hardware_id||d.device_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='Device ID dan key dibuat server untuk lokasi '+(d.location||location)+'. Masukkan keduanya ke WebUI perangkat. Key hanya ditampilkan satu kali.';
+  result.textContent='ID registry sementara dan Device Key dibuat untuk lokasi '+(d.location||location)+'. Masukkan hanya Device Key ke WebUI perangkat; hardware ID dibuat otomatis dari MAC. Key hanya ditampilkan satu kali.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
