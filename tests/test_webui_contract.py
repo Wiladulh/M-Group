@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_navigation_tab_ids_match_loaded_page_panes():
     index = (ROOT / "app" / "webui" / "index.html").read_text(encoding="utf-8")
-    page_names = ("dashboard", "member", "financial", "payment", "vending", "cashier", "devices", "audit", "settings")
+    page_names = ("dashboard", "member", "financial", "payment", "vending", "promotions", "cashier", "devices", "audit", "settings")
     buttons = set(re.findall(r'data-tab="([^"]+)"', index))
     pane_ids = set()
     for name in page_names:
