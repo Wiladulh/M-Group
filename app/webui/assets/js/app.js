@@ -315,7 +315,7 @@ $('deviceProvisionForm').onsubmit=async e=>{
   const location=$('provisionDeviceLocation').value.trim();
   const result=$('deviceProvisionResult');
   if(!location){result.textContent='Lokasi pemasangan wajib diisi.';return}
-  if(!confirm('Buat Device ID dan Device Key baru untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+' di lokasi '+location+'?'))return;
+  if(!confirm('Buat ID registry sementara dan Device Key baru untuk '+(deviceType==='esp32-cashier'?'Cashier':'Vending')+' di lokasi '+location+'?'))return;
   const {r,d}=await json('/api/v1/devices/provision',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
