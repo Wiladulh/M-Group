@@ -345,7 +345,7 @@ class Database:
                         "provider_transaction_id": "TEXT",
                         "provider_reference": "TEXT",
                         "failure_reason": "TEXT",
-                                "original_amount": "INTEGER",
+                        "original_amount": "INTEGER",
                         "discount_amount": "INTEGER NOT NULL DEFAULT 0",
                         "final_amount": "INTEGER",
                         "promo_id": "TEXT",
