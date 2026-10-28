@@ -12,7 +12,7 @@ def test_device_authentication_and_provisioning():
         try:
             client=TestClient(main.create_app())
             p=client.post("/api/v1/devices/cashier-01/provision",
-                          json={"device_type":"esp32-cashier"},
+                          json={"device_type":"esp32-cashier","location":"Test Cashier"},
                           headers=login_admin(client))
             assert p.status_code==200
             key=p.json()["device_key"]
