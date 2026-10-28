@@ -1961,12 +1961,9 @@ def build_router(db, app_settings=None):
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             payload=q.model_dump()
-            payload["hardware_id"]=identity["hardware_id"]
-            result=payments.pay(**payload)
-            with db.connect() as c:
-                c.execute("UPDATE payment_transactions SET transaction_source='CASHIER' WHERE transaction_id=?",(result["transaction_id"],))
-                c.commit()
-            return result
+            payload["transaction_source"]="CASHIER"
+            payload["device_hardware_id"]=identity["hardware_id"]
+            return payments.pay(**payload)
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
             code=str(e)
@@ -2027,10 +2024,11 @@ def build_router(db, app_settings=None):
             queries.append("""SELECT transaction_id,created_at,'CASHIER' source,hardware_id,member_id,account_id,
                               'DEPOSIT' transaction_type,amount,status,'NFC' payment_method,'local' payment_provider
                               FROM cashier_deposits""")
-            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,p.hardware_id,a.member_id,p.account_id,
+            queries.append("""SELECT p.transaction_id,p.created_at,'CASHIER' source,pda.hardware_id,a.member_id,p.account_id,
                               'PAYMENT' transaction_type,COALESCE(p.final_amount,p.amount) amount,p.status,
                               COALESCE(p.method,'NFC') payment_method,COALESCE(p.provider,'local') payment_provider
                               FROM payment_transactions p
+                              LEFT JOIN payment_device_associations pda ON pda.transaction_id=p.transaction_id
                               LEFT JOIN financial_accounts a ON a.account_id=p.account_id
                               WHERE p.transaction_source='CASHIER'""")
         if source == "TOPUP":
