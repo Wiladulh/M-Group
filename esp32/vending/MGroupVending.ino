@@ -94,7 +94,7 @@ void showMessage(const String&a,const String&b="",const String&c=""){
 bool registerDevice(){
   if(WiFi.status()!=WL_CONNECTED)return false;
   String mac=WiFi.macAddress();
-  if(HARDWARE_ID.isEmpty()){Serial.println("DEVICE ID missing; configure server-issued ID in local WebUI");return false;}
+  if(HARDWARE_ID.isEmpty()){Serial.println("MAC-derived DEVICE ID missing; check station MAC and restart");return false;}
   String body="{\"device_type\":\"esp32-s3-vending\",\"hardware_id\":\""+HARDWARE_ID+"\",\"mac_address\":\""+mac+"\",\"device_key\":\""+M_GROUP_DEVICE_KEY+"\"}";
   int code=0; String reply=request("POST","/api/v1/devices/register",body,code);
   Serial.printf("DEVICE REGISTER %d %s\\n",code,reply.c_str());
