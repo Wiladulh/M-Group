@@ -12,11 +12,13 @@ def test_vending_registry_supports_many_machines_and_five_slots():
         f=VendingService(db)
         with db.connect() as c:
             for i in range(1,6):
-                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
-                          (f"esp32-{i}","esp32-s3-vending","active","test-hash"))
+                hardware_id=f"vending_aabbcc0000{i:02d}"
+                mac=f"AA:BB:CC:00:00:{i:02d}"
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash,mac_address) VALUES(?,?,?,?,?)",
+                          (hardware_id,"esp32-s3-vending","active","test-hash",mac))
             c.commit()
         for i in range(1,6):
-            m=f.register(f"vm-{i}",f"Vending {i}",f"Location {i}",f"esp32-{i}")
+            m=f.register(f"vm-{i}",f"Vending {i}",f"Location {i}",f"vending_aabbcc0000{i:02d}")
             assert m["machine_id"]==f"vm-{i}"
         assert len(f.machines())==5
         assert [x["slot"] for x in f.slots("vm-3")]==[1,2,3,4,5]
@@ -28,11 +30,12 @@ def test_vending_registry_isolates_machine_slots():
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         with db.connect() as c:
-            c.executemany("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
-                          [("dev-a","esp32-s3-vending","active","test-hash"),("dev-b","esp32-s3-vending","active","test-hash")])
+            c.executemany("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash,mac_address) VALUES(?,?,?,?,?)",
+                          [("vending_aabbcc000010","esp32-s3-vending","active","test-hash","AA:BB:CC:00:00:10"),
+                           ("vending_aabbcc000011","esp32-s3-vending","active","test-hash","AA:BB:CC:00:00:11")])
             c.commit()
-        f.register("a","A",hardware_id="dev-a")
-        f.register("b","B",hardware_id="dev-b")
+        f.register("a","A",hardware_id="vending_aabbcc000010")
+        f.register("b","B",hardware_id="vending_aabbcc000011")
         f.upsert_product("a","water-a","Water A",5000,3,slot=1,capacity=5)
         f.upsert_product("b","water-b","Water B",6000,4,slot=1,capacity=5)
         assert f.products("a")[0]["price"]==5000
@@ -45,10 +48,10 @@ def test_vending_registry_rejects_duplicate_device_and_invalid_slot():
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         with db.connect() as c:
-            c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('same','esp32-s3-vending','active','test-hash')")
+            c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash,mac_address) VALUES('vending_aabbcc000020','esp32-s3-vending','active','test-hash','AA:BB:CC:00:00:20')")
             c.commit()
-        f.register("a","A",hardware_id="same")
-        try: f.register("b","B",hardware_id="same")
+        f.register("a","A",hardware_id="vending_aabbcc000020")
+        try: f.register("b","B",hardware_id="vending_aabbcc000020")
         except ValueError as e: assert str(e)=="device_already_registered"
         else: assert False
         try: f.upsert_product("a","p","P",1000,1,slot=6,capacity=1)
@@ -63,10 +66,10 @@ def test_vending_registry_api():
             client=TestClient(main.create_app())
             admin=login_admin(client)
             with client.app.state.db.connect() as c:
-                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('api-esp32','esp32-s3-vending','active','test-hash')")
+                c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash,mac_address) VALUES('vending_aabbcc000030','esp32-s3-vending','active','test-hash','AA:BB:CC:00:00:30')")
                 c.commit()
             created=client.post("/api/v1/vending",headers=admin,json={
-                "machine_id":"api-v1","name":"API Vending","location":"Lobby","hardware_id":"api-esp32"
+                "machine_id":"api-v1","name":"API Vending","location":"Lobby","hardware_id":"vending_aabbcc000030"
             })
             assert created.status_code==200
             assert created.json()["status"]=="active"
