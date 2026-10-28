@@ -963,6 +963,13 @@ def build_router(db, app_settings=None):
                 stored_type = "esp32-s3-vending" if row["device_type"] == "esp32-vending" else row["device_type"]
                 if stored_type != device_type:
                     raise HTTPException(403,"device_type_mismatch")
+                mac_collision=c.execute(
+                    """SELECT registry_id FROM device_registry
+                       WHERE mac_address=? AND registry_id<>? AND status<>'disabled' AND deleted_at IS NULL""",
+                    (mac_address,row["registry_id"]),
+                ).fetchone()
+                if mac_collision:
+                    raise HTTPException(409,"device_mac_already_registered")
                 # Provisioning creates a temporary server-side registry handle.
                 # The first valid device-key registration replaces that handle with
                 # the canonical full-MAC hardware ID. Once a MAC is bound, neither
