@@ -680,8 +680,11 @@ def build_router(db, app_settings=None):
             members=c.execute("SELECT member_id,name,status,created_at FROM identity_members ORDER BY created_at DESC").fetchall()
             accounts=c.execute("""SELECT a.account_id,a.member_id,m.name AS member_name,a.account_type,a.status,a.created_at
                    FROM financial_accounts a JOIN identity_members m ON m.member_id=a.member_id ORDER BY a.created_at DESC""").fetchall()
-            payments_rows=c.execute("""SELECT transaction_id,credential_id,account_id,amount,final_amount,status,method,provider,transaction_source,created_at
-                   FROM payment_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
+            payments_rows=c.execute("""SELECT p.transaction_id,p.credential_id,p.account_id,p.amount,p.final_amount,p.status,
+                       p.method,p.provider,p.transaction_source,p.created_at,d.hardware_id AS device_hardware_id
+                   FROM payment_transactions p
+                   LEFT JOIN payment_device_associations d ON d.transaction_id=p.transaction_id
+                   ORDER BY p.created_at DESC LIMIT 50""").fetchall()
             vending_rows=c.execute("""SELECT transaction_id,machine_id,product_id,account_id,amount,status,created_at
                    FROM vending_transactions ORDER BY created_at DESC LIMIT 50""").fetchall()
             loans=c.execute("""SELECT loan_id,member_id,principal,installment_amount,remaining_balance,status,created_at
