@@ -39,8 +39,7 @@ class PaymentService:
             raise ValueError("invalid_device_authenticated_vending_flag")
         if method not in {"NFC", "QRIS"}:
             raise ValueError("unsupported_payment_method")
-        # Do not record a QRIS payment as successful until a real provider
-        # callback/verification flow exists. Vending already applies this gate.
+        # QRIS stays disabled until a real provider verification flow exists.
         if method == "QRIS":
             raise ValueError("qris_payment_provider_not_activated")
         if method == "NFC" and provider != "local":
@@ -79,9 +78,7 @@ class PaymentService:
                 raise PermissionError("invalid_pin")
 
         with self.db.connect() as c:
-            # Reserve the SQLite write transaction before checking the key.
-            # Concurrent retries now serialize and the later request replays
-            # the committed result instead of racing the unique index/debit.
+            # Serialize retries before checking idempotency and mutating balances.
             c.execute("BEGIN IMMEDIATE")
             if idempotency_key:
                 row = c.execute(
@@ -103,19 +100,19 @@ class PaymentService:
                         or (reference is not None and row["transaction_id"] != reference)
                     ):
                         raise ValueError("idempotency_key_conflict")
-                    if device_hardware_id:
-                        association = c.execute(
-                            "SELECT hardware_id FROM payment_device_associations WHERE transaction_id=?",
-                            (row["transaction_id"],),
-                        ).fetchone()
-                        if association and association["hardware_id"] != device_hardware_id:
+
+                    association = c.execute(
+                        "SELECT hardware_id FROM payment_device_associations WHERE transaction_id=?",
+                        (row["transaction_id"],),
+                    ).fetchone()
+                    if transaction_source == "CASHIER":
+                        # Never let a retry retroactively claim an old transaction
+                        # for a different/unrecorded device.
+                        if not association or association["hardware_id"] != device_hardware_id:
                             raise ValueError("idempotency_key_conflict")
-                        if not association:
-                            c.execute(
-                                "INSERT INTO payment_device_associations(transaction_id,hardware_id) VALUES(?,?)",
-                                (row["transaction_id"], device_hardware_id),
-                            )
-                            c.commit()
+                    elif association:
+                        raise ValueError("idempotency_key_conflict")
+
                     return {
                         "transaction_id": row["transaction_id"],
                         "status": row["status"],
@@ -154,21 +151,9 @@ class PaymentService:
                 "promo_id,balance_before,balance_after,transaction_source) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    tx,
-                    credential_id,
-                    account_id,
-                    amount,
-                    "completed",
-                    method,
-                    provider,
-                    idempotency_key,
-                    original_amount,
-                    discount_amount,
-                    amount,
-                    promo_id,
-                    balance_before,
-                    balance_after,
-                    transaction_source,
+                    tx, credential_id, account_id, amount, "completed", method, provider,
+                    idempotency_key, original_amount, discount_amount, amount, promo_id,
+                    balance_before, balance_after, transaction_source,
                 ),
             )
             if device_hardware_id:
@@ -177,15 +162,12 @@ class PaymentService:
                     (tx, device_hardware_id),
                 )
             c.execute(
-                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) "
-                "VALUES(?,?,?,?)",
+                "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
                 (
-                    "payment",
-                    "payment_transaction",
-                    tx,
+                    "payment", "payment_transaction", tx,
                     f"completed:{method}:{provider}:credential={credential_id}:"
-                    f"device_key_authenticated={str(bool(device_hardware_id or device_authenticated_vending)).lower()}:original={original_amount}:"
-                    f"discount={discount_amount}:final={amount}:"
+                    f"device_key_authenticated={str(bool(device_hardware_id or device_authenticated_vending)).lower()}:"
+                    f"original={original_amount}:discount={discount_amount}:final={amount}:"
                     f"balance_before={balance_before}:balance_after={balance_after}:"
                     f"ledger={ledger_reference or '-'}:promo={promo_id or '-'}",
                 ),
