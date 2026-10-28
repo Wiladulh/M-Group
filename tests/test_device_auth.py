@@ -20,7 +20,7 @@ def test_device_authentication_and_provisioning():
                                json={"device_type":"esp32-cashier"})
             assert denied.status_code==401
             ok=client.post("/api/v1/devices/cashier-01/heartbeat",
-                           json={"device_type":"esp32-cashier"},
+                           json={"device_type":"esp32-cashier","location":"Test Cashier"},
                            headers={"X-M-Group-Device-Key":key})
             assert ok.status_code==200
             assert ok.json()["status"] == "active"
