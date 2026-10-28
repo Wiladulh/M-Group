@@ -48,6 +48,8 @@ class DeviceManagementService:
             raise ValueError("device_not_found")
         if current["deleted_at"] is not None:
             raise ValueError("device_deleted")
+        if current["status"] == "disabled" and status == "active":
+            raise ValueError("disabled_device_requires_reprovisioning")
         if device_type is not None and device_type not in self.ALLOWED_TYPES:
             raise ValueError("invalid_device_type")
         if status is not None and status not in self.ALLOWED_STATUS:
