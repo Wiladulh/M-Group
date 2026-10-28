@@ -418,6 +418,7 @@ $('paymentClearPending').onclick=()=>{
 $('paymentForm').onsubmit=async e=>{
   e.preventDefault();
   const method=$('method').value,pin=$('paypin').value;
+   if(method==='QRIS'){$('paymentResult').textContent='QRIS belum aktif karena verifikasi provider belum terintegrasi.';return}
   if(method==='NFC'&&!pin){$('paymentResult').textContent='PIN anggota wajib diisi untuk pembayaran NFC';return}
   const accountId=$('payaccount').value,credentialId=$('credential').value,amount=Number($('payamount').value);
   if(!accountId||!credentialId){$('paymentResult').textContent='Pilih member, kartu NFC aktif, dan rekening.';return}
