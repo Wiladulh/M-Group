@@ -635,8 +635,65 @@ $('backupRestore').onclick=async()=>{
     if(r.ok)setTimeout(()=>location.reload(),1000);
   }catch(e){$('backupResult').textContent=e.message}
 };
+
+let promotionRows=[];
+async function loadPromotionMachines(){
+  const {r,d}=await json('/api/v1/vending',{});
+  if(!r.ok)throw new Error(d.detail||'Gagal memuat mesin untuk promosi');
+  const select=$('promoMachine'),current=select.value;
+  select.innerHTML='<option value="">Pilih mesin</option>'+(d.machines||[]).map(m=>'<option value="'+esc(m.machine_id)+'">'+esc(m.name)+' — '+esc(m.machine_id)+'</option>').join('');
+  if((d.machines||[]).some(m=>m.machine_id===current))select.value=current;
+}
+function renderPromotions(){
+  const target=$('promotions');if(!target)return;
+  if(!promotionRows.length){target.innerHTML='<p class="hint" style="padding:16px">Belum ada aturan promosi.</p>';return}
+  const canManage=currentAdminRole==='super_admin';
+  target.innerHTML='<table><thead><tr><th>Nama aturan</th><th>Cakupan</th><th>Mesin</th><th>Produk</th><th>Metode</th><th>Diskon</th><th>Mulai</th><th>Berakhir</th><th>Prioritas</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+
+    promotionRows.map(p=>'<tr><td>'+esc(p.promo_id)+'</td><td>'+esc(p.scope)+'</td><td>'+esc(p.machine_id||'Semua mesin')+'</td><td>'+esc(p.product_id||'Semua')+'</td><td>'+esc(p.payment_method)+'</td><td>'+esc(p.discount_percent)+'%</td><td>'+esc(p.starts_at||'—')+'</td><td>'+esc(p.ends_at||'—')+'</td><td>'+esc(p.priority)+'</td><td>'+(p.enabled?'Aktif':'Nonaktif')+'</td><td>'+(canManage?'<button type="button" data-promo-toggle="'+esc(p.promo_id)+'" data-enabled="'+(p.enabled?'1':'0')+'">'+(p.enabled?'Nonaktifkan':'Aktifkan')+'</button>':'Hanya baca')+'</td></tr>').join('')+
+    '</tbody></table>';
+}
+async function loadPromotions(){
+  try{
+    await loadPromotionMachines();
+    const {r,d}=await json('/api/v1/promotions?include_disabled=true',{});
+    if(!r.ok)throw new Error(d.detail||'Gagal memuat promosi');
+    promotionRows=d.promotions||[];
+    renderPromotions();
+    $('promotionResult').textContent='Memuat '+promotionRows.length+' aturan promosi dari server.';
+  }catch(e){$('promotionResult').textContent=e.message}
+}
+$('promoScope').onchange=()=>{$('promoMachine').disabled=$('promoScope').value==='global'};
+$('loadPromotions').onclick=loadPromotions;
+$('promotionForm').onsubmit=async e=>{
+  e.preventDefault();
+  if(currentAdminRole!=='super_admin'){$('promotionResult').textContent='Hanya Super Admin yang dapat mengubah promosi.';return}
+  const scope=$('promoScope').value,machine=$('promoMachine').value;
+  if(scope==='local'&&!machine){$('promotionResult').textContent='Pilih mesin untuk promosi lokal.';return}
+  const dateValue=id=>{const v=$(id).value;return v?new Date(v).toISOString():null};
+  const discount=Number($('promoDiscount').value),priority=Number($('promoPriority').value);
+  if(!Number.isFinite(discount)||discount<0.1||discount>100||!Number.isInteger(priority)){$('promotionResult').textContent='Diskon harus 0,1–100% dan prioritas harus bilangan bulat.';return}
+  const starts=dateValue('promoStartsAt'),ends=dateValue('promoEndsAt');
+  if(starts&&ends&&ends<=starts){$('promotionResult').textContent='Waktu akhir harus setelah waktu mulai.';return}
+  const payload={scope,machine_id:scope==='local'?machine:null,product_id:$('promoProduct').value||null,
+    payment_method:$('promoMethod').value,payment_provider:'local',discount_percent:discount,
+    starts_at:starts,ends_at:ends,priority,enabled:$('promoEnabled').checked};
+  const {r,d}=await json('/api/v1/promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  $('promotionResult').textContent=r.ok?'Promosi tersimpan di backend.':(d.detail||'Gagal menyimpan promosi.');
+  if(r.ok){$('promotionForm').reset();$('promoMachine').disabled=false;await loadPromotions()}
+};
+$('promotions').addEventListener('click',async e=>{
+  const button=e.target.closest('[data-promo-toggle]');if(!button)return;
+  if(currentAdminRole!=='super_admin')return;
+  const promo=promotionRows.find(p=>p.promo_id===button.dataset.promoToggle);if(!promo)return;
+  const enabled=button.dataset.enabled!=='1';
+  if(!confirm((enabled?'Aktifkan':'Nonaktifkan')+' promosi '+promo.promo_id+'?'))return;
+  const {r,d}=await json('/api/v1/promotions/'+encodeURIComponent(promo.promo_id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  $('promotionResult').textContent=r.ok?'Status promosi diperbarui.':(d.detail||'Gagal memperbarui promosi.');
+  if(r.ok)await loadPromotions();
+});
+
 document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
-const validTabs=['dashboard','member','financial','payment','vending','cashier','devices','audit','settings'];
+const validTabs=['dashboard','member','financial','payment','vending','promotions','cashier','devices','audit','settings'];
 try {
   const savedTab=sessionStorage.getItem('m-group-active-tab');
   if(validTabs.includes(savedTab)) switchTab(savedTab);
@@ -659,7 +716,7 @@ let currentAdminRole=null;
 function unlockApp(username,role=null){
   currentAdminRole=role;
   const superAdmin=role==='super_admin';
-  ['financialForm','paymentForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
+  ['financialForm','paymentForm','promotionForm','operatorPinForm','backupCreate','restoreFile','backupRestore','deviceProvisionForm','toggleDeviceKey','copyDeviceKey'].forEach(id=>{if($(id))$(id).hidden=!superAdmin});
   if($('accountSettings'))$('accountSettings').hidden=role==='auditor';
   if($('memberForm'))$('memberForm').hidden=role==='auditor';
   if($('productForm')){
@@ -667,6 +724,7 @@ function unlockApp(username,role=null){
     const submit=$('productForm').querySelector('button[type="submit"]');if(submit)submit.hidden=!superAdmin;
   }
   loadNfcCashierOptions();
+  loadPromotions();
   loadAuditEvents();
   $('loginScreen').hidden=true;
   $('appShell').hidden=false;
