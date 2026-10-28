@@ -17,6 +17,25 @@ def seed(client):
         c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc1','nfc','m1','active',1)")
         c.commit()
 
+
+def test_vending_device_key_cannot_access_unbound_machine():
+    with TemporaryDirectory() as d:
+        old = main.get_settings
+        main.get_settings = lambda: type("S", (), {"db_path": Path(d) / "m-group.db"})()
+        try:
+            client = TestClient(main.create_app())
+            seed(client)
+            with client.app.state.db.connect() as c:
+                c.execute("UPDATE vending_machines SET hardware_id=NULL WHERE machine_id='v1'")
+                c.commit()
+            response = client.get(
+                "/api/v1/vending/v1/products",
+                headers={"X-M-Group-Device-Key": "vm-secret"},
+            )
+            assert response.status_code == 403
+        finally:
+            main.get_settings = old
+
 def test_vending_api_payment_and_dispense():
     with TemporaryDirectory() as d:
         old = main.get_settings
