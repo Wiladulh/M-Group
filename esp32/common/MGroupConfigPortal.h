@@ -21,8 +21,8 @@ class MGroupConfigPortal {
     WiFi.mode(WIFI_STA);
     String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
     String prefix=String(label_).indexOf("Cashier")>=0?"cashier_":"vending_";
-    *id_=prefix+mac;
-    bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
+    *id_=(mac.length()==12&&mac!="000000000000")?prefix+mac:String("");
+    bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||id_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
     startPortal(needed);
   }
   bool active() const { return active_; }
