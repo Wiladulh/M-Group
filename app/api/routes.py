@@ -1573,14 +1573,8 @@ def build_router(db, app_settings=None):
     def payment(request: Request, q:PaymentRequest):
         require_admin(request)
         require_super_admin(request)
-        if q.method == "NFC":
-            if not q.pin:
-                raise HTTPException(403, "pin_required")
-            try:
-                if not identity.verify_credential_pin(q.credential_id, q.pin):
-                    raise HTTPException(403, "invalid_pin")
-            except PermissionError as e:
-                raise HTTPException(403, str(e))
+        # PaymentService owns the single authoritative credential/PIN check.
+        # Avoid double verification, duplicate audit events, and race-to-block behavior.
         try:return payments.pay(**q.model_dump())
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
