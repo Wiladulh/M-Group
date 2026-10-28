@@ -10,8 +10,8 @@ def seed(client):
         c.execute("INSERT INTO identity_members(member_id,name) VALUES('m1','Member')")
         c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
         c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
-        c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES('vm-01','esp32-s3-vending','active',?)",
-                  (hashlib.sha256(b'vm-secret').hexdigest(),))
+        c.execute("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash,mac_address) VALUES(?,?,?,?,?)",
+                  ("vending_aabbcc000001","esp32-s3-vending","active",hashlib.sha256(b'vm-secret').hexdigest(),"AA:BB:CC:00:00:01"))
         c.execute("INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES('v1','Vending 1','active','vending_aabbcc000001')")
         c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,slot,capacity,servo_channel) VALUES('water','v1','Water',5000,1,1,1,1)")
         c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc1','nfc','m1','active',1)")
