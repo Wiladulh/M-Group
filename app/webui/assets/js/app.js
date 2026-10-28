@@ -449,7 +449,10 @@ async function loadVendingMachines(){
     sel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+' ('+esc(x.status)+')</option>').join('');
     if(rows.some(x=>x.machine_id===current))sel.value=current;
     else if(rows.length)sel.value=rows[0].machine_id;
-    $('machines').innerHTML=table(rows,['machine_id','name','location','hardware_id','status']);
+    const canManageMachines=currentAdminRole==='super_admin';
+    $('machines').innerHTML=rows.length?'<table><thead><tr><th>Machine ID</th><th>Nama</th><th>Lokasi</th><th>Hardware ID</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+
+      rows.map(x=>'<tr><td>'+esc(x.machine_id)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.location||'—')+'</td><td>'+esc(x.hardware_id||'Belum terikat')+'</td><td>'+esc(x.status)+'</td><td>'+(canManageMachines?'<button type="button" data-machine-status="'+esc(x.machine_id)+'" data-action="'+(x.status==='active'?'disable':'enable')+'">'+(x.status==='active'?'Nonaktifkan':'Aktifkan')+'</button>':'Hanya baca')+'</td></tr>').join('')+
+      '</tbody></table>':'<p class="hint" style="padding:16px">Belum ada vending machine terdaftar.</p>';
     const bindSel=$('bindMachineId'),oldBind=bindSel.value;
     bindSel.innerHTML='<option value="">Pilih mesin</option>'+rows.map(x=>'<option value="'+esc(x.machine_id)+'">'+esc(x.name)+' — '+esc(x.machine_id)+'</option>').join('');
     if(rows.some(x=>x.machine_id===oldBind))bindSel.value=oldBind;
@@ -491,6 +494,15 @@ $('machineBindForm').onsubmit=async e=>{
   if(r.ok){await loadVendingMachines();await load()}
 };
 
+$('machines').addEventListener('click',async e=>{
+  const button=e.target.closest('[data-machine-status]');if(!button)return;
+  if(currentAdminRole!=='super_admin')return;
+  const machineId=button.dataset.machineStatus,action=button.dataset.action;
+  if(!confirm((action==='disable'?'Nonaktifkan':'Aktifkan')+' mesin '+machineId+'?'))return;
+  const {r,d}=await json('/api/v1/vending/'+encodeURIComponent(machineId)+'/'+action,{method:'POST'});
+  $('machineResult').textContent=r.ok?'Status mesin diperbarui.':(d.detail||'Gagal memperbarui status mesin.');
+  if(r.ok){await loadVendingMachines();await loadDashboard(selectedAnalyticsPeriod)}
+});
 $('loadVendingMachines').onclick=loadVendingMachines;
 $('machineId').onchange=async()=>{try{await loadVendingCatalog($('machineId').value);await loadVendingTransactions($('machineId').value)}catch(e){$('productResult').textContent=e.message}};
 $('productId').onchange=()=>{
