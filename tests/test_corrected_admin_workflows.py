@@ -49,7 +49,7 @@ def test_generated_device_key_binds_first_hardware_registration_to_mac_id():
                     (registry_id,)).fetchone()
                 assert row["registry_id"] == registry_id
                 assert row["hardware_id"] is None
-                assert row["display_name"] == "Lokasi belum ditentukan"
+                assert row["display_name"] == "Test Cashier"
                 assert row["auth_key_hash"] == hashlib.sha256(key.encode()).hexdigest()
 
             registered = client.post(
