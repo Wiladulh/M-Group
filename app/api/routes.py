@@ -279,21 +279,16 @@ def build_router(db, app_settings=None):
             raise HTTPException(401,"device_auth_required")
         got=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            rows=c.execute("SELECT hardware_id,device_type,status,auth_key_hash,mac_address FROM device_registry WHERE auth_key_hash IS NOT NULL AND status<>'disabled' AND deleted_at IS NULL").fetchall()
+            rows=c.execute("SELECT hardware_id,device_type,status,auth_key_hash FROM device_registry WHERE auth_key_hash IS NOT NULL AND status<>'disabled' AND deleted_at IS NULL").fetchall()
         row=next((item for item in rows if secrets.compare_digest(got,item["auth_key_hash"] or "")),None)
         if not row:
             raise HTTPException(403,"invalid_device_key")
         if row["status"]!="active":
             raise HTTPException(403,"device_not_active")
-        raw_type=row["device_type"]
         type_aliases={"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}
-        device_type=type_aliases.get(raw_type,raw_type)
+        device_type=type_aliases.get(row["device_type"],row["device_type"])
         if allowed_types and device_type not in allowed_types:
             raise HTTPException(403,"device_type_not_allowed")
-        prefix="cashier_" if device_type=="esp32-cashier" else ("vending_" if device_type=="esp32-s3-vending" else None)
-        mac=(row["mac_address"] or "").replace(":","").replace("-","").lower()
-        if not prefix or len(mac)!=12 or row["hardware_id"]!=prefix+mac:
-            raise HTTPException(403,"device_identity_not_canonical")
         return {"fingerprint":got,"hardware_id":row["hardware_id"],"device_type":device_type}
 
     def require_device(hardware_id: str, device_key: str | None):
