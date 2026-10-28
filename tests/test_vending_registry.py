@@ -28,7 +28,7 @@ def test_vending_registry_isolates_machine_slots():
         db=Database(Path(d)/"m-group.db"); db.migrate()
         f=VendingService(db)
         with db.connect() as c:
-            c.executemany("INSERT INTO device_registry(hardware_id,device_type,status) VALUES(?,?,?)",
+            c.executemany("INSERT INTO device_registry(hardware_id,device_type,status,auth_key_hash) VALUES(?,?,?,?)",
                           [("dev-a","esp32-s3-vending","active","test-hash"),("dev-b","esp32-s3-vending","active","test-hash")])
             c.commit()
         f.register("a","A",hardware_id="dev-a")
