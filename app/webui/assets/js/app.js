@@ -402,8 +402,8 @@ function renderPaymentTransactions(){
   if(!$('payments'))return;
   const search=($('paymentSearch')?.value||'').trim().toLowerCase();
   const method=$('paymentMethodFilter')?.value||'ALL',statusFilter=$('paymentStatusFilter')?.value||'ALL';
-  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.credential_id].some(v=>String(v||'').toLowerCase().includes(search))));
-  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','amount','method','provider','status','created_at']);
+  const rows=dashboardPayments.filter(x=>(method==='ALL'||String(x.method||'').toUpperCase()===method)&&(statusFilter==='ALL'||String(x.status||'').toLowerCase()===statusFilter)&&(!search||[x.transaction_id,x.account_id,x.credential_id,x.device_hardware_id].some(v=>String(v||'').toLowerCase().includes(search))));
+  $('payments').innerHTML=table(rows.map(x=>({...x,amount:money(x.final_amount??x.amount)})),['transaction_id','account_id','device_hardware_id','amount','method','provider','status','created_at']);
 }
 $('paymentSearch').oninput=renderPaymentTransactions;
 $('paymentMethodFilter').onchange=renderPaymentTransactions;
