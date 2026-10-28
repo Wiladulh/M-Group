@@ -39,7 +39,7 @@ The UID is converted to nfc-<lowercase hexadecimal UID>. The M-Group server rema
 - After save, the device restarts and registers its full-MAC Device ID using the one-time key. If registration fails, it retries and blocks vending until registration succeeds. If an older installation was already bound to a non-MAC server ID, disable/revoke that old registry entry, generate a new Device Key, then rebind the machine to the new canonical hardware ID.
 
 - After joining the configured Wi-Fi, the PIN-protected device WebUI is also available at `http://<current-DHCP-IP>/` from the trusted LAN. It shows DHCP IP, connection/RSSI, server reachability, local time, TLS CA state, and catalog synchronization status.
-- The local PIN starts at `19929900` on a new device and must be changed before saving configuration. The salted PIN hash is stored in ESP32 NVS; failed logins are rate-limited. The temporary setup AP is only the first-time/recovery path, not the only WebUI address.
+- The local PIN starts at `19929900` on a new device and must be changed before saving configuration. The salted PIN hash is stored in ESP32 NVS; failed logins are rate-limited. For recovery after saved Wi-Fi settings stop working, hold the SELECT setup button low while powering on. The temporary setup AP is the first-time/recovery path, not the only WebUI address.
 
 ## Server configuration
 
