@@ -81,7 +81,7 @@ async function loadDashboard(period=selectedAnalyticsPeriod){
   await loadMemberList();
   dashboardPayments=d.payments;renderPaymentTransactions();
   $('loans').innerHTML=table(d.loans.map(x=>({...x,principal:money(x.principal),installment_amount:money(x.installment_amount),remaining_balance:money(x.remaining_balance)})),['loan_id','member_id','principal','installment_amount','remaining_balance','status']);
-  $('machines').innerHTML=table(d.machines,['machine_id','name','status','last_seen']);
+  $('machines').innerHTML=table(d.machines,['machine_id','name','location','hardware_id','status','last_seen']);
   $('devices').innerHTML=table((d.devices||[]).map(x=>({...x,hardware_identity:x.hardware_id||x.display_name||'Belum diinisialisasi'})),['hardware_identity','device_type','status','last_seen']);
   $('dashboardResult').textContent='Data dashboard berhasil dimuat.';
 }
