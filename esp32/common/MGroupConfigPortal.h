@@ -125,8 +125,8 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       if(deviceKey.isEmpty())deviceKey=prefs_.getString("device_key","");
       if(tlsCa.isEmpty())tlsCa=prefs_.getString("tls_ca","");
       ssid.trim();serverUrl.trim();deviceKey.trim();deviceLocation.trim();
-      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId!=*id_||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>64||serverUrl.length()>160||deviceKey.length()>128||tlsCa.length()>3500||deviceLocation.length()>120||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")) {
-        req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa Wi-Fi, ID fisik otomatis, Device Key, dan URL tanpa slash akhir.");return;
+      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId!=*id_||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>64||serverUrl.length()>160||deviceKey.length()>128||tlsCa.length()>3500||deviceLocation.length()>120||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")||(serverUrl.startsWith("https://")&&tlsCa.isEmpty())) {
+        req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa Wi-Fi, ID fisik otomatis, Device Key, URL tanpa slash akhir, dan CA tepercaya untuk HTTPS.");return;
       }
       prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_id",deviceId);prefs_.putString("device_key",deviceKey);prefs_.putString("tls_ca",tlsCa);prefs_.putString("device_location",deviceLocation);if(location_)*location_=deviceLocation;
       req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
