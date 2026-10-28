@@ -486,6 +486,7 @@ $('machineBindForm').onsubmit=async e=>{
   if(currentAdminRole!=='super_admin'){$('machineBindResult').textContent='Hanya Super Admin yang dapat mengubah binding.';return}
   const machineId=$('bindMachineId').value,hardwareId=$('bindMachineDevice').value;
   if(!machineId||!hardwareId){$('machineBindResult').textContent='Pilih mesin dan perangkat aktif.';return}
+  if(!confirm('Ikat mesin '+machineId+' ke hardware ID '+hardwareId+'? Perangkat lama tidak akan dapat mengakses mesin ini.'))return;
   const current=await json('/api/v1/vending/'+encodeURIComponent(machineId),{});
   if(!current.r.ok){$('machineBindResult').textContent=current.d.detail||'Gagal membaca mesin.';return}
   const m=current.d.machine;
