@@ -459,7 +459,7 @@ async function loadVendingMachines(){
     if(rows.some(x=>x.machine_id===oldBind))bindSel.value=oldBind;
     const deviceResponse=await json('/api/v1/devices',{});
     if(!deviceResponse.r.ok)throw new Error(deviceResponse.d.detail||'Gagal memuat registry perangkat');
-    const devices=(deviceResponse.d.devices||[]).filter(x=>x.hardware_id&&x.status==='active'&&['esp32-vending','esp32-s3-vending','esp32-vending','vending'].includes(x.device_type));
+    const devices=(deviceResponse.d.devices||[]).filter(x=>x.hardware_id&&x.status==='active'&&['esp32-vending','esp32-s3-vending','vending'].includes(x.device_type));
     const options='<option value="">Pilih perangkat aktif</option>'+devices.map(x=>'<option value="'+esc(x.hardware_id)+'">'+esc(x.display_name||x.hardware_id)+' — '+esc(x.hardware_id)+'</option>').join('');
     const newDevice=$('newMachineDevice'),bindDevice=$('bindMachineDevice'),newCurrent=newDevice.value,bindCurrent=bindDevice.value;
     newDevice.innerHTML=options;bindDevice.innerHTML=options;
