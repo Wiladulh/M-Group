@@ -49,6 +49,10 @@ def test_cashier_heartbeat_and_nfc_payment():
 
             with client.app.state.db.connect() as c:
                 assert c.execute("SELECT COUNT(*) FROM payment_transactions").fetchone()[0] == 1
+                payment_row = c.execute("SELECT transaction_source FROM payment_transactions").fetchone()
+                assert payment_row["transaction_source"] == "CASHIER"
+                association = c.execute("SELECT hardware_id FROM payment_device_associations").fetchone()
+                assert association["hardware_id"] == "cashier-01"
                 assert "hardware_id" not in {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
         finally:
             main.get_settings = old
