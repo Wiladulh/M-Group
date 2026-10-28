@@ -29,7 +29,7 @@ SHEETS = {
         ORDER BY v.created_at
     """,
     "payments": """
-        SELECT transaction_id,created_at,transaction_source,hardware_id,credential_id,
+        SELECT transaction_id,created_at,transaction_source,credential_id,
                account_id,method,provider,original_amount,discount_amount,final_amount,
                amount,status,idempotency_key
         FROM payment_transactions
