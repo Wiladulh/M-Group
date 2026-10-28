@@ -292,7 +292,7 @@ async function rotateDeviceKey(deviceRef){
   $('provisionedDeviceId').value=d.hardware_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan ID dan key baru.';
+  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru; hardware ID berasal dari MAC perangkat.';
   $('deviceAuthResult').textContent='Key lama telah dicabut.';
 }
 async function saveDevice(deviceId){
