@@ -1,7 +1,7 @@
 <div id="tab-payment" class="tab-pane">
   <section class="section">
-    <h2>Pembayaran Manual NFC / Tunai</h2>
-    <div class="hint">Pembayaran manual memerlukan sesi admin yang aktif. Transaksi NFC juga memerlukan PIN anggota; QRIS belum diaktifkan sebagai jalur pembayaran mandiri.</div>
+    <h2>Pembayaran Manual NFC</h2>
+    <div class="hint">Pembayaran saldo anggota hanya menerima NFC dan memerlukan PIN. QRIS belum terintegrasi; setoran tunai dilakukan melalui modul Cashier, bukan debit saldo anggota.</div>
     <form id="paymentForm">
       <label>Member<select id="payMember" required><option value="">Muat member setelah login</option></select></label>
       <label>Kartu NFC aktif<select id="credential" required><option value="">Pilih member terlebih dahulu</option></select></label>
@@ -11,7 +11,7 @@
       <select id="method">
         <option>NFC</option>
         <option value="QRIS" disabled>QRIS (belum aktif)</option>
-        <option>CASH</option>
+        <option value="CASH" disabled>Tunai (gunakan Cashier)</option>
       </select>
       <input id="provider" placeholder="Provider" value="local">
       <input id="idem" placeholder="Idempotency key (otomatis jika kosong)">
