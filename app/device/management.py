@@ -129,9 +129,10 @@ class DeviceManagementService:
             if duplicate:
                 raise ValueError("mac_address_already_registered")
             c.execute(
-                """UPDATE device_registry SET mac_address=?,updated_at=CURRENT_TIMESTAMP
+                """UPDATE device_registry
+                   SET hardware_id=?,mac_address=?,updated_at=CURRENT_TIMESTAMP
                    WHERE registry_id=? AND deleted_at IS NULL AND status!='disabled'""",
-                (mac, current["registry_id"]),
+                (mac, mac, current["registry_id"]),
             )
             if c.execute("SELECT changes()").fetchone()[0] != 1:
                 raise ValueError("device_rebind_conflict")
