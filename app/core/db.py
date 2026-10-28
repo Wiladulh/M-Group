@@ -515,7 +515,7 @@ class Database:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            c.execute("CREATE INDEX IF NOT EXISTS ix_payment_device_hardware ON payment_device_associations(hardware_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_payment_association_hardware ON payment_device_associations(hardware_id)")
             columns = {row[1] for row in c.execute("PRAGMA table_info(payment_transactions)")}
             if "transaction_source" not in columns:
                 c.execute("ALTER TABLE payment_transactions ADD COLUMN transaction_source TEXT NOT NULL DEFAULT 'WEBUI'")
