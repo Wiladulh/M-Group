@@ -29,11 +29,12 @@ SHEETS = {
         ORDER BY v.created_at
     """,
     "payments": """
-        SELECT transaction_id,created_at,transaction_source,credential_id,
-               account_id,method,provider,original_amount,discount_amount,final_amount,
-               amount,status,idempotency_key
-        FROM payment_transactions
-        ORDER BY created_at
+        SELECT p.transaction_id,p.created_at,p.transaction_source,d.hardware_id AS device_hardware_id,
+               p.credential_id,p.account_id,p.method,p.provider,p.original_amount,p.discount_amount,
+               p.final_amount,p.amount,p.status,p.idempotency_key
+        FROM payment_transactions p
+        LEFT JOIN payment_device_associations d ON d.transaction_id=p.transaction_id
+        ORDER BY p.created_at
     """,
     "ledger": """
         SELECT id,created_at,account_id,direction,amount,reference
