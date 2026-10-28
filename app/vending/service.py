@@ -22,14 +22,17 @@ class VendingService:
     @staticmethod
     def _require_registered_vending_device(c, hardware_id):
         row=c.execute(
-            """SELECT hardware_id,device_type,status,auth_key_hash FROM device_registry
+            """SELECT hardware_id,device_type,status,auth_key_hash,mac_address FROM device_registry
                WHERE hardware_id=? AND deleted_at IS NULL""",
             (hardware_id,),
         ).fetchone()
-        if not row or row["status"]!="active" or not row["auth_key_hash"]:
+        if not row or row["status"]!="active" or not row["auth_key_hash"] or not row["mac_address"]:
             raise ValueError("vending_device_not_registered_or_active")
         if row["device_type"] not in {"esp32-vending","esp32-s3-vending","vending"}:
             raise ValueError("hardware_id_not_vending_device")
+        mac=row["mac_address"].replace(":","").replace("-","").lower()
+        if len(mac)!=12 or hardware_id!="vending_"+mac:
+            raise ValueError("vending_device_identity_not_canonical")
 
     def register(self,machine_id,name,location="",hardware_id=None,status="active"):
         if not machine_id.strip(): raise ValueError("machine_id_required")
