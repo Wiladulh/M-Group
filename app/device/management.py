@@ -21,8 +21,8 @@ class DeviceManagementService:
             row = c.execute(
                 """SELECT registry_id,hardware_id,device_type,mac_address,display_name,
                           status,last_seen,auth_key_hint,created_at,updated_at,deleted_at
-                   FROM device_registry WHERE hardware_id=?""",
-                (hardware_id,),
+                   FROM device_registry WHERE hardware_id=? OR registry_id=?""",
+                (hardware_id, hardware_id),
             ).fetchone()
             return dict(row) if row else None
 
@@ -45,8 +45,8 @@ class DeviceManagementService:
             c.execute(
                 """UPDATE device_registry
                    SET device_type=?,status=?,display_name=?,updated_at=CURRENT_TIMESTAMP
-                   WHERE hardware_id=?""",
-                (new_type, new_status, new_name, current["hardware_id"]),
+                   WHERE registry_id=?""",
+                (new_type, new_status, new_name, current["registry_id"]),
             )
             c.commit()
         return self.get(hardware_id)
@@ -59,8 +59,8 @@ class DeviceManagementService:
             c.execute(
                 """UPDATE device_registry
                    SET status='disabled',deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-                   WHERE hardware_id=?""",
-                (current["hardware_id"],),
+                   WHERE registry_id=?""",
+                (current["registry_id"],),
             )
             c.commit()
         return self.get(hardware_id)
