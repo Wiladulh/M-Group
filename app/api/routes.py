@@ -13,7 +13,7 @@ from app.vending.promo import PromotionService
 from app.payment.service import PaymentService
 from app.financial.service import FinancialService
 from app.vending.service import VendingService
-from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup, import_excel
+from app.core.backup import export_excel, export_rows_excel, create_native_backup, restore_native_backup
 from pathlib import Path
 from uuid import uuid4
 import time
@@ -2160,32 +2160,9 @@ def build_router(db, app_settings=None):
     async def backup_import_excel(request: Request, file:UploadFile=File(...)):
         require_admin(request)
         require_super_admin(request)
-        if not file.filename or not file.filename.lower().endswith(".xlsx"):
-            raise HTTPException(400,"invalid_excel_file")
-        content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
-        if len(content) > MAX_EXCEL_UPLOAD_BYTES:
-            raise HTTPException(413,"excel_upload_too_large")
-        try:
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                infos = archive.infolist()
-                names = {info.filename for info in infos}
-                if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
-                    raise ValueError("invalid_excel_archive")
-                if len(infos) > 1000 or sum(info.file_size for info in infos) > MAX_EXCEL_EXPANDED_BYTES:
-                    raise ValueError("excel_archive_too_large")
-        except Exception:
-            raise HTTPException(400,"invalid_excel_archive")
-        root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"imports"
-        root.mkdir(parents=True,exist_ok=True)
-        path=root/f"import-{uuid4().hex}.xlsx"
-        try:
-            path.write_bytes(content)
-            result=import_excel(db,path)
-            return {"status":"imported","result":result}
-        except Exception:
-            raise HTTPException(400,"invalid_excel_archive")
-        finally:
-            path.unlink(missing_ok=True)
-            await file.close()
+        # An XLSX export is a reporting artifact, not a transactionally complete
+        # recovery image. Until import can reconcile every cashier deposit with
+        # its ledger entries and idempotency records, fail closed.
+        raise HTTPException(501,"excel_import_disabled_use_native_backup")
 
     return r
