@@ -31,6 +31,14 @@ def test_server_key_provisions_mac_derived_hardware_identity():
                 assert row["registry_id"] == provisioned_id
                 assert row["hardware_id"] is None
 
+            pending_update = client.patch(
+                f"/api/v1/devices/{provisioned_id}",
+                json={"device_type": "esp32-cashier", "status": "awaiting_device_registration", "display_name": "Test Cashier"},
+                headers=headers,
+            )
+            assert pending_update.status_code == 200, pending_update.text
+            assert pending_update.json()["display_name"] == "Test Cashier"
+
             registration = {
                 "device_type": "esp32-cashier",
                 "hardware_id": "Cashier_aabbccddee01",
