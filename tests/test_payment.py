@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from app.core.db import Database
