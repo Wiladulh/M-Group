@@ -934,6 +934,11 @@ def build_router(db, app_settings=None):
             if not row: raise HTTPException(403,"device_not_provisioned")
             if not row["auth_key_hash"] or not secrets.compare_digest(digest,row["auth_key_hash"]): raise HTTPException(403,"invalid_device_key")
             if row["status"]=="disabled": raise HTTPException(403,"device_disabled")
+            # Registration must not silently override an administrator's maintenance
+            # state. Only a newly provisioned device or an already-active device may
+            # bind/refresh its physical MAC; maintenance devices require admin action.
+            if row["status"] not in {"awaiting_device_registration","active"}:
+                raise HTTPException(409,"device_not_available_for_registration")
             stored_type={"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}.get(row["device_type"],row["device_type"])
             if stored_type!=device_type: raise HTTPException(403,"device_type_mismatch")
             if row["mac_address"] and row["mac_address"]!=mac_address:
