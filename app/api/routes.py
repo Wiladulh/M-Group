@@ -1362,7 +1362,7 @@ def build_router(db, app_settings=None):
         machine = resolve_vending_machine(machine_id)
         if x_m_group_device_key:
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["hardware_id"]:
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
         else:
             require_admin(request)
@@ -1404,7 +1404,7 @@ def build_router(db, app_settings=None):
         machine=resolve_vending_machine(machine_id)
         if request.headers.get("x-m-group-device-key"):
             identity=require_device_by_key(request.headers.get("x-m-group-device-key"), {"esp32-vending","esp32-s3-vending","vending"})
-            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["hardware_id"]:
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
         else:
             require_admin(request)
@@ -1518,7 +1518,7 @@ def build_router(db, app_settings=None):
         try:
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
             machine = resolve_vending_machine(identity["hardware_id"])
-            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["hardware_id"]:
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
@@ -1532,7 +1532,7 @@ def build_router(db, app_settings=None):
             tx = vending.get(transaction_id)
             machine = vending.machine(tx["machine_id"])
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["hardware_id"]:
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
             return public_vending_transaction(tx)
         except HTTPException:
@@ -1546,7 +1546,7 @@ def build_router(db, app_settings=None):
             tx=vending.get(transaction_id)
             machine=vending.machine(tx["machine_id"])
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            if machine.get("hardware_id") and machine["hardware_id"] not in {identity["hardware_id"],identity["fingerprint"]}:
+            if not machine.get("hardware_id") or machine["hardware_id"] != identity["hardware_id"]:
                 raise HTTPException(403,"machine_hardware_identity_mismatch")
             return public_vending_transaction(vending.authorize(transaction_id))
         except PermissionError as e:raise HTTPException(403,str(e))
