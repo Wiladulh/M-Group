@@ -263,17 +263,18 @@ async function loadDevices(){
     const rows=(d.devices||[]);
     if(!rows.length){$('devices').innerHTML='<p class="hint" style="padding:16px;">Belum ada perangkat terdaftar.</p>';return}
     const canManageDevices=currentAdminRole==='super_admin';
-    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Hardware ID / Registry ID</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
-      rows.map(x=>{const ref=x.hardware_id||x.registry_id;return '<tr>'+
+    $('devices').innerHTML='<table><thead><tr><th>Device Location</th><th>Device ID / MAC</th><th>Jenis perangkat</th><th>Status</th><th>Last Seen</th><th>Aksi</th></tr></thead><tbody>'+
+      rows.map(x=>{const ref=x.registry_id||x.hardware_id;return '<tr>'+
         '<td>'+(canManageDevices?'<input data-device-name="'+esc(ref)+'" value="'+esc(x.display_name||'')+'" placeholder="Contoh: Depan sekolah" aria-label="Device Location">':esc(x.display_name||ref))+'</td>'+
-        '<td>'+esc(x.hardware_id||x.registry_id||'Belum terdaftar')+'</td>'+
+        '<td>'+esc(x.registry_id||'Belum ada ID')+'<br><small>MAC: '+esc(x.mac_address||'Belum terikat')+'</small></td>'+
         '<td>'+esc(x.device_type==='esp32-cashier'?'Cashier':x.device_type.includes('vending')?'Vending':x.device_type)+'</td>'+
         '<td>'+(canManageDevices?'<select data-device-status="'+esc(ref)+'">'+['awaiting_device_registration','pending','active','offline','maintenance','unassigned','disabled'].map(st=>'<option value="'+st+'"'+(x.status===st?' selected':'')+'>'+st+'</option>').join('')+'</select>':esc(x.status))+'</td>'+
         '<td>'+esc(x.last_seen||'—')+'</td>'+
-        '<td>'+(canManageDevices?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button> <button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button> <button type="button" data-device-disable="'+esc(ref)+'">Cabut / Nonaktifkan</button>':'Hanya baca')+'</td>'+
+        '<td>'+(canManageDevices?'<button type="button" data-device-save="'+esc(ref)+'">Simpan</button> <button type="button" data-device-rotate="'+esc(ref)+'">Rotasi Key</button> <button type="button" data-device-replace="'+esc(ref)+'">Ganti perangkat keras</button> <button type="button" data-device-disable="'+esc(ref)+'">Cabut / Nonaktifkan</button>':'Hanya baca')+'</td>'+
       '</tr>'}).join('')+'</tbody></table>';
     document.querySelectorAll('[data-device-save]').forEach(b=>b.onclick=()=>saveDevice(b.dataset.deviceSave));
     document.querySelectorAll('[data-device-rotate]').forEach(b=>b.onclick=()=>rotateDeviceKey(b.dataset.deviceRotate));
+    document.querySelectorAll('[data-device-replace]').forEach(b=>b.onclick=()=>authorizeDeviceReplacement(b.dataset.deviceReplace));
     document.querySelectorAll('[data-device-disable]').forEach(b=>b.onclick=async()=>{
       const id=b.dataset.deviceDisable;
       if(!confirm('Cabut akses perangkat '+id+'? Semua permintaan dengan key saat ini akan ditolak.'))return;
@@ -284,14 +285,25 @@ async function loadDevices(){
   }catch(e){$('deviceAuthResult').textContent=e.message}
 }
 
+async function authorizeDeviceReplacement(deviceRef){
+  if(!confirm('Otorisasi penggantian perangkat keras untuk '+deviceRef+'? MAC lama dilepas, key lama dicabut, Device ID logis tetap sama.'))return;
+  const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/authorize-replacement',{method:'POST'});
+  if(!r.ok){$('deviceAuthResult').textContent=d.detail||'Otorisasi penggantian gagal.';return}
+  $('provisionedDeviceId').value=d.device_id||d.registry_id||'';
+  $('provisionedDeviceKey').value=d.device_key;
+  $('provisionedDeviceKey').type='password';
+  $('deviceProvisionResult').textContent='Penggantian disahkan. Masukkan Device ID logis yang sama dan key baru ke perangkat pengganti. Key hanya ditampilkan sekali.';
+  $('deviceAuthResult').textContent='Key lama dicabut dan MAC lama dilepas melalui otorisasi admin.';
+  await loadDevices();
+}
 async function rotateDeviceKey(deviceRef){
   if(!confirm('Rotasi Device Key? Key lama langsung tidak berlaku dan perangkat perlu diperbarui dengan key baru.'))return;
   const {r,d}=await json('/api/v1/devices/'+encodeURIComponent(deviceRef)+'/rotate-key',{method:'POST'});
   if(!r.ok){$('deviceAuthResult').textContent=d.detail||'Rotasi key gagal.';return}
-  $('provisionedDeviceId').value=d.hardware_id||d.registry_id||'';
+  $('provisionedDeviceId').value=d.device_id||d.registry_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru; hardware ID berasal dari MAC perangkat.';
+  $('deviceProvisionResult').textContent='Key baru dibuat dan hanya ditampilkan sekali. Perangkat '+(d.hardware_id||d.registry_id)+' harus dikonfigurasi dengan key baru; Device ID logis terpisah dari MAC perangkat.';
   $('deviceAuthResult').textContent='Key lama telah dicabut.';
 }
 async function saveDevice(deviceId){
@@ -325,7 +337,7 @@ $('deviceProvisionForm').onsubmit=async e=>{
   $('provisionedDeviceId').value=d.hardware_id||d.device_id||d.registry_id||'';
   $('provisionedDeviceKey').value=d.device_key;
   $('provisionedDeviceKey').type='password';
-  result.textContent='ID registry sementara dan Device Key dibuat untuk lokasi '+(d.location||location)+'. Masukkan hanya Device Key ke WebUI perangkat; hardware ID dibuat otomatis dari MAC. Key hanya ditampilkan satu kali.';
+  result.textContent='Device ID logis dan Device Key dibuat untuk lokasi '+(d.location||location)+'. Masukkan keduanya ke WebUI perangkat. MAC dicatat terpisah saat registrasi. Key hanya ditampilkan satu kali.';
   await loadDevices();
 };
 $('toggleDeviceKey').onclick=()=>{
@@ -459,12 +471,12 @@ async function loadVendingMachines(){
     if(rows.some(x=>x.machine_id===oldBind))bindSel.value=oldBind;
     const deviceResponse=await json('/api/v1/devices',{});
     if(!deviceResponse.r.ok)throw new Error(deviceResponse.d.detail||'Gagal memuat registry perangkat');
-    const devices=(deviceResponse.d.devices||[]).filter(x=>x.hardware_id&&x.mac_address&&x.status==='active'&&['esp32-vending','esp32-s3-vending','vending'].includes(x.device_type)&&x.hardware_id==='vending_'+String(x.mac_address).replace(/[:-]/g,'').toLowerCase());
-    const options='<option value="">Pilih perangkat aktif</option>'+devices.map(x=>'<option value="'+esc(x.hardware_id)+'">'+esc(x.display_name||x.hardware_id)+' — '+esc(x.hardware_id)+'</option>').join('');
+    const devices=(deviceResponse.d.devices||[]).filter(x=>x.registry_id&&x.hardware_id&&x.mac_address&&x.status==='active'&&['esp32-vending','esp32-s3-vending','vending'].includes(x.device_type));
+    const options='<option value="">Pilih perangkat aktif</option>'+devices.map(x=>'<option value="'+esc(x.registry_id)+'">'+esc(x.display_name||x.registry_id)+' — '+esc(x.registry_id)+' · MAC '+esc(x.mac_address)+'</option>').join('');
     const newDevice=$('newMachineDevice'),bindDevice=$('bindMachineDevice'),newCurrent=newDevice.value,bindCurrent=bindDevice.value;
     newDevice.innerHTML=options;bindDevice.innerHTML=options;
-    if(devices.some(x=>x.hardware_id===newCurrent))newDevice.value=newCurrent;
-    if(devices.some(x=>x.hardware_id===bindCurrent))bindDevice.value=bindCurrent;
+    if(devices.some(x=>x.registry_id===newCurrent))newDevice.value=newCurrent;
+    if(devices.some(x=>x.registry_id===bindCurrent))bindDevice.value=bindCurrent;
     if(sel.value){await loadVendingCatalog(sel.value);await loadVendingTransactions(sel.value)}
     $('productResult').textContent=rows.length?'Daftar mesin berhasil dimuat.':'Belum ada vending machine terdaftar.';
     $('machineResult').textContent=devices.length?'Perangkat Vending aktif tersedia untuk binding.':'Belum ada perangkat Vending aktif; selesaikan provisioning terlebih dahulu.';
