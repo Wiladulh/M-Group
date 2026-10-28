@@ -1895,7 +1895,10 @@ def build_router(db, app_settings=None):
                 # Recheck under a write lock to make retries/concurrent taps atomic.
                 old = c.execute("SELECT * FROM cashier_deposits WHERE idempotency_key=?",(q.idempotency_key,)).fetchone()
                 if old:
-                    if (old["credential_id"] != q.credential_id or old["amount"] != q.amount):
+                    # An idempotent retry may replay only on the same physical
+                    # cashier. Keep transaction attribution immutable across retries.
+                    if (old["credential_id"] != q.credential_id or old["amount"] != q.amount
+                        or old["hardware_id"] != hardware_id):
                         raise HTTPException(409,"idempotency_key_conflict")
                     fin = c.execute(
                         "SELECT transaction_id FROM financial_transactions WHERE idempotency_key=?",
