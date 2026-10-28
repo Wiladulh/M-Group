@@ -1039,8 +1039,9 @@ def build_router(db, app_settings=None):
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
         registry_id="pending-"+uuid4().hex[:12]
-        # Temporary registry handle; firmware binds the canonical full-MAC ID on first registration.
-        hardware_id="pending_"+uuid4().hex[:12]
+        # Physical hardware identity is unknown until the provisioned key first registers.
+        # Keep it NULL rather than pretending a random server ID is a hardware MAC ID.
+        hardware_id=None
         key=secrets.token_urlsafe(32)
         digest=hashlib.sha256(key.encode("utf-8")).hexdigest()
         with db.connect() as c:
