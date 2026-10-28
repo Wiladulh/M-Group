@@ -5,7 +5,6 @@ import hashlib
 import secrets
 import re
 import io
-import zipfile
 from app.identity.service import IdentityService
 from app.identity.management import MemberManagementService
 from app.device.management import DeviceManagementService
@@ -22,8 +21,6 @@ from PIL import Image, UnidentifiedImageError
 from app.core.auth import hash_password, hash_session_token, new_session_token, verify_password
 
 MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
-MAX_EXCEL_UPLOAD_BYTES = 25 * 1024 * 1024
-MAX_EXCEL_EXPANDED_BYTES = 100 * 1024 * 1024
 
 class PaymentRequest(BaseModel):
     credential_id: str
