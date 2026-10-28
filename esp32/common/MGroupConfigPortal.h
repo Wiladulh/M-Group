@@ -15,13 +15,7 @@ class MGroupConfigPortal {
     if(pinProtected_&&!prefs_.isKey("webui_pin_hash")){String salt=randomToken();prefs_.putString("webui_pin_salt",salt);prefs_.putString("webui_pin_hash",sha256Hex(salt+"19929900"));}
     if(pinProtected_)sessionToken_=randomToken();
     *ssid_=prefs_.getString("wifi_ssid",*ssid_); *password_=prefs_.getString("wifi_pass",*password_);
-    *url_=prefs_.getString("server_url",*url_); *key_=prefs_.getString("device_key",*key_); if(location_)*location_=prefs_.getString("device_location",*location_);
-    // The server's canonical hardware identity is derived from the full station MAC.
-    // Never let a manually entered ID drift from the MAC used during registration.
-    WiFi.mode(WIFI_STA);
-    String mac=WiFi.macAddress(); mac.replace(":",""); mac.toLowerCase();
-    String prefix=String(label_).indexOf("Cashier")>=0?"cashier_":"vending_";
-    *id_=(mac.length()==12&&mac!="000000000000")?prefix+mac:String("");
+    *url_=prefs_.getString("server_url",*url_); *id_=prefs_.getString("device_id",*id_); *key_=prefs_.getString("device_key",*key_); if(location_)*location_=prefs_.getString("device_location",*location_);
     bool needed=forceSetup||ssid_->isEmpty()||password_->isEmpty()||url_->isEmpty()||id_->isEmpty()||key_->isEmpty()||*key_=="CHANGE_DEVICE_KEY"||*ssid_=="CHANGE_ME";
     startPortal(needed);
   }
@@ -76,7 +70,7 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
 <label>URL server M-Group</label><input name="server_url" type="url" placeholder="http://192.168.1.10:8011" maxlength="160" required>
 <label>Lokasi pemasangan (opsional)</label><input name="device_location" maxlength="120" placeholder="Contoh: Kantin lantai 1">
 <label>Sertifikat CA server (wajib untuk HTTPS)</label><textarea name="tls_ca" maxlength="3500" rows="5" style="box-sizing:border-box;width:100%;font:12px monospace" placeholder="-----BEGIN CERTIFICATE----- ..."></textarea><small>HTTPS tanpa CA yang valid akan ditolak; jangan gunakan mode insecure.</small>
-<label>Device ID perangkat (otomatis dari MAC)</label><input name="device_id" maxlength="64" required readonly autocomplete="off"><small>ID fisik dibuat otomatis. Jangan menyalin ID dari perangkat lain.</small>
+<label>Device ID logis dari server</label><input name="device_id" maxlength="128" required autocomplete="off" placeholder="Masukkan Device ID dari Dashboard"><small>Device ID dibuat server dan tetap sama saat perangkat keras diganti. Jangan gunakan MAC sebagai Device ID.</small>
 <label>Device Key</label><input name="device_key" type="password" maxlength="128" placeholder="Kosongkan untuk mempertahankan key saat ini" autocomplete="off">
 <small>Gunakan key aktif perangkat. Jangan gunakan key admin.</small><button type="submit">Simpan dan restart</button></form><script>fetch('/status').then(r=>r.json()).then(s=>{document.querySelector('[name=device_location]').value=s.device_location||'';document.querySelector('[name=ssid]').value=s.wifi_ssid||'';document.querySelector('[name=server_url]').value=s.server_url||'';document.querySelector('[name=device_id]').value=s.device_id||'';document.getElementById('status').textContent='Device ID: '+s.device_id+'\nLokasi: '+(s.device_location||'Belum diatur')+'\nIP akses: '+s.ip+'\nWaktu lokal WIB: '+s.local_time+'\nWi-Fi: '+(s.wifi_connected?'Terhubung':'Terputus')+'\nRSSI: '+s.rssi+' dBm\nServer: '+s.server_url+'\nDevice key: '+(s.device_key_configured?'Tersimpan':'Belum diatur')+'\nTLS CA: '+(s.tls_ca_configured?'Tersimpan':'Belum diatur')+(s.catalog_sync_status?'\nSinkron katalog: '+s.catalog_sync_status:'')+(s.catalog_hash?'\nHash katalog: '+s.catalog_hash:'')+(s.catalog_sync_at?'\nSinkron terakhir WIB: '+new Date(s.catalog_sync_at*1000).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'')+(s.catalog_sync_error?'\nError sinkron: '+s.catalog_sync_error:'')+(s.product_images_status?'\nSinkron gambar produk: '+s.product_images_status:'')+(s.product_images_cached!==undefined?'\nGambar produk tersimpan: '+s.product_images_cached:'')+(s.registration_status?'\nStatus NFC: '+s.registration_status:''))}).catch(()=>document.getElementById('status').textContent='Status belum tersedia');</script></main></html>)HTML";
     if(pinProtected_){
@@ -125,10 +119,10 @@ small{color:#52606d}.warn{background:#fff7e6;padding:10px;border-radius:8px}
       if(deviceKey.isEmpty())deviceKey=prefs_.getString("device_key","");
       if(tlsCa.isEmpty())tlsCa=prefs_.getString("tls_ca","");
       ssid.trim();serverUrl.trim();deviceKey.trim();deviceLocation.trim();
-      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId!=*id_||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>64||serverUrl.length()>160||deviceKey.length()>128||tlsCa.length()>3500||deviceLocation.length()>120||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")||(serverUrl.startsWith("https://")&&tlsCa.isEmpty())) {
-        req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa Wi-Fi, ID fisik otomatis, Device Key, URL tanpa slash akhir, dan CA tepercaya untuk HTTPS.");return;
+      if(ssid.isEmpty()||wifiPass.isEmpty()||deviceId.isEmpty()||deviceKey.isEmpty()||ssid.length()>64||wifiPass.length()>128||deviceId.length()>128||serverUrl.length()>160||deviceKey.length()>128||tlsCa.length()>3500||deviceLocation.length()>120||!(serverUrl.startsWith("http://")||serverUrl.startsWith("https://"))||serverUrl.endsWith("/")||(serverUrl.startsWith("https://")&&tlsCa.isEmpty())) {
+        req->send(400,"text/plain; charset=utf-8","Konfigurasi tidak valid. Periksa Wi-Fi, Device ID dari server, Device Key, URL tanpa slash akhir, dan CA tepercaya untuk HTTPS.");return;
       }
-      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_id",deviceId);prefs_.putString("device_key",deviceKey);prefs_.putString("tls_ca",tlsCa);prefs_.putString("device_location",deviceLocation);if(location_)*location_=deviceLocation;
+      prefs_.putString("wifi_ssid",ssid);prefs_.putString("wifi_pass",wifiPass);prefs_.putString("server_url",serverUrl);prefs_.putString("device_id",deviceId);*id_=deviceId;prefs_.putString("device_key",deviceKey);prefs_.putString("tls_ca",tlsCa);prefs_.putString("device_location",deviceLocation);if(location_)*location_=deviceLocation;
       req->send(200,"text/html; charset=utf-8","<!doctype html><meta name='viewport' content='width=device-width'><h2>Konfigurasi tersimpan</h2><p>Perangkat akan restart.</p>");
       delay(900);ESP.restart();
     });
