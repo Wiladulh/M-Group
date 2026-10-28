@@ -55,11 +55,12 @@ class VendingService:
         new_name=current["name"] if name is None else name
         new_location=current["location"] if location is None else location
         new_device=current["hardware_id"] if hardware_id is None else (hardware_id.strip().lower() or None)
+        binding_changed = hardware_id is not None and new_device != current["hardware_id"]
         new_status=current["status"] if status is None else status
         if not new_name.strip(): raise ValueError("name_required")
         if new_status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
         with self.db.connect() as c:
-            if new_device:
+            if new_device and binding_changed:
                 self._require_registered_vending_device(c, new_device)
             if new_device and c.execute(
                 "SELECT 1 FROM vending_machines WHERE hardware_id=? AND machine_id<>?",
