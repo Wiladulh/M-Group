@@ -942,7 +942,12 @@ def build_router(db, app_settings=None):
                                    WHERE mac_address=? AND registry_id<>? AND status<>'disabled' AND deleted_at IS NULL""",
                                 (mac_address,device_id)).fetchone()
             if collision: raise HTTPException(409,"device_mac_already_registered")
-            if row["hardware_id"] and row["hardware_id"]!=hardware_id: raise HTTPException(409,"device_hardware_identity_mismatch")
+            previous_hardware_id=row["hardware_id"]
+            if previous_hardware_id and previous_hardware_id!=hardware_id:
+                # Upgrade legacy MAC-derived IDs to the actual physical MAC and preserve stable machine binding.
+                c.execute("UPDATE vending_machines SET hardware_id=? WHERE hardware_id=?",(device_id,previous_hardware_id))
+                c.execute("UPDATE cashier_deposits SET hardware_id=? WHERE hardware_id=?",(hardware_id,previous_hardware_id))
+                c.execute("UPDATE payment_device_associations SET hardware_id=? WHERE hardware_id=?",(hardware_id,previous_hardware_id))
             c.execute("""UPDATE device_registry SET hardware_id=?,mac_address=?,device_type=?,status='active',
                          last_seen=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?""",
                       (hardware_id,mac_address,device_type,device_id))
