@@ -35,6 +35,10 @@ class PaymentService:
             raise ValueError("invalid_device_authenticated_vending_flag")
         if method not in {"NFC", "QRIS", "CASH"}:
             raise ValueError("unsupported_payment_method")
+        # Do not record a QRIS payment as successful until a real provider
+        # callback/verification flow exists. Vending already applies this gate.
+        if method == "QRIS":
+            raise ValueError("qris_payment_provider_not_activated")
         if method == "NFC" and provider != "local":
             raise ValueError("invalid_nfc_provider")
         if not isinstance(discount_amount, int) or isinstance(discount_amount, bool) or discount_amount < 0:
