@@ -116,7 +116,7 @@ void heartbeat(){
 
 bool connectWifi(unsigned long timeoutMs=10000){
   if(WiFi.status()==WL_CONNECTED)return true;
-  WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(true); WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
+  WiFi.mode(configPortal.active()?WIFI_AP_STA:WIFI_STA); WiFi.setAutoReconnect(true); WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
   Serial.print("WiFi reconnect");
   unsigned long started=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs){delay(250);Serial.print(".");}
