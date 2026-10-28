@@ -32,6 +32,8 @@ Operational transactions are separated by source:
 - **CASHIER**: savings deposits and cashier NFC payments.
 - **VENDING**: vending purchases, dispense results and refunds.
 - The server is the source of truth; ESP32 is not the primary transaction archive.
+- Member-balance debits require the NFC/PIN flow. QRIS is rejected until a real provider verification/callback flow exists; cash deposits use the Cashier deposit workflow.
+- Device attribution for cashier payments is stored separately from financial payment rows and is included in audit/export queries.
 - Operational transaction retention is **12 months** on the server, with backup/archive before purge.
 - Audit reports support **day, rolling last 7 days, calendar month and inclusive custom date range** filters in Asia/Jakarta, with source, payment method, device, member ID, transaction status and transaction ID filters; XLSX export uses the same filters.
 - Cashier savings deposits require an explicitly configured operator PIN (set during system installation or from the admin WebUI) plus the member NFC PIN. There is no shared default operator PIN.
