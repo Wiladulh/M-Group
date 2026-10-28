@@ -598,6 +598,14 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS ix_payment_provider_tx "
                 "ON payment_transactions(provider,provider_transaction_id)"
             )
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS ix_payment_account_created "
+                "ON payment_transactions(account_id,created_at)"
+            )
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS ix_payment_source_created "
+                "ON payment_transactions(transaction_source,created_at)"
+            )
             # Authentication is no longer stored on a device_registry table.
             # Keep payment transaction schema upgrades independent of legacy device state.
             c.commit()
