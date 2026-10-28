@@ -967,7 +967,7 @@ def build_router(db, app_settings=None):
                     raise HTTPException(403,"invalid_device_key")
                 if row["status"] == "disabled":
                     raise HTTPException(403,"device_disabled")
-                stored_type = "esp32-s3-vending" if row["device_type"] == "esp32-vending" else row["device_type"]
+                stored_type = {"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}.get(row["device_type"], row["device_type"])
                 if stored_type != device_type:
                     raise HTTPException(403,"device_type_mismatch")
                 mac_collision=c.execute(
@@ -1149,7 +1149,7 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"invalid_device_location")
         with db.connect() as c:
             row=c.execute("SELECT hardware_id,device_type,display_name FROM device_registry WHERE hardware_id=?",(identity["hardware_id"],)).fetchone()
-            stored_type="esp32-s3-vending" if row and row["device_type"]=="esp32-vending" else (row["device_type"] if row else None)
+            stored_type={"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}.get(row["device_type"],row["device_type"]) if row else None
             if not row or stored_type!=device_type:
                 raise HTTPException(409,"device_type_mismatch")
             c.execute("UPDATE device_registry SET last_seen=CURRENT_TIMESTAMP WHERE hardware_id=?",(row["hardware_id"],))
@@ -1184,7 +1184,7 @@ def build_router(db, app_settings=None):
             row = c.execute(
                 "SELECT device_type,display_name FROM device_registry WHERE hardware_id=?", (hardware_id,)
             ).fetchone()
-            stored_type = "esp32-s3-vending" if row and row["device_type"] == "esp32-vending" else (row["device_type"] if row else None)
+            stored_type = {"cashier":"esp32-cashier","vending":"esp32-s3-vending","esp32-vending":"esp32-s3-vending"}.get(row["device_type"], row["device_type"]) if row else None
             if not row or stored_type != device_type:
                 raise HTTPException(409,"device_type_mismatch")
             location=(q.display_name or "").strip()
