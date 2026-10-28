@@ -3,7 +3,7 @@ from uuid import uuid4
 
 
 class PromotionService:
-    METHODS = {"NFC", "QRIS"}
+    METHODS = {"NFC"}
     SCOPES = {"global", "local"}
 
     def __init__(self, db):
