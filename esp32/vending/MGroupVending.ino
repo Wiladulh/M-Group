@@ -111,7 +111,7 @@ void heartbeat(){
   if(code<200||code>=300)deviceRegistered=false;
 }
 bool connectWifi(unsigned long timeoutMs=10000){
-  WiFi.mode(WIFI_STA);WiFi.setAutoReconnect(true);WiFi.begin(WIFI_SSID,WIFI_PASSWORD);Serial.print("WiFi");
+  WiFi.mode(configPortal.active()?WIFI_AP_STA:WIFI_STA);WiFi.setAutoReconnect(true);WiFi.begin(WIFI_SSID,WIFI_PASSWORD);Serial.print("WiFi");
   unsigned long started=millis();
   while(WiFi.status()!=WL_CONNECTED && millis()-started<timeoutMs){delay(250);Serial.print(".");}
   if(WiFi.status()!=WL_CONNECTED){Serial.println("\nWiFi unavailable; retry later");return false;}
