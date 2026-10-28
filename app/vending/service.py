@@ -19,12 +19,26 @@ class VendingService:
                 "FROM vending_machines ORDER BY name,machine_id"
             ).fetchall()]
 
+    @staticmethod
+    def _require_registered_vending_device(c, hardware_id):
+        row=c.execute(
+            """SELECT hardware_id,device_type,status FROM device_registry
+               WHERE hardware_id=? AND deleted_at IS NULL""",
+            (hardware_id,),
+        ).fetchone()
+        if not row or row["status"]!="active":
+            raise ValueError("vending_device_not_registered_or_active")
+        if row["device_type"] not in {"esp32-vending","esp32-s3-vending","vending"}:
+            raise ValueError("hardware_id_not_vending_device")
+
     def register(self,machine_id,name,location="",hardware_id=None,status="active"):
         if not machine_id.strip(): raise ValueError("machine_id_required")
         if not name.strip(): raise ValueError("name_required")
         if status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
-        hardware_id = hardware_id.strip() if hardware_id else None
+        hardware_id = hardware_id.strip().lower() if hardware_id else None
         with self.db.connect() as c:
+            if hardware_id:
+                self._require_registered_vending_device(c, hardware_id)
             if c.execute("SELECT 1 FROM vending_machines WHERE machine_id=?",(machine_id,)).fetchone():
                 raise ValueError("machine_already_exists")
             if hardware_id and c.execute("SELECT 1 FROM vending_machines WHERE hardware_id=?",(hardware_id,)).fetchone():
@@ -40,11 +54,13 @@ class VendingService:
         current=self.machine(machine_id)
         new_name=current["name"] if name is None else name
         new_location=current["location"] if location is None else location
-        new_device=current["hardware_id"] if hardware_id is None else (hardware_id.strip() or None)
+        new_device=current["hardware_id"] if hardware_id is None else (hardware_id.strip().lower() or None)
         new_status=current["status"] if status is None else status
         if not new_name.strip(): raise ValueError("name_required")
         if new_status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
         with self.db.connect() as c:
+            if new_device:
+                self._require_registered_vending_device(c, new_device)
             if new_device and c.execute(
                 "SELECT 1 FROM vending_machines WHERE hardware_id=? AND machine_id<>?",
                 (new_device,machine_id)
