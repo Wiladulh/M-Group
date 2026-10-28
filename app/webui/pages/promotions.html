@@ -1,0 +1,32 @@
+<div id="tab-promotions" class="tab-pane">
+  <section class="section">
+    <h2>Promosi Vending</h2>
+    <p class="hint">Aturan promosi disimpan di backend dan diterapkan pada katalog/otorisasi vending. NFC aktif; QRIS tetap nonaktif sampai provider nyata terintegrasi.</p>
+    <div id="promotionResult" class="result"></div>
+    <form id="promotionForm" style="margin-top:12px">
+      <label>Cakupan
+        <select id="promoScope" required><option value="global">Semua mesin</option><option value="local">Mesin tertentu</option></select>
+      </label>
+      <label>Mesin (untuk cakupan lokal)
+        <select id="promoMachine"><option value="">Muat daftar mesin</option></select>
+      </label>
+      <label>Produk
+        <select id="promoProduct"><option value="">Semua produk</option><option value="1">Product ID 1</option><option value="2">Product ID 2</option><option value="3">Product ID 3</option><option value="4">Product ID 4</option><option value="5">Product ID 5</option></select>
+      </label>
+      <label>Metode pembayaran
+        <select id="promoMethod"><option value="NFC">NFC</option><option value="QRIS" disabled>QRIS (belum aktif)</option></select>
+      </label>
+      <label>Diskon (%)<input id="promoDiscount" type="number" min="0.1" max="100" step="0.1" value="10" required></label>
+      <label>Mulai (opsional)<input id="promoStartsAt" type="datetime-local"></label>
+      <label>Berakhir (opsional)<input id="promoEndsAt" type="datetime-local"></label>
+      <label>Prioritas<input id="promoPriority" type="number" step="1" value="0" required></label>
+      <label class="check"><input id="promoEnabled" type="checkbox" checked> Aktif</label>
+      <button type="submit">Simpan Promosi</button>
+    </form>
+  </section>
+  <section class="section">
+    <h2>Aturan Promosi Tersimpan</h2>
+    <button id="loadPromotions" type="button">Muat Ulang Promosi</button>
+    <div id="promotions" class="scroll" style="margin-top:12px"></div>
+  </section>
+</div>
