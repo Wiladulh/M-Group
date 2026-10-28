@@ -1,7 +1,7 @@
 <div id="tab-devices" class="tab-pane">
   <section class="section">
     <h2>Perangkat</h2>
-    <div class="hint">Kelola perangkat Cashier dan Vending. Device ID dibuat server saat provisioning dan harus dimasukkan ke WebUI lokal perangkat.</div>
+    <div class="hint">Kelola perangkat Cashier dan Vending. ID registry sementara dibuat server saat provisioning; perangkat membuat hardware ID kanonis dari MAC saat boot. Hanya Device Key yang perlu dimasukkan ke WebUI lokal.</div>
     <form id="deviceAuthForm">
       <button type="submit">Muat Perangkat</button>
     </form>
@@ -10,7 +10,7 @@
   </section>
   <section class="section">
     <h2>Generate Key Perangkat</h2>
-    <p class="hint">Admin hanya memilih jenis perangkat dan lokasi pemasangan. Server membuat Device ID dan Device Key unik. Keduanya dimasukkan ke WebUI lokal perangkat; server mengikat ID dengan MAC saat registrasi.</p>
+    <p class="hint">Admin memilih jenis perangkat dan lokasi pemasangan. Server membuat ID registry sementara dan Device Key unik. Masukkan hanya Device Key ke WebUI lokal; perangkat membuat hardware ID kanonis dari MAC dan server mengikatnya saat registrasi pertama.</p>
     <form id="deviceProvisionForm">
       <label>Jenis perangkat
         <select id="provisionDeviceType" required>
@@ -31,6 +31,6 @@
       <button type="button" id="toggleDeviceKey">Tampilkan/Sembunyikan Key</button>
       <button type="button" id="copyDeviceKey">Salin Key</button>
     </div>
-    <p class="hint">Masukkan Device ID dan Device Key dari server ke WebUI mini perangkat. Key ditampilkan satu kali; database hanya menyimpan hash key. Untuk HTTPS, masukkan CA server tepercaya pada WebUI perangkat agar sertifikat diverifikasi. Setiap perangkat memiliki WebUI lokal ber-PIN awal 19929900 dan mewajibkan penggantian sebelum konfigurasi disimpan.</p>
+    <p class="hint">ID registry sementara hanya untuk pencatatan server. Masukkan Device Key dari server ke WebUI mini perangkat; hardware ID fisik dibuat otomatis dari MAC. Key ditampilkan satu kali; database hanya menyimpan hash key. Untuk HTTPS, masukkan CA server tepercaya pada WebUI perangkat agar sertifikat diverifikasi. Setiap perangkat memiliki WebUI lokal ber-PIN awal 19929900 dan mewajibkan penggantian sebelum konfigurasi disimpan.</p>
   </section>
 </div>
