@@ -376,10 +376,6 @@ class Database:
                         "ON payment_transactions(provider,provider_transaction_id)"
                     )
                     c.execute(
-                        "CREATE INDEX IF NOT EXISTS ix_payment_device "
-                        "ON payment_transactions(hardware_id,created_at)"
-                    )
-                    c.execute(
                         "CREATE INDEX IF NOT EXISTS ix_payment_account_created "
                         "ON payment_transactions(account_id,created_at)"
                     )
