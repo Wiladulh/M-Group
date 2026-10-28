@@ -18,14 +18,21 @@ def configured_client(directory):
     return old, client
 
 
-def provision(client, hardware_id, device_type):
+def provision(client, hardware_id, device_type, mac_address):
     response = client.post(
-        f"/api/v1/devices/{hardware_id}/provision",
-        json={"device_type": device_type},
+        "/api/v1/devices/provision",
+        json={"device_type": device_type, "location": hardware_id},
         headers=ADMIN,
     )
     assert response.status_code == 200, response.text
-    return response.json()["device_key"]
+    key = response.json()["device_key"]
+    registration = client.post(
+        "/api/v1/devices/register",
+        json={"device_type": device_type, "hardware_id": hardware_id,
+              "mac_address": mac_address, "device_key": key, "display_name": hardware_id},
+    )
+    assert registration.status_code == 200, registration.text
+    return key
 
 
 def test_cashier_deposit_accepts_firmware_contract_without_hardware_id_header():
@@ -38,7 +45,7 @@ def test_cashier_deposit_accepts_firmware_contract_without_hardware_id_header():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.commit()
 
-            key = provision(client, "cashier-01", "esp32-cashier")
+            key = provision(client, "cashier_aabbcc000001", "esp32-cashier", "AA:BB:CC:00:00:01")
             pin = client.post(
                 "/api/v1/members/m1/pin",
                 json={"pin": "1234", "operator_id": "test-admin", "identity_verified": True, "reason": "test identity verified"},
@@ -55,13 +62,13 @@ def test_cashier_deposit_accepts_firmware_contract_without_hardware_id_header():
                     "amount": 5000,
                     "operator_pin": "9992",
                     "member_pin": "1234",
-                    "idempotency_key": "cashier-01:deposit:1",
+                    "idempotency_key": "cashier_aabbcc000001:deposit:1",
                 },
                 headers={"X-M-Group-Device-Key": key},
             )
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "completed"
-            assert response.json()["hardware_id"] == "cashier-01"
+            assert response.json()["hardware_id"] == "cashier_aabbcc000001"
             assert client.get("/api/v1/accounts/a1/balance", headers=ADMIN).json()["balance"] == 5000
         finally:
             main.get_settings = old
@@ -76,21 +83,21 @@ def test_vending_firmware_hardware_id_resolves_distinct_machine_id_end_to_end():
                 c.execute("INSERT INTO financial_accounts(account_id,member_id,account_type) VALUES('a1','m1','savings')")
                 c.execute("INSERT INTO financial_ledger(account_id,direction,amount,reference) VALUES('a1','credit',10000,'seed')")
                 c.execute("INSERT INTO credential_registry(credential_id,credential_type,member_id,status,enabled) VALUES('nfc-a1b2','nfc','m1','active',1)")
-                c.execute("INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES('machine-front','Front Machine','active','vm-01')")
+                c.execute("INSERT INTO vending_machines(machine_id,name,status,hardware_id) VALUES('machine-front','Front Machine','active','vending_aabbcc000002')")
                 c.execute("INSERT INTO vending_products(product_id,machine_id,name,price,stock,enabled,slot,capacity,servo_channel) VALUES('water','machine-front','Water',5000,1,1,1,1,1)")
                 c.commit()
 
-            key = provision(client, "vm-01", "esp32-s3-vending")
+            key = provision(client, "vending_aabbcc000002", "esp32-s3-vending", "AA:BB:CC:00:00:02")
             headers = {"X-M-Group-Device-Key": key}
 
-            products = client.get("/api/v1/vending/vm-01/products", headers=headers)
+            products = client.get("/api/v1/vending/vending_aabbcc000002/products", headers=headers)
             assert products.status_code == 200, products.text
             assert products.json()["machine"]["machine_id"] == "machine-front"
             assert products.json()["products"][0]["product_id"] == "1"
 
             begun = client.post(
-                "/api/v1/vending/vm-01/transactions",
-                json={"product_id": "1", "credential_id": "nfc-a1b2", "idempotency_key": "vm-01:contract-1"},
+                "/api/v1/vending/vending_aabbcc000002/transactions",
+                json={"product_id": "1", "credential_id": "nfc-a1b2", "idempotency_key": "vending_aabbcc000002:contract-1"},
                 headers=headers,
             )
             assert begun.status_code == 200, begun.text
