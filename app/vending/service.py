@@ -20,28 +20,39 @@ class VendingService:
             ).fetchall()]
 
     @staticmethod
-    def _require_registered_vending_device(c, hardware_id):
-        row=c.execute(
-            """SELECT hardware_id,device_type,status,auth_key_hash,mac_address FROM device_registry
-               WHERE hardware_id=? AND deleted_at IS NULL""",
-            (hardware_id,),
-        ).fetchone()
-        if not row or row["status"]!="active" or not row["auth_key_hash"] or not row["mac_address"]:
+    def _require_registered_vending_device(c, device_ref):
+        """Validate a vending board and return its stable server-issued registry ID.
+
+        Registry IDs are logical device identities; MAC addresses are replaceable
+        physical identifiers and must not be persisted as the machine binding.
+        """
+        if not isinstance(device_ref, str) or not device_ref.strip():
             raise ValueError("vending_device_not_registered_or_active")
-        if row["device_type"] not in {"esp32-vending","esp32-s3-vending","vending"}:
+        ref = device_ref.strip()
+        row = c.execute(
+            """SELECT registry_id,hardware_id,device_type,status,auth_key_hash,mac_address
+               FROM device_registry
+               WHERE (registry_id=? OR hardware_id=?) AND deleted_at IS NULL
+               ORDER BY CASE WHEN registry_id=? THEN 0 ELSE 1 END LIMIT 1""",
+            (ref, ref.upper(), ref),
+        ).fetchone()
+        if not row or row["status"] != "active" or not row["auth_key_hash"] or not row["mac_address"]:
+            raise ValueError("vending_device_not_registered_or_active")
+        if row["device_type"] not in {"esp32-vending", "esp32-s3-vending", "vending"}:
             raise ValueError("hardware_id_not_vending_device")
-        mac=row["mac_address"].replace(":","").replace("-","").lower()
-        if len(mac)!=12 or hardware_id!="vending_"+mac:
+        mac = row["mac_address"].replace(":", "").replace("-", "").lower()
+        if len(mac) != 12 or any(ch not in "0123456789abcdef" for ch in mac):
             raise ValueError("vending_device_identity_not_canonical")
+        return row["registry_id"]
 
     def register(self,machine_id,name,location="",hardware_id=None,status="active"):
         if not machine_id.strip(): raise ValueError("machine_id_required")
         if not name.strip(): raise ValueError("name_required")
         if status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
-        hardware_id = (hardware_id.strip().lower() or None) if hardware_id else None
+        hardware_id = (hardware_id.strip() or None) if hardware_id else None
         with self.db.connect() as c:
             if hardware_id:
-                self._require_registered_vending_device(c, hardware_id)
+                hardware_id = self._require_registered_vending_device(c, hardware_id)
             if c.execute("SELECT 1 FROM vending_machines WHERE machine_id=?",(machine_id,)).fetchone():
                 raise ValueError("machine_already_exists")
             if hardware_id and c.execute("SELECT 1 FROM vending_machines WHERE hardware_id=?",(hardware_id,)).fetchone():
@@ -57,14 +68,14 @@ class VendingService:
         current=self.machine(machine_id)
         new_name=current["name"] if name is None else name
         new_location=current["location"] if location is None else location
-        new_device=current["hardware_id"] if hardware_id is None else (hardware_id.strip().lower() or None)
+        new_device=current["hardware_id"] if hardware_id is None else (hardware_id.strip() or None)
         binding_changed = hardware_id is not None and new_device != current["hardware_id"]
         new_status=current["status"] if status is None else status
         if not new_name.strip(): raise ValueError("name_required")
         if new_status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
         with self.db.connect() as c:
             if new_device and binding_changed:
-                self._require_registered_vending_device(c, new_device)
+                new_device = self._require_registered_vending_device(c, new_device)
             if new_device and c.execute(
                 "SELECT 1 FROM vending_machines WHERE hardware_id=? AND machine_id<>?",
                 (new_device,machine_id)
