@@ -8,10 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from openpyxl import Workbook, load_workbook
+    from openpyxl import Workbook
 except ImportError:
     Workbook = None
-    load_workbook = None
 
 SHEETS = {
     "cashier": """
