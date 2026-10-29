@@ -922,9 +922,13 @@ def build_router(db, app_settings=None):
         mac_address=q.mac_address.strip().upper()
         device_key=q.device_key.strip()
         if device_type not in DeviceManagementService.ALLOWED_TYPES: raise HTTPException(400,"invalid_device_type")
-        if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",hardware_id): raise HTTPException(400,"invalid_hardware_mac")
-        if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",mac_address): raise HTTPException(400,"invalid_mac_address")
-        if hardware_id!=mac_address: raise HTTPException(400,"hardware_id_mac_mismatch")
+        # hardware_id is the stable server-issued logical identity; it is
+        # deliberately independent from the physical Wi-Fi MAC so hardware can
+        # be replaced without changing the device's server identity.
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{2,127}",hardware_id):
+            raise HTTPException(400,"invalid_hardware_id")
+        if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",mac_address):
+            raise HTTPException(400,"invalid_mac_address")
         if not device_key: raise HTTPException(400,"device_key_required")
         digest=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
