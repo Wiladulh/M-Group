@@ -56,6 +56,8 @@ String pendingDispenseTx="";
 int selectedIndex=0,productCount=0;
 bool pendingTransaction=false;
 String pendingTransactionId="",pendingTransactionPhase="";
+String pendingMemberCredential="",queuedBalanceCredential="";
+unsigned long lastBalanceRefreshAttempt=0;
 int pendingServoChannel=0;
 // Persist the complete create request before sending it. If the HTTP response is lost,
 // retry the identical idempotency key instead of starting a new vend.
@@ -248,12 +250,41 @@ void savePendingCreateRequest(const String&product,const String&credential,unsig
   pendingCreateRequest=true;pendingCreateProduct=product;pendingCreateCredential=credential;
   pendingCreateSequence=seq;pendingCreateServo=servoChannel;
 }
+void queueBalanceRefresh(const String&credential){
+  if(credential.isEmpty())return;
+  queuedBalanceCredential=credential;
+  vendingPrefs.putString("balance_refresh_cred",credential);
+  vendingPrefs.putBool("balance_refresh_pending",true);
+}
+bool refreshMemberBalance(const String&credential){
+  if(WiFi.status()!=WL_CONNECTED||!deviceRegistered||credential.length()<5)return false;
+  String cardUid=credential.startsWith("nfc-")?credential.substring(4):credential;
+  String body="{\"card_uid\":\""+cardUid+"\"}";
+  int code=0;String reply=request("POST","/api/v1/devices/member-balance",body,code);
+  if(code==200){
+    long balance=jsonLong(reply,"balance");String member=jsonString(reply,"member_name");
+    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\n",member.c_str(),balance);
+    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr)));
+    return true;
+  }
+  Serial.printf("POST-TX BALANCE REFRESH pending HTTP=%d\n",code);
+  configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"pending\\\"");
+  return false;
+}
+void serviceBalanceRefresh(){
+  if(!vendingPrefs.getBool("balance_refresh_pending",false))return;
+  queuedBalanceCredential=vendingPrefs.getString("balance_refresh_cred",queuedBalanceCredential);
+  if(queuedBalanceCredential.isEmpty()){vendingPrefs.putBool("balance_refresh_pending",false);return;}
+  if(millis()-lastBalanceRefreshAttempt<15000UL)return;
+  lastBalanceRefreshAttempt=millis();
+  if(refreshMemberBalance(queuedBalanceCredential)){vendingPrefs.putBool("balance_refresh_pending",false);vendingPrefs.remove("balance_refresh_cred");queuedBalanceCredential="";}
+}
 void clearPendingTransaction(){
-  vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");
-  pendingTransaction=false;pendingTransactionId="";pendingTransactionPhase="";pendingServoChannel=0;
+  vendingPrefs.putBool("tx_pending",false);vendingPrefs.remove("tx_id");vendingPrefs.remove("tx_phase");vendingPrefs.remove("tx_servo");vendingPrefs.remove("tx_cred");
+  pendingTransaction=false;pendingTransactionId="";pendingTransactionPhase="";pendingServoChannel=0;pendingMemberCredential="";
 }
 void savePendingTransaction(const String&tx,const String&phase,int servoChannel){
-  vendingPrefs.putString("tx_id",tx);vendingPrefs.putString("tx_phase",phase);vendingPrefs.putInt("tx_servo",servoChannel);vendingPrefs.putBool("tx_pending",true);
+  vendingPrefs.putString("tx_id",tx);vendingPrefs.putString("tx_phase",phase);vendingPrefs.putInt("tx_servo",servoChannel);vendingPrefs.putString("tx_cred",pendingMemberCredential);vendingPrefs.putBool("tx_pending",true);
   pendingTransaction=true;pendingTransactionId=tx;pendingTransactionPhase=phase;pendingServoChannel=servoChannel;
 }
 bool products(){
@@ -319,7 +350,7 @@ bool reportDispense(const String&tx,bool success){
     if(WiFi.status()!=WL_CONNECTED && !connectWifi(3000))continue;
     int code=0;String reply=request("POST","/api/v1/vending/transactions/"+tx+"/dispense",body,code);
     Serial.printf("DISPENSE REPORT attempt=%d code=%d %s\n",attempt,code,reply.c_str());
-    if(code>=200&&code<300){clearPendingDispense();if(pendingTransaction&&pendingTransactionId==tx)clearPendingTransaction();return true;}
+    if(code>=200&&code<300){clearPendingDispense();if(pendingMemberCredential.length())queueBalanceRefresh(pendingMemberCredential);if(pendingTransaction&&pendingTransactionId==tx)clearPendingTransaction();return true;}
     if(code>0&&code<500)break;
     delay(300);
   }
@@ -371,6 +402,7 @@ void scanCard(){
   String credential="nfc-";for(uint8_t i=0;i<len;i++){if(uid[i]<16)credential+="0";credential+=String(uid[i],HEX);}credential.toLowerCase();
   showMessage("CARD DETECTED",credential,"Checking...");
   ++vendingSequence;vendingPrefs.putULong("tx_seq",vendingSequence);
+  pendingMemberCredential=credential;
   savePendingCreateRequest(x.id,credential,vendingSequence,x.servo_channel);
   String tx=beginTransaction(pendingCreateProduct,pendingCreateCredential,String(pendingCreateSequence));
   if(!tx.length()){
@@ -400,12 +432,14 @@ void setup(){
   productImageSyncStatus=vendingPrefs.getString("product_images_status","Belum disinkronkan");
   catalogHash=vendingPrefs.getString("catalog_hash","");catalogLastSyncEpoch=vendingPrefs.getULong("catalog_sync_at",0);catalogSyncStatus=vendingPrefs.getString("catalog_sync_status","Belum disinkronkan");catalogSyncError=vendingPrefs.getString("catalog_sync_error","");
   vendingSequence=vendingPrefs.getULong("tx_seq",0);
+  queuedBalanceCredential=vendingPrefs.getString("balance_refresh_cred","");
   pendingTransaction=vendingPrefs.getBool("tx_pending",false);
-  if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
+  if(pendingTransaction){pendingTransactionId=vendingPrefs.getString("tx_id","");pendingTransactionPhase=vendingPrefs.getString("tx_phase","created");pendingServoChannel=vendingPrefs.getInt("tx_servo",0);pendingMemberCredential=vendingPrefs.getString("tx_cred","");if(!pendingTransactionId.length()||pendingServoChannel<1||pendingServoChannel>SERVO_COUNT){Serial.println("FATAL: pending transaction metadata invalid");while(true)delay(1000);}}
   pendingCreateRequest=vendingPrefs.getBool("create_pending",false);
   if(pendingCreateRequest){
     pendingCreateProduct=vendingPrefs.getString("create_product","");
     pendingCreateCredential=vendingPrefs.getString("create_credential","");
+    pendingMemberCredential=pendingCreateCredential;
     pendingCreateSequence=vendingPrefs.getULong("create_seq",0);
     pendingCreateServo=vendingPrefs.getInt("create_servo",0);
     if(!pendingCreateProduct.length()||!pendingCreateCredential.length()||pendingCreateSequence==0||pendingCreateServo<1||pendingCreateServo>SERVO_COUNT){Serial.println("FATAL: pending create request metadata invalid");while(true)delay(1000);}
@@ -456,7 +490,7 @@ void loop(){
     int code=0;String status=request("GET","/api/v1/vending/transactions/"+pendingTransactionId,"",code);
     if(code<200||code>=300){showMessage("TX STATUS UNKNOWN","Retrying server");delay(500);return;}
     String state=jsonString(status,"status");
-    if(state=="completed"||state=="refunded"||state=="failed"){clearPendingTransaction();showMessage("TX RESOLVED",state);delay(500);return;}
+    if(state=="completed"||state=="refunded"||state=="failed"){if(pendingMemberCredential.length())queueBalanceRefresh(pendingMemberCredential);clearPendingTransaction();showMessage("TX RESOLVED",state);delay(500);return;}
     if(state=="refunding"){reportDispense(pendingTransactionId,false);showMessage("REFUND RECOVERY","Checking server");delay(500);return;}
     if(state=="pending"){
       if(!authorize(pendingTransactionId)){showMessage("PAYMENT PENDING","Retry status");delay(500);return;}
@@ -474,6 +508,7 @@ void loop(){
     }
     showMessage("TX NEEDS REVIEW",state);delay(500);return;
   }
+  serviceBalanceRefresh();
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
   if(millis()-lastCatalogRefresh>=60000UL){lastCatalogRefresh=millis();products();}
   if(digitalRead(BUTTON_UP)==LOW){if(productCount)selectedIndex=(selectedIndex+productCount-1)%productCount;products();delay(250);}
