@@ -994,8 +994,8 @@ def build_router(db, app_settings=None):
         require_admin(request)
         require_super_admin(request)
         location = q.location.strip()
-        if not location or len(location) > 120:
-            raise HTTPException(400, "device_location_required_max_120_chars")
+        if len(location) > 120:
+            raise HTTPException(400, "device_location_max_120_chars")
         device_type = q.device_type.strip().lower()
         if device_type == "esp32-vending":
             device_type = "esp32-s3-vending"
