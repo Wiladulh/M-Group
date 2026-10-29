@@ -1959,12 +1959,12 @@ def build_router(db, app_settings=None):
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             payload=q.model_dump()
-            if not q.idempotency_key or len(q.idempotency_key)<8 or len(q.idempotency_key)>128:
-                raise HTTPException(400,"invalid_idempotency_key")
+            if not q.idempotency_key:
+                raise HTTPException(400,"idempotency_key_required")
             payload["transaction_source"]="CASHIER"
             payload["device_hardware_id"]=identity["hardware_id"] or identity["registry_id"]
             result=payments.pay(**payload)
-            return {**result,"hardware_id":identity["hardware_id"],"device_id":identity["registry_id"]}
+            return {**result,"device_id":identity["registry_id"]}
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
             code=str(e)
