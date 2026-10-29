@@ -134,7 +134,7 @@ class DeviceHeartbeatRequest(BaseModel):
 
 class DeviceRegisterRequest(BaseModel):
     device_type: str
-    device_id: str
+    device_id: str | None = None
     hardware_id: str
     mac_address: str
     device_key: str
@@ -917,20 +917,27 @@ def build_router(db, app_settings=None):
         """Bind physical MAC to the stable server-issued logical Device ID."""
         device_type=q.device_type.strip().lower()
         if device_type=="esp32-vending": device_type="esp32-s3-vending"
-        device_id=q.device_id.strip()
+        device_id=q.device_id.strip() if q.device_id else ""
         hardware_id=q.hardware_id.strip().upper()
         mac_address=q.mac_address.strip().upper()
         device_key=q.device_key.strip()
         if device_type not in DeviceManagementService.ALLOWED_TYPES: raise HTTPException(400,"invalid_device_type")
-        if not device_id or len(device_id)>128: raise HTTPException(400,"device_id_required")
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",hardware_id): raise HTTPException(400,"invalid_hardware_mac")
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",mac_address): raise HTTPException(400,"invalid_mac_address")
         if hardware_id!=mac_address: raise HTTPException(400,"hardware_id_mac_mismatch")
         if not device_key: raise HTTPException(400,"device_key_required")
         digest=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
-            row=c.execute("""SELECT registry_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
-                             FROM device_registry WHERE registry_id=?""",(device_id,)).fetchone()
+            if device_id:
+                if len(device_id)>128: raise HTTPException(400,"device_id_invalid")
+                row=c.execute("""SELECT registry_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                                 FROM device_registry WHERE registry_id=?""",(device_id,)).fetchone()
+            else:
+                # A server-issued key uniquely identifies its registry row. Older
+                # firmware can register without echoing a client-supplied logical ID.
+                row=c.execute("""SELECT registry_id,hardware_id,device_type,mac_address,display_name,status,auth_key_hash
+                                 FROM device_registry WHERE auth_key_hash=? AND deleted_at IS NULL""",(digest,)).fetchone()
+                if row: device_id=row["registry_id"]
             if not row: raise HTTPException(403,"device_not_provisioned")
             if not row["auth_key_hash"] or not secrets.compare_digest(digest,row["auth_key_hash"]): raise HTTPException(403,"invalid_device_key")
             if row["status"]=="disabled": raise HTTPException(403,"device_disabled")
@@ -1346,7 +1353,7 @@ def build_router(db, app_settings=None):
         machine = resolve_vending_machine(machine_id)
         if x_m_group_device_key:
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            if not machine.get("hardware_id") or machine["hardware_id"] != identity["registry_id"]:
+            if not machine.get("hardware_id") or machine["hardware_id"] not in {identity["registry_id"], identity.get("hardware_id")}:
                 raise HTTPException(403,"machine_device_identity_mismatch")
         else:
             require_admin(request)
