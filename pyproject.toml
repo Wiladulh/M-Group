@@ -17,3 +17,6 @@ include=["app*"]
 
 [tool.setuptools.package-data]
 app = ["webui/index.html", "webui/assets/**/*", "webui/pages/*.html", "migrations/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
