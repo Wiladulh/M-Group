@@ -322,14 +322,22 @@ String beginTransaction(const String&product,const String&credential,const Strin
   // Refresh the member's server balance before starting a purchase. If the
   // server is unreachable, only use a matching persisted cache to reject
   // obviously insufficient balances; the server remains the payment authority.
-  bool refreshed=refreshMemberBalance(credential);
   String cachedCredential=vendingPrefs.getString("balance_cache_credential","");
   long cachedBalance=vendingPrefs.getLong("balance_cache_value",-1);
   long productPrice=0;
   for(int i=0;i<productCount;i++)if(productsList[i].id==product){productPrice=productsList[i].price;break;}
+  bool refreshed=false;
+  // A sufficient cached balance keeps the normal online purchase path fast.
+  // Refresh on cache miss/insufficient cache to avoid stale false declines.
+  if(cachedCredential!=credential || cachedBalance<0 || cachedBalance<productPrice){
+    refreshed=refreshMemberBalance(credential);
+    cachedCredential=vendingPrefs.getString("balance_cache_credential","");
+    cachedBalance=vendingPrefs.getLong("balance_cache_value",-1);
+  }
   if(cachedCredential!=credential || cachedBalance<0){
     if(!refreshed){createRequestRejected=true;showMessage("SALDO BELUM TERVERIFIKASI","Hubungkan server","Transaksi ditolak");return "";}
-  }else if(cachedBalance<productPrice){
+  }
+  if(cachedCredential==credential && cachedBalance<productPrice){
     createRequestRejected=true;showMessage("SALDO TIDAK CUKUP","Saldo cache Rp "+String(cachedBalance),"Transaksi ditolak");return "";
   }
   if(WiFi.status()!=WL_CONNECTED){createRequestRejected=true;showMessage("SERVER OFFLINE","Pembayaran perlu online","Saldo cache tersimpan");return "";}
