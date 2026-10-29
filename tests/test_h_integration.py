@@ -103,7 +103,7 @@ def test_h_full_integration_one_by_one():
                     "method": "NFC",
                     "provider": "local",
                     "pin": "1234",
-                    "idempotency_key": "h-nfc-1",
+                    "idempotency_key": "h-nfc-key-1",
                 },
             )
             assert payment.status_code == 200
