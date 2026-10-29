@@ -29,7 +29,7 @@ class PaymentRequest(BaseModel):
     reference: str | None = None
     method: str = "NFC"
     provider: str = "local"
-    idempotency_key: str
+    idempotency_key: str | None = None
     pin: str | None = None
     original_amount: int | None = None
     discount_amount: int = 0
@@ -38,6 +38,8 @@ class PaymentRequest(BaseModel):
     @__import__("pydantic").field_validator("idempotency_key")
     @classmethod
     def validate_idempotency_key(cls, value):
+        if value is None:
+            return None
         value=value.strip()
         if len(value)<8 or len(value)>128:
             raise ValueError("invalid_idempotency_key")
@@ -146,11 +148,13 @@ class DeviceProvisionRequest(BaseModel):
 class FinancialRequest(BaseModel):
     amount: int
     reference: str | None = None
-    idempotency_key: str
+    idempotency_key: str | None = None
 
     @__import__("pydantic").field_validator("idempotency_key")
     @classmethod
     def validate_idempotency_key(cls, value):
+        if value is None:
+            return None
         value=value.strip()
         if len(value)<8 or len(value)>128:
             raise ValueError("invalid_idempotency_key")
@@ -1254,6 +1258,8 @@ def build_router(db, app_settings=None):
     def account_credit(request: Request, account_id,q:FinancialRequest):
         require_admin(request)
         require_super_admin(request)
+        if not q.idempotency_key:
+            raise HTTPException(400,"idempotency_key_required")
         try:return financial.credit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
@@ -1262,6 +1268,8 @@ def build_router(db, app_settings=None):
     def account_debit(request: Request, account_id,q:FinancialRequest):
         require_admin(request)
         require_super_admin(request)
+        if not q.idempotency_key:
+            raise HTTPException(400,"idempotency_key_required")
         try:return financial.debit(account_id,q.amount,q.reference,q.idempotency_key)
         except ValueError as e:
             code=str(e); raise HTTPException(409 if code=="insufficient_balance" else 400,code)
@@ -1953,9 +1961,12 @@ def build_router(db, app_settings=None):
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             payload=q.model_dump()
+            if not q.idempotency_key:
+                raise HTTPException(400,"idempotency_key_required")
             payload["transaction_source"]="CASHIER"
-            payload["device_hardware_id"]=identity["hardware_id"]
-            return payments.pay(**payload)
+            payload["device_hardware_id"]=identity["hardware_id"] or identity["registry_id"]
+            result=payments.pay(**payload)
+            return {**result,"hardware_id":identity["hardware_id"],"device_id":identity["registry_id"]}
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
             code=str(e)
