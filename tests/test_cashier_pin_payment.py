@@ -25,7 +25,7 @@ def test_cashier_pin_payment_debits_and_returns_balance():
             payment_request = {
                 "hardware_id": "cashier-01", "credential_id": "cred1",
                 "amount": 10000, "method": "NFC", "pin": "1234",
-                "idempotency_key": "ok",
+                "idempotency_key": "cashier-ok-1",
             }
             missing_key = client.post("/api/v1/cashier/payments", json=payment_request)
             assert missing_key.status_code == 401, missing_key.text
@@ -41,11 +41,11 @@ def test_cashier_pin_payment_debits_and_returns_balance():
 
             bad = client.post("/api/v1/cashier/payments", json={
                 "hardware_id":"cashier-01","credential_id":"cred1",
-                "amount":10000,"method":"NFC","pin":"9999","idempotency_key":"bad"}, headers={"X-M-Group-Device-Key":"cash-secret"})
+                "amount":10000,"method":"NFC","pin":"9999","idempotency_key":"cashier-bad-1"}, headers={"X-M-Group-Device-Key":"cash-secret"})
             assert bad.status_code == 403 and bad.json()["detail"] == "invalid_pin"
             ok = client.post("/api/v1/cashier/payments", json={
                 "hardware_id":"cashier-01","credential_id":"cred1",
-                "amount":10000,"method":"NFC","pin":"1234","idempotency_key":"ok"}, headers={"X-M-Group-Device-Key":"cash-secret"})
+                "amount":10000,"method":"NFC","pin":"1234","idempotency_key":"cashier-ok-1"}, headers={"X-M-Group-Device-Key":"cash-secret"})
             assert ok.status_code == 200
             assert ok.json()["balance"] == 40000
 
