@@ -1078,6 +1078,7 @@ def build_router(db, app_settings=None):
             raise HTTPException(400, "invalid_device_type")
         key = secrets.token_urlsafe(32)
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        registry_id = "legacy-" + uuid4().hex
         with db.connect() as c:
             existing = c.execute(
                 "SELECT hardware_id FROM device_registry WHERE hardware_id=? OR hardware_id=?",
@@ -1089,14 +1090,14 @@ def build_router(db, app_settings=None):
                 """INSERT INTO device_registry
                    (registry_id,hardware_id,device_type,status,last_seen,auth_key_hash,auth_key_hint,created_at,updated_at)
                    VALUES(?,?,?,'active',NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
-                (uuid4().hex, legacy_id, device_type, digest, key[-6:]),
+                (registry_id, legacy_id, device_type, digest, key[-6:]),
             )
             c.execute(
                 "INSERT INTO audit_events(event_type,entity_type,entity_id,detail) VALUES(?,?,?,?)",
                 ("device", "legacy_provisioned", legacy_id, f"type={device_type};deprecated=true"),
             )
             c.commit()
-        return {"hardware_id": legacy_id, "device_type": device_type, "device_key": key,
+        return {"registry_id": registry_id, "device_id": registry_id, "hardware_id": legacy_id, "device_type": device_type, "device_key": key,
                 "deprecated": True, "use_endpoint": "/api/v1/devices/provision"}
 
     @r.post("/devices/heartbeat")
