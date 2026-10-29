@@ -18,8 +18,8 @@ def test_nfc_payment_idempotency():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         p=PaymentService(db)
-        a=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-1")
-        b=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-1")
+        a=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-key-1")
+        b=p.pay("cred-1","acct-1",25000,method="NFC",pin="1234",idempotency_key="idem-key-1")
         assert a["transaction_id"] == b["transaction_id"]
         with db.connect() as c:
             balance=c.execute("SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0) FROM financial_ledger WHERE account_id='acct-1'").fetchone()[0]
@@ -29,7 +29,7 @@ def test_qris_is_rejected_until_provider_verification_exists():
     with TemporaryDirectory() as d:
         db=Database(Path(d)/"m-group.db"); db.migrate(); seed(db)
         with pytest.raises(ValueError, match="qris_payment_provider_not_activated"):
-            PaymentService(db).pay("cred-1","acct-1",1000,method="QRIS",provider="future-qris",idempotency_key="q-1")
+            PaymentService(db).pay("cred-1","acct-1",1000,method="QRIS",provider="future-qris",idempotency_key="qris-key-1")
 
 def test_payment_uses_financial_core_and_rejects_account_mismatch():
     with TemporaryDirectory() as d:
