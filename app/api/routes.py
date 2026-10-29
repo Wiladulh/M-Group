@@ -918,7 +918,7 @@ def build_router(db, app_settings=None):
         device_type=q.device_type.strip().lower()
         if device_type=="esp32-vending": device_type="esp32-s3-vending"
         device_id=q.device_id.strip() if q.device_id else ""
-        hardware_id=q.hardware_id.strip().upper()
+        hardware_id=q.hardware_id.strip().lower()
         mac_address=q.mac_address.strip().upper()
         device_key=q.device_key.strip()
         if device_type not in DeviceManagementService.ALLOWED_TYPES: raise HTTPException(400,"invalid_device_type")
@@ -999,7 +999,7 @@ def build_router(db, app_settings=None):
             device_type = "esp32-s3-vending"
         if device_type not in DeviceManagementService.ALLOWED_TYPES:
             raise HTTPException(400,"invalid_device_type")
-        registry_id=("cashier-" if device_type=="esp32-cashier" else "vending-")+uuid4().hex
+        registry_id="pending-"+uuid4().hex
         # Physical hardware identity is unknown until the provisioned key first registers.
         # Keep it NULL rather than pretending a random server ID is a hardware MAC ID.
         hardware_id=None
