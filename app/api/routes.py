@@ -930,8 +930,12 @@ def build_router(db, app_settings=None):
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",mac_address):
             raise HTTPException(400,"invalid_mac_address")
         expected_hardware_id=("cashier_" if device_type=="esp32-cashier" else "vending_")+mac_address.replace(":","").lower()
-        if hardware_id != expected_hardware_id:
+        # Current firmware sends the MAC as hardware_id; legacy/admin clients
+        # may send the normalized alias. Canonicalize both to one physical ID,
+        # while registry_id remains the server-issued stable logical identity.
+        if hardware_id not in {expected_hardware_id, mac_address.lower()}:
             raise HTTPException(400,"hardware_id_mac_mismatch")
+        hardware_id=expected_hardware_id
         if not device_key: raise HTTPException(400,"device_key_required")
         digest=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
