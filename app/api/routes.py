@@ -38,12 +38,7 @@ class PaymentRequest(BaseModel):
     @__import__("pydantic").field_validator("idempotency_key")
     @classmethod
     def validate_idempotency_key(cls, value):
-        if value is None:
-            return None
-        value=value.strip()
-        if len(value)<8 or len(value)>128:
-            raise ValueError("invalid_idempotency_key")
-        return value
+        return value.strip() if value is not None else None
 
 class PinRequest(BaseModel):
     pin: str
@@ -933,6 +928,9 @@ def build_router(db, app_settings=None):
             raise HTTPException(400,"invalid_hardware_id")
         if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}",mac_address):
             raise HTTPException(400,"invalid_mac_address")
+        expected_hardware_id=("cashier_" if device_type=="esp32-cashier" else "vending_")+mac_address.replace(":","").lower()
+        if hardware_id != expected_hardware_id:
+            raise HTTPException(400,"hardware_id_mac_mismatch")
         if not device_key: raise HTTPException(400,"device_key_required")
         digest=hashlib.sha256(device_key.encode("utf-8")).hexdigest()
         with db.connect() as c:
@@ -1961,8 +1959,8 @@ def build_router(db, app_settings=None):
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
             payload=q.model_dump()
-            if not q.idempotency_key:
-                raise HTTPException(400,"idempotency_key_required")
+            if not q.idempotency_key or len(q.idempotency_key)<8 or len(q.idempotency_key)>128:
+                raise HTTPException(400,"invalid_idempotency_key")
             payload["transaction_source"]="CASHIER"
             payload["device_hardware_id"]=identity["hardware_id"] or identity["registry_id"]
             result=payments.pay(**payload)
