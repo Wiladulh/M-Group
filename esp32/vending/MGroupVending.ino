@@ -263,8 +263,11 @@ bool refreshMemberBalance(const String&credential){
   int code=0;String reply=request("POST","/api/v1/devices/member-balance",body,code);
   if(code==200){
     long balance=jsonLong(reply,"balance");String member=jsonString(reply,"member_name");
-    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\n",member.c_str(),balance);
-    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr)));
+    vendingPrefs.putString("balance_cache_credential",credential);
+    vendingPrefs.putLong("balance_cache_value",balance);
+    vendingPrefs.putULong("balance_cache_at",(unsigned long)time(nullptr));
+    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\\n",member.c_str(),balance);
+    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr))+",\\\"member_balance_cached\\\":"+String(balance));
     return true;
   }
   Serial.printf("POST-TX BALANCE REFRESH pending HTTP=%d\n",code);
@@ -316,6 +319,20 @@ bool products(){
 }
 String beginTransaction(const String&product,const String&credential,const String&seq){
   createRequestRejected=false;
+  // Refresh the member's server balance before starting a purchase. If the
+  // server is unreachable, only use a matching persisted cache to reject
+  // obviously insufficient balances; the server remains the payment authority.
+  bool refreshed=refreshMemberBalance(credential);
+  String cachedCredential=vendingPrefs.getString("balance_cache_credential","");
+  long cachedBalance=vendingPrefs.getLong("balance_cache_value",-1);
+  long productPrice=0;
+  for(int i=0;i<productCount;i++)if(productsList[i].id==product){productPrice=productsList[i].price;break;}
+  if(cachedCredential!=credential || cachedBalance<0){
+    if(!refreshed){createRequestRejected=true;showMessage("SALDO BELUM TERVERIFIKASI","Hubungkan server","Transaksi ditolak");return "";}
+  }else if(cachedBalance<productPrice){
+    createRequestRejected=true;showMessage("SALDO TIDAK CUKUP","Saldo cache Rp "+String(cachedBalance),"Transaksi ditolak");return "";
+  }
+  if(WiFi.status()!=WL_CONNECTED){createRequestRejected=true;showMessage("SERVER OFFLINE","Pembayaran perlu online","Saldo cache tersimpan");return "";}
   String body="{\"product_id\":\""+product+"\",\"credential_id\":\""+credential+"\",\"idempotency_key\":\""+String(HARDWARE_ID)+":"+seq+"\"}";
   String path=String("/api/v1/vending/")+HARDWARE_ID+"/transactions";
   for(int attempt=1;attempt<=2;attempt++){
