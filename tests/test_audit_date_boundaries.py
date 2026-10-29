@@ -35,8 +35,8 @@ def test_daily_audit_report_includes_last_second_of_day():
                         "account-1",
                         1000,
                         "completed",
-                        "2026-01-01 23:59:59",
-                        "2026-01-01 23:59:59",
+                        "2026-01-01 16:59:59",
+                        "2026-01-01 16:59:59",
                     ),
                 )
                 c.commit()
