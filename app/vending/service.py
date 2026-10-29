@@ -34,7 +34,7 @@ class VendingService:
                FROM device_registry
                WHERE (registry_id=? OR hardware_id=?) AND deleted_at IS NULL
                ORDER BY CASE WHEN registry_id=? THEN 0 ELSE 1 END LIMIT 1""",
-            (ref, ref.upper(), ref),
+            (ref, ref, ref),
         ).fetchone()
         if not row or row["status"] != "active" or not row["auth_key_hash"] or not row["mac_address"]:
             raise ValueError("vending_device_not_registered_or_active")
