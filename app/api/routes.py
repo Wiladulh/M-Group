@@ -2074,10 +2074,13 @@ def build_router(db, app_settings=None):
         root=Path(getattr(app_settings,"data_dir",Path.home()/".local/share/M-Group"))/"exports"
         root.mkdir(parents=True,exist_ok=True)
         method_segment=f"-{data['method'].lower()}" if data["method"]!="ALL" else ""
-        source_code={"ALL":"All","CASHIER":"Cash","VENDING":"Vend","TOPUP":"Tup"}.get(data["source"],"All")
         import datetime as dt
         end_inclusive=(dt.date.fromisoformat(data["end"])-dt.timedelta(days=1)).isoformat()
-        path=root/f"{source_code}-{data['start'].replace('-','')}-to-{end_inclusive.replace('-','')}{method_segment}-{uuid4().hex[:8]}.xlsx"
+        if data["period"] == "day":
+            export_label = f"audit-{data['source'].lower()}-day-{data['start']}"
+        else:
+            export_label = f"audit-{data['source'].lower()}-{data['period']}-{data['start']}-to-{end_inclusive}"
+        path=root/f"{export_label}{method_segment}.xlsx"
         export_rows_excel(data["transactions"],path,metadata={"source":data["source"],"period":data["period"],"start":data["start"],"end":end_inclusive,"method":data["method"]})
         with db.connect() as c:
             c.execute(
