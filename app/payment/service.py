@@ -77,6 +77,10 @@ class PaymentService:
             if not self.identity.verify_credential_pin(credential_id, pin):
                 raise PermissionError("invalid_pin")
 
+        if not isinstance(idempotency_key, str) or not 8 <= len(idempotency_key.strip()) <= 128:
+            raise ValueError("invalid_idempotency_key")
+        idempotency_key = idempotency_key.strip()
+
         with self.db.connect() as c:
             # Serialize retries before checking idempotency and mutating balances.
             c.execute("BEGIN IMMEDIATE")
