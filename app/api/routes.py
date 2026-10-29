@@ -1509,7 +1509,7 @@ def build_router(db, app_settings=None):
         try:
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
             machine = resolve_vending_machine(machine_id)
-            if not machine.get("hardware_id") or machine["hardware_id"] != identity["registry_id"]:
+            if not machine.get("hardware_id") or machine["hardware_id"] not in {identity["registry_id"], identity.get("hardware_id")}:
                 raise HTTPException(403,"machine_device_identity_mismatch")
             if str(q.product_id) not in VendingService.PRODUCT_IDS:
                 raise HTTPException(400,"product_id_must_be_1_to_5")
