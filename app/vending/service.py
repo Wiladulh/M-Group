@@ -51,12 +51,22 @@ class VendingService:
         if status not in self.VALID_STATUSES: raise ValueError("invalid_machine_status")
         hardware_id = (hardware_id.strip() or None) if hardware_id else None
         with self.db.connect() as c:
-            if hardware_id:
-                hardware_id = self._require_registered_vending_device(c, hardware_id)
             if c.execute("SELECT 1 FROM vending_machines WHERE machine_id=?",(machine_id,)).fetchone():
                 raise ValueError("machine_already_exists")
-            if hardware_id and c.execute("SELECT 1 FROM vending_machines WHERE hardware_id=?",(hardware_id,)).fetchone():
-                raise ValueError("device_already_registered")
+            if hardware_id:
+                # Reject duplicate bindings before and after canonicalizing legacy
+                # physical IDs to the server-issued registry ID. This covers rows
+                # created by older firmware/admin workflows that stored either ID.
+                existing = c.execute(
+                    """SELECT 1 FROM vending_machines WHERE hardware_id=? OR hardware_id IN
+                       (SELECT registry_id FROM device_registry WHERE hardware_id=?) LIMIT 1""",
+                    (hardware_id, hardware_id),
+                ).fetchone()
+                if existing:
+                    raise ValueError("device_already_registered")
+                hardware_id = self._require_registered_vending_device(c, hardware_id)
+                if c.execute("SELECT 1 FROM vending_machines WHERE hardware_id=?",(hardware_id,)).fetchone():
+                    raise ValueError("device_already_registered")
             c.execute(
                 "INSERT INTO vending_machines(machine_id,name,location,hardware_id,status) VALUES(?,?,?,?,?)",
                 (machine_id,name,location or "",hardware_id,status)
