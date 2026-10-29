@@ -39,6 +39,8 @@ bool pendingPayment=false,pendingDeposit=false;
 String pendingCredential="",pendingSeq="";
 long pendingAmount=0;
 String pendingDepositCredential="",pendingDepositSeq="";
+String queuedBalanceCredential="";
+unsigned long lastBalanceRefreshAttempt=0;
 long pendingDepositAmount=0;
 void savePendingPayment(const String& credential,long amount,const String& seq){
   cashierPrefs.putBool("pay_pending",true); cashierPrefs.putString("pay_cred",credential);
@@ -82,6 +84,37 @@ String jsonField(const String& body,const String& key){
   String needle="\"" + key + "\":\""; int p=body.indexOf(needle);
   if(p<0)return ""; p+=needle.length(); int e=body.indexOf("\"",p);
   return e<0?"":body.substring(p,e);
+}
+
+long jsonNumber(const String& body,const String& key);
+void queueBalanceRefresh(const String&credential){
+  if(credential.isEmpty())return;
+  queuedBalanceCredential=credential;
+  cashierPrefs.putString("balance_refresh_cred",credential);
+  cashierPrefs.putBool("balance_refresh_pending",true);
+}
+bool refreshMemberBalance(const String&credential){
+  if(WiFi.status()!=WL_CONNECTED||!deviceRegistered||credential.length()<5)return false;
+  String cardUid=credential.startsWith("nfc-")?credential.substring(4):credential;
+  String body="{\"card_uid\":\""+cardUid+"\"}";
+  int code=0;String reply=postJson("/api/v1/devices/member-balance",body,code);
+  if(code==200){
+    long balance=jsonNumber(reply,"balance");String member=jsonField(reply,"member_name");
+    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\n",member.c_str(),balance);
+    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr)));
+    return true;
+  }
+  Serial.printf("POST-TX BALANCE REFRESH pending HTTP=%d\n",code);
+  configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"pending\\\"");
+  return false;
+}
+void serviceBalanceRefresh(){
+  if(!cashierPrefs.getBool("balance_refresh_pending",false))return;
+  queuedBalanceCredential=cashierPrefs.getString("balance_refresh_cred",queuedBalanceCredential);
+  if(queuedBalanceCredential.isEmpty()){cashierPrefs.putBool("balance_refresh_pending",false);return;}
+  if(millis()-lastBalanceRefreshAttempt<15000UL)return;
+  lastBalanceRefreshAttempt=millis();
+  if(refreshMemberBalance(queuedBalanceCredential)){cashierPrefs.putBool("balance_refresh_pending",false);cashierPrefs.remove("balance_refresh_cred");queuedBalanceCredential="";}
 }
 
 String postJson(const String& path,const String& body,int& code){
@@ -160,6 +193,7 @@ void cashierPayment(const String& credential,long amount,const String& seq,const
                   (String(HARDWARE_ID)+":"+seq).c_str());
     return; // NVS pending record blocks new payments until reconciled.
   }
+  queueBalanceRefresh(credential);
   clearPendingPayment();
   if(code==200){
     int p=reply.indexOf("\"balance_after\":");
@@ -198,6 +232,7 @@ void cashierTopup(const String& credential,long amount,const String& seq,const S
     delay(250);
   }
   if(code<=0 || code>=500){lcdShow("HASIL BELUM ADA","Ulangi Topup");return;}
+  queueBalanceRefresh(credential);
   clearPendingDeposit();
   if(code>=200 && code<300){lcdShow("Topup Success","Rp."+String(amount));delay(1800);}
   else if(reply.indexOf("invalid_pin")>=0 || reply.indexOf("invalid_operator_pin")>=0){lcdShow("Topup Gagal","PIN salah");delay(1800);}
@@ -355,6 +390,7 @@ void setup(){
   bool forceConfigPortal=false; const unsigned long configCheckStarted=millis();
   while(millis()-configCheckStarted<900UL){char setupKey=M_GROUPKeypad.getKey();if(setupKey==68)forceConfigPortal=true;delay(5);}
   configPortal.begin(WIFI_SSID,WIFI_PASSWORD,M_GROUP_BASE_URL,HARDWARE_ID,M_GROUP_DEVICE_KEY,"Cashier M-Group","mgroup-cashier",forceConfigPortal,&DEVICE_LOCATION);
+  queuedBalanceCredential=cashierPrefs.getString("balance_refresh_cred","");
   paymentSequence=cashierPrefs.getULong("pay_seq_counter",0);
   depositSequence=cashierPrefs.getULong("dep_seq_counter",0);
   pendingPayment=cashierPrefs.getBool("pay_pending",false);
@@ -418,6 +454,7 @@ void loop(){
   }
   static unsigned long lastRegistrationPoll=0;
   if(WiFi.status()==WL_CONNECTED && millis()-lastRegistrationPoll>=1000UL){lastRegistrationPoll=millis();pollRegistration();}
+  serviceBalanceRefresh();
   if(millis()-lastHeartbeat>=30000UL){lastHeartbeat=millis();heartbeat();}
   char mode=0;
   while(!mode){
