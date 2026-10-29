@@ -1527,7 +1527,7 @@ def build_router(db, app_settings=None):
             tx = vending.get(transaction_id)
             machine = vending.machine(tx["machine_id"])
             identity=require_device_by_key(x_m_group_device_key, {"esp32-vending","esp32-s3-vending","vending"})
-            if not machine.get("hardware_id") or machine["hardware_id"] != identity["registry_id"]:
+            if not machine.get("hardware_id") or machine["hardware_id"] not in {identity["registry_id"], identity.get("hardware_id")}:
                 raise HTTPException(403,"machine_device_identity_mismatch")
             return public_vending_transaction(tx)
         except HTTPException:
