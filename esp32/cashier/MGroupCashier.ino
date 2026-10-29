@@ -173,13 +173,18 @@ String uidToCredential(const uint8_t* uid,uint8_t len){
 
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin){
   if(amount<=0){Serial.println("ERR nominal must be positive");lcdShow("GAGAL","Nominal invalid");delay(1200);return;}
-  bool refreshed=refreshMemberBalance(credential);
   String cachedCredential=cashierPrefs.getString("balance_cache_credential","");
   long cachedBalance=cashierPrefs.getLong("balance_cache_value",-1);
-  if(cachedCredential!=credential || cachedBalance<0){
-    if(!refreshed){lcdShow("SALDO BELUM ADA","Hubungkan server");delay(1500);return;}
+  bool refreshed=false;
+  // Reuse a sufficient cached balance for a fast cashier path. Only query the
+  // server first on a cache miss or an insufficient cached amount.
+  if(cachedCredential!=credential || cachedBalance<0 || cachedBalance<amount){
+    refreshed=refreshMemberBalance(credential);
     cachedCredential=cashierPrefs.getString("balance_cache_credential","");
     cachedBalance=cashierPrefs.getLong("balance_cache_value",-1);
+  }
+  if(cachedCredential!=credential || cachedBalance<0){
+    if(!refreshed){lcdShow("SALDO BELUM ADA","Hubungkan server");delay(1500);return;}
   }
   if(cachedCredential==credential && cachedBalance<amount){
     lcdShow("SALDO TIDAK CUKUP","Saldo Rp "+String(cachedBalance));delay(1800);return;
