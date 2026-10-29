@@ -100,8 +100,11 @@ bool refreshMemberBalance(const String&credential){
   int code=0;String reply=postJson("/api/v1/devices/member-balance",body,code);
   if(code==200){
     long balance=jsonNumber(reply,"balance");String member=jsonField(reply,"member_name");
-    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\n",member.c_str(),balance);
-    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr)));
+    cashierPrefs.putString("balance_cache_credential",credential);
+    cashierPrefs.putLong("balance_cache_value",balance);
+    cashierPrefs.putULong("balance_cache_at",(unsigned long)time(nullptr));
+    Serial.printf("POST-TX BALANCE REFRESH OK member=%s balance=%ld\\n",member.c_str(),balance);
+    configPortal.setStatusExtra(",\\\"member_balance_sync_status\\\":\\\"fresh\\\",\\\"member_balance_sync_at\\\":"+String((unsigned long)time(nullptr))+",\\\"member_balance_cached\\\":"+String(balance));
     return true;
   }
   Serial.printf("POST-TX BALANCE REFRESH pending HTTP=%d\n",code);
@@ -170,6 +173,18 @@ String uidToCredential(const uint8_t* uid,uint8_t len){
 
 void cashierPayment(const String& credential,long amount,const String& seq,const String& pin){
   if(amount<=0){Serial.println("ERR nominal must be positive");lcdShow("GAGAL","Nominal invalid");delay(1200);return;}
+  bool refreshed=refreshMemberBalance(credential);
+  String cachedCredential=cashierPrefs.getString("balance_cache_credential","");
+  long cachedBalance=cashierPrefs.getLong("balance_cache_value",-1);
+  if(cachedCredential!=credential || cachedBalance<0){
+    if(!refreshed){lcdShow("SALDO BELUM ADA","Hubungkan server");delay(1500);return;}
+    cachedCredential=cashierPrefs.getString("balance_cache_credential","");
+    cachedBalance=cashierPrefs.getLong("balance_cache_value",-1);
+  }
+  if(cachedCredential==credential && cachedBalance<amount){
+    lcdShow("SALDO TIDAK CUKUP","Saldo Rp "+String(cachedBalance));delay(1800);return;
+  }
+  if(WiFi.status()!=WL_CONNECTED){lcdShow("SERVER OFFLINE","Pembayaran perlu online");delay(1500);return;}
   lcdShow("Memproses bayar","Mohon tunggu");
   Serial.printf("PAYMENT START credential=%s amount=%ld seq=%s\\n",credential.c_str(),amount,seq.c_str());
   // Persist transaction identity before network I/O. Never persist the PIN.
