@@ -1572,7 +1572,7 @@ def build_router(db, app_settings=None):
         require_super_admin(request)
         # PaymentService owns the single authoritative credential/PIN check.
         # Avoid double verification, duplicate audit events, and race-to-block behavior.
-        try:return payments.pay(**q.model_dump())
+        try:return payments.pay(**q.model_dump(exclude={"hardware_id"}))
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
             code=str(e)
