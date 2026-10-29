@@ -38,6 +38,21 @@ class VendingService:
         ).fetchone()
         if not row or row["status"] != "active" or not row["auth_key_hash"] or not row["mac_address"]:
             raise ValueError("vending_device_not_registered_or_active")
+        if not row["registry_id"]:
+            # Older schema variants allowed registry_id to be NULL for manually
+            # inserted legacy rows. Assign a server-generated logical ID once;
+            # never derive the durable ID from the replaceable MAC address.
+            registry_id = "device-" + uuid4().hex
+            c.execute(
+                "UPDATE device_registry SET registry_id=? WHERE hardware_id=? AND registry_id IS NULL",
+                (registry_id, row["hardware_id"]),
+            )
+            if c.execute("SELECT changes()").fetchone()[0] != 1:
+                raise ValueError("vending_device_registry_identity_conflict")
+            row = c.execute(
+                "SELECT registry_id,hardware_id,device_type,status,auth_key_hash,mac_address FROM device_registry WHERE hardware_id=?",
+                (row["hardware_id"],),
+            ).fetchone()
         if row["device_type"] not in {"esp32-vending", "esp32-s3-vending", "vending"}:
             raise ValueError("hardware_id_not_vending_device")
         mac = row["mac_address"].replace(":", "").replace("-", "").lower()
