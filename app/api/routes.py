@@ -24,6 +24,7 @@ MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024
 
 class PaymentRequest(BaseModel):
     credential_id: str
+    hardware_id: str | None = None
     account_id: str | None = None
     amount: int | None = None
     reference: str | None = None
@@ -1965,7 +1966,15 @@ def build_router(db, app_settings=None):
             payload["transaction_source"]="CASHIER"
             payload["device_hardware_id"]=identity["hardware_id"] or identity["registry_id"]
             result=payments.pay(**payload)
-            return {**result,"device_id":identity["registry_id"]}
+            response={**result,"device_id":identity["registry_id"]}
+            # Compatibility only: echo a caller-supplied hardware alias when it
+            # matches the device key's registered physical identity. New firmware
+            # uses the stable server-issued device_id and need not send this field.
+            if q.hardware_id:
+                if q.hardware_id != identity["hardware_id"]:
+                    raise HTTPException(403,"machine_device_identity_mismatch")
+                response["hardware_id"]=identity["hardware_id"]
+            return response
         except PermissionError as e:raise HTTPException(403,str(e))
         except ValueError as e:
             code=str(e)
