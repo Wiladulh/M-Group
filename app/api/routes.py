@@ -1960,7 +1960,7 @@ def build_router(db, app_settings=None):
             identity = require_device_by_key(x_m_group_device_key, {"esp32-cashier","cashier"})
             if q.method!="NFC":raise HTTPException(400,"cashier_requires_nfc")
             if q.provider!="local":raise HTTPException(400,"invalid_nfc_provider")
-            payload=q.model_dump()
+            payload=q.model_dump(exclude={"hardware_id"})
             if not q.idempotency_key:
                 raise HTTPException(400,"idempotency_key_required")
             payload["transaction_source"]="CASHIER"
