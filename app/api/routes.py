@@ -916,7 +916,8 @@ def build_router(db, app_settings=None):
     def device_register(q: DeviceRegisterRequest):
         """Bind physical MAC to the stable server-issued logical Device ID."""
         device_type=q.device_type.strip().lower()
-        if device_type=="esp32-vending": device_type="esp32-s3-vending"
+        if device_type=="esp32-vending" or device_type=="vending": device_type="esp32-s3-vending"
+        if device_type=="cashier": device_type="esp32-cashier"
         device_id=q.device_id.strip() if q.device_id else ""
         hardware_id=q.hardware_id.strip().lower()
         mac_address=q.mac_address.strip().upper()
