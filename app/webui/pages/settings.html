@@ -1,13 +1,12 @@
 <div id="tab-settings" class="tab-pane">
   <section class="section">
     <h2>Pengaturan Administrator</h2>
-    <p class="hint">Kelola akun admin yang digunakan untuk seluruh menu. Perubahan disimpan di server dan sesi lain dicabut setelah penyimpanan.</p>
-    <form id="accountSettings">
-      <label>Password saat ini<input id="currentAdminPassword" type="password" autocomplete="current-password" required></label>
-      <label>Username admin<input id="newAdminUsername" minlength="3" maxlength="64" autocomplete="username" required></label>
-      <label>Password baru (opsional)<input id="newAdminPassword" type="password" minlength="12" autocomplete="new-password" placeholder="Minimal 12 karakter"></label>
-      <label>Ulangi password baru<input id="confirmAdminPassword" type="password" autocomplete="new-password"></label>
-      <button type="submit">Simpan Pengaturan Akun</button>
+    <p class="hint">Akun WebUI menggunakan username tetap <strong>admin</strong>. Ganti password dengan memasukkan password lama dan password baru dua kali.</p>
+    <form id="accountSettings" class="account-password-form">
+      <label>Password lama<input id="currentAdminPassword" type="password" autocomplete="current-password" required></label>
+      <label>Password baru<input id="newAdminPassword" type="password" minlength="12" autocomplete="new-password" placeholder="Minimal 12 karakter" required></label>
+      <label>Konfirmasi password baru<input id="confirmAdminPassword" type="password" minlength="12" autocomplete="new-password" required></label>
+      <button type="submit">Ganti Password Admin</button>
     </form>
     <div id="accountSettingsResult" class="result"></div>
   </section>
