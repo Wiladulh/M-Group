@@ -1,4 +1,6 @@
 import importlib
+import hashlib
+import io
 import os
 import tempfile
 import unittest
@@ -9,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 
 class ServerApiTests(unittest.TestCase):
@@ -193,6 +196,47 @@ class ServerApiTests(unittest.TestCase):
         denied = self.client.get('/api/v2/device/products',
             headers={'X-Device-Key': cashier.json()['device_key']})
         self.assertEqual(denied.status_code, 403, denied.text)
+
+    def test_vending_product_image_upload_and_device_scoped_download(self):
+        vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'vending-image-01', 'device_type': 'vending',
+                  'display_name': 'Vending Image'})
+        self.assertEqual(vending.status_code, 201, vending.text)
+        self.activate_device(vending.json(), 'vending-image-01')
+        registry_id = vending.json()['registry_id']
+
+        source = Image.new('RGB', (640, 480), (220, 80, 40))
+        buffer = io.BytesIO()
+        source.save(buffer, format='PNG')
+        uploaded = self.client.post(
+            f'/api/v2/admin/vending/devices/{registry_id}/products/1/image',
+            headers=self.admin_headers(),
+            files={'file': ('product.png', buffer.getvalue(), 'image/png')})
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+        self.assertEqual(uploaded.json()['content_type'], 'image/jpeg')
+        self.assertLessEqual(uploaded.json()['byte_size'], 64 * 1024)
+
+        device_headers = {'X-Device-Key': vending.json()['device_key']}
+        catalog = self.client.get('/api/v2/device/products', headers=device_headers)
+        self.assertEqual(catalog.status_code, 200, catalog.text)
+        product = catalog.json()['items'][0]
+        self.assertEqual(product['image_sha256'], uploaded.json()['sha256'])
+        self.assertEqual(product['image_url'], '/api/v2/device/products/1/image')
+
+        downloaded = self.client.get(product['image_url'], headers=device_headers)
+        self.assertEqual(downloaded.status_code, 200, downloaded.text)
+        self.assertTrue(downloaded.headers['content-type'].startswith('image/jpeg'))
+        self.assertEqual(hashlib.sha256(downloaded.content).hexdigest(), product['image_sha256'])
+
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-image-denied-01', 'device_type': 'cashier',
+                  'display_name': 'Cashier Image Denied'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-image-denied-01')
+        denied = self.client.get(product['image_url'],
+            headers={'X-Device-Key': cashier.json()['device_key']})
+        self.assertEqual(denied.status_code, 403, denied.text)
+        self.assertEqual(self.client.get(product['image_url']).status_code, 401)
 
     def test_nfc_purchase_is_atomic_and_failed_dispense_refunds_once(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
