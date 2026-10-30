@@ -59,3 +59,25 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 - Stable request IDs survive retries/reboots; request IDs are not regenerated while an operation is unresolved.
 - Physical dispensing is never repeated automatically after an ambiguous reboot.
 - No firmware build or hardware test has been run as part of the implementation phase.
+
+## Product image synchronization and vending flash layout
+
+The v2 vending target now includes the LittleFS image cache and JPEG decoder. Product images are not served through the legacy v1 firmware path.
+
+- Admin uploads accept PNG/JPEG/WebP up to 2 MiB; the server normalizes them to JPEG thumbnails sized for the 128x64 SSD1306 OLED and enforces a 64 KiB maximum per image.
+- The v2 catalog returns the SHA-256 digest and device-scoped image URL. The vending board downloads with `X-Device-Key`, verifies the digest, writes a temporary file, and atomically swaps it into LittleFS. A failed transfer/hash check preserves the last valid image.
+- The OLED renders the cached JPEG in monochrome. The local WebUI runtime status reports how many catalog images are cached.
+
+The PlatformIO `vending` target is configured for the standard ESP32-S3-DevKitC-1-N8 profile (8 MiB flash). Partition table: `partitions/mgroup_vending_8mb.csv`.
+
+| Partition | Offset | Size |
+|---|---:|---:|
+| NVS | 0x9000 | 20 KiB |
+| OTA data | 0xE000 | 8 KiB |
+| OTA app 0 | 0x10000 | 3 MiB |
+| OTA app 1 | 0x310000 | 3 MiB |
+| LittleFS | 0x610000 | 1.9375 MiB |
+
+The partition table ends at 0x800000. Five 64 KiB images consume at most 320 KiB; LittleFS retains additional space for metadata and atomic replacement. This profile must only be flashed to an 8 MiB board. Confirm the module marking on production hardware; a 4 MiB or 32 MiB variant needs its matching partition configuration.
+
+Source integration and partition arithmetic are not build evidence. Firmware compilation, final app-slot usage, OTA behavior, power-loss recovery, and OLED image rendering remain release-gate validation items.
