@@ -455,6 +455,47 @@ def rotate_device_key(registry_id: str, connection: DB):
         audit(connection,'device.key.rotate','device',registry_id,detail={'key_shown_once':True})
     return {'registry_id':registry_id,'device_key':key,'key_shown_once':True,'status':'rotated'}
 
+@app.post('/api/v2/admin/devices/{registry_id}/replace-hardware', dependencies=[Depends(require_admin_session)])
+def replace_device_hardware(registry_id: str, connection: DB):
+    """Authorize a replacement ESP32 while preserving the server-issued logical registry ID."""
+    key=secrets.token_urlsafe(32)
+    with transaction(connection):
+        row=connection.execute(
+            "SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",
+            (registry_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404,detail={'code':'DEVICE_NOT_FOUND'})
+        if row['status'] in ('disabled','revoked'):
+            raise HTTPException(status_code=409,detail={'code':'DEVICE_NOT_ACTIVE'})
+        previous_hardware_id=row['hardware_id']
+        connection.execute(
+            """UPDATE device_registry
+               SET hardware_id=NULL,mac_address=NULL,status='pending',
+                   device_key_hash=?,device_key_hint=?,revoked_at=NULL,updated_at=CURRENT_TIMESTAMP
+               WHERE registry_id=?""",
+            (hash_secret(key,settings.device_key_pepper),key[-4:],registry_id),
+        )
+        connection.execute(
+            'INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?,?,?,?,?)',
+            (new_id('evt'),registry_id,previous_hardware_id,'device.hardware.replacement_authorized',
+             json.dumps({'previous_hardware_id':previous_hardware_id,'key_shown_once':True})),
+        )
+        connection.execute(
+            """UPDATE nfc_registration_sessions SET status='failed',error_code='CASHIER_HARDWARE_REPLACED'
+               WHERE registry_id=? AND status IN ('scan_pending','waiting_nfc','pin_pending','processing')""",
+            (registry_id,),
+        )
+        audit(connection,'device.hardware.replace','device',registry_id,
+              detail={'previous_hardware_id':previous_hardware_id,'registry_id_preserved':True})
+    return {
+        'registry_id':registry_id,'device_key':key,'key_shown_once':True,
+        'status':'awaiting_device_enrollment',
+        'previous_hardware_id':previous_hardware_id,
+        'message':'Masukkan Device Key baru ke hardware pengganti. Registry ID dan konfigurasi slot tetap dipertahankan.',
+    }
+
+
 @app.post('/api/v2/admin/devices/{registry_id}/revoke', dependencies=[Depends(require_admin_session)])
 def revoke_device_key(registry_id: str, connection: DB):
     with transaction(connection):
