@@ -15,25 +15,8 @@ read_config() {
   value=${value%\'}
   printf '%s' "$value"
 }
-ADMIN_USERNAME=${M_GROUP_ADMIN_USERNAME:-$(read_config M_GROUP_ADMIN_USERNAME)}
-ADMIN_PASSWORD_HASH=${M_GROUP_ADMIN_PASSWORD_HASH:-$(read_config M_GROUP_ADMIN_PASSWORD_HASH)}
-
-if [ -z "$ADMIN_USERNAME" ]; then
-  if [ ! -t 0 ]; then
-    echo "WebUI login needs M_GROUP_ADMIN_USERNAME and M_GROUP_ADMIN_PASSWORD_HASH. Run interactively or set both environment variables." >&2
-    exit 2
-  fi
-  printf "WebUI admin username [admin]: "
-  IFS= read -r ADMIN_USERNAME || ADMIN_USERNAME=
-  ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-fi
-case "$ADMIN_USERNAME" in
-  ''|*[!A-Za-z0-9._-]*)
-    echo "Admin username may contain only letters, numbers, dot, underscore and hyphen." >&2
-    exit 2
-    ;;
-esac
-[ "${#ADMIN_USERNAME}" -le 64 ] || { echo "Admin username must be 64 characters or fewer." >&2; exit 2; }
+# The primary WebUI account name is fixed by the product contract.
+ADMIN_USERNAME=admin
 
 if [ -z "$ADMIN_PASSWORD_HASH" ]; then
   if [ ! -t 0 ]; then
