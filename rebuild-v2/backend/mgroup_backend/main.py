@@ -50,7 +50,6 @@ def db_conn():
         connection.close()
 
 DB = Annotated[sqlite3.Connection, Depends(db_conn)]
-Admin = Annotated[dict, Depends(require_admin_session)]
 
 class AdminLogin(BaseModel):
     username: str = Field(min_length=1, max_length=64)
