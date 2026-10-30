@@ -15,6 +15,9 @@ struct Snapshot {
   String displayName;
   String currency;
   String balanceVersion;
+  String memberStatus;
+  String accountStatus;
+  String cardStatus;
   long balanceMinor = 0;
   unsigned long syncedAt = 0;
 };
@@ -49,7 +52,8 @@ inline bool readSlot(Preferences& prefs, uint8_t slot, JsonDocument& doc) {
 inline void saveByReference(Preferences& prefs, const String& reference,
                             const String& memberId, const String& displayName,
                             long balanceMinor, const String& currency,
-                            const String& balanceVersion) {
+                            const String& balanceVersion, const String& memberStatus="active",
+                            const String& accountStatus="active", const String& cardStatus="active") {
   if(reference.length()!=64 || memberId.isEmpty() || balanceMinor<0) return;
   int target=-1;
   unsigned long oldest=ULONG_MAX;
@@ -71,6 +75,9 @@ inline void saveByReference(Preferences& prefs, const String& reference,
   record["balance_minor"]=balanceMinor;
   record["currency"]=currency.substring(0,8);
   record["balance_version"]=balanceVersion.substring(0,32);
+  record["member_status"]=memberStatus.substring(0,16);
+  record["account_status"]=accountStatus.substring(0,16);
+  record["card_status"]=cardStatus.substring(0,16);
   time_t now=time(nullptr);
   unsigned long stamp=now>1700000000?(unsigned long)now:millis()/1000UL;
   record["synced_at"]=stamp;
@@ -89,6 +96,9 @@ inline bool loadByReference(Preferences& prefs, const String& reference, Snapsho
     out.balanceMinor=record["balance_minor"]|0L;
     out.currency=record["currency"]|String("IDR");
     out.balanceVersion=record["balance_version"]|String("");
+    out.memberStatus=record["member_status"]|String("unknown");
+    out.accountStatus=record["account_status"]|String("unknown");
+    out.cardStatus=record["card_status"]|String("unknown");
     out.syncedAt=record["synced_at"]|0UL;
     time_t now=time(nullptr);
     record["last_used_at"]=now>1700000000?(unsigned long)now:millis()/1000UL;
@@ -112,7 +122,8 @@ inline bool loadForCard(Preferences& prefs, const String& cardUid, Snapshot& out
 inline void saveForCard(Preferences& prefs, const String& cardUid,
                         const String& memberId, const String& displayName,
                         long balanceMinor, const String& currency,
-                        const String& balanceVersion) {
-  saveByReference(prefs,cardReference(prefs,cardUid),memberId,displayName,balanceMinor,currency,balanceVersion);
+                        const String& balanceVersion, const String& memberStatus="active",
+                        const String& accountStatus="active", const String& cardStatus="active") {
+  saveByReference(prefs,cardReference(prefs,cardUid),memberId,displayName,balanceMinor,currency,balanceVersion,memberStatus,accountStatus,cardStatus);
 }
 }
