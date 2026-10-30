@@ -457,6 +457,33 @@ def build_router(db, app_settings=None):
         client_key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
         now = int(time.time())
         with db.connect() as c:
+            # Upgrade installations created before the primary account name was fixed to "admin".
+            # Only auto-rename a single existing account; ambiguous multi-admin databases are left untouched.
+            if username == "admin" and configured_username == "admin":
+                primary = c.execute(
+                    "SELECT username FROM admin_users WHERE username='admin'"
+                ).fetchone()
+                existing_accounts = c.execute(
+                    "SELECT username FROM admin_users ORDER BY created_at"
+                ).fetchall()
+                if primary is None and len(existing_accounts) == 1:
+                    previous_username = existing_accounts[0]["username"]
+                    c.execute(
+                        "UPDATE admin_users SET username='admin',updated_at=? WHERE username=?",
+                        (now, previous_username),
+                    )
+                    c.execute(
+                        "UPDATE webui_admin_accounts SET username='admin',updated_at=? WHERE username=?",
+                        (now, previous_username),
+                    )
+                    c.execute(
+                        "UPDATE webui_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL",
+                        (now, previous_username),
+                    )
+                    c.execute(
+                        "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                        ("system", "primary_admin_username_migrated", "admin", "Legacy single-admin account renamed to fixed username admin", now),
+                    )
             account = c.execute(
                 "SELECT username,password_hash,role,is_active FROM admin_users WHERE username=?",
                 (username,),
