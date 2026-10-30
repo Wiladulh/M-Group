@@ -490,9 +490,31 @@ def build_router(db, app_settings=None):
             ).fetchone()
             admin_count = c.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0]
             if admin_count == 0:
-                legacy = c.execute(
-                    "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC LIMIT 1"
-                ).fetchone()
+                legacy_rows = c.execute(
+                    "SELECT username,password_hash FROM webui_admin_accounts ORDER BY updated_at DESC"
+                ).fetchall()
+                legacy = next((row for row in legacy_rows if row["username"] == "admin"), None)
+                if legacy is None and username == "admin" and configured_username == "admin":
+                    if len(legacy_rows) == 1:
+                        previous_username = legacy_rows[0]["username"]
+                        legacy_password_hash = legacy_rows[0]["password_hash"]
+                        if previous_username != "admin":
+                            c.execute(
+                                "UPDATE webui_admin_accounts SET username='admin',updated_at=? WHERE username=?",
+                                (now, previous_username),
+                            )
+                            c.execute(
+                                "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
+                                ("system", "primary_admin_username_migrated", "admin",
+                                 "Legacy WebUI-only admin account renamed to fixed username admin", now),
+                            )
+                        legacy = {"username": "admin", "password_hash": legacy_password_hash}
+                    elif len(legacy_rows) > 1:
+                        # Do not guess which legacy account should become the
+                        # primary administrator when the old database is ambiguous.
+                        raise HTTPException(409, "legacy_admin_migration_ambiguous")
+                if legacy is None and legacy_rows:
+                    legacy = legacy_rows[0]
                 if legacy is None and configured_username and configured_hash:
                     c.execute(
                         "INSERT OR IGNORE INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
