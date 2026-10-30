@@ -404,5 +404,109 @@ class ServerApiTests(unittest.TestCase):
                   'pin': '123456', 'amount_minor': 5000})
         self.assertEqual(response.status_code, 403, response.text)
 
+
+    def test_same_nfc_card_vending_then_cashier_payment_keeps_one_authoritative_balance(self):
+        card_uid = '04-MGROUP-SHARED-CARD-01'
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Shared Card Member', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        enrolled = self.client.post(f'/api/v2/members/{member_id}/cards',
+            headers=self.admin_headers(), json={'card_uid': card_uid})
+        self.assertEqual(enrolled.status_code, 201, enrolled.text)
+        seed = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'shared-card-seed-0001', 'member_id': member_id, 'amount_minor': 30000})
+        self.assertEqual(seed.status_code, 200, seed.text)
+
+        vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'shared-card-vending-01', 'device_type': 'vending',
+                  'display_name': 'Shared Card Vending'})
+        self.assertEqual(vending.status_code, 201, vending.text)
+        vending_headers = {'X-Device-Key': vending.json()['device_key']}
+        product = self.client.put(
+            f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
+            headers=self.admin_headers(),
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+        self.assertEqual(product.status_code, 200, product.text)
+        catalog = self.client.get('/api/v2/device/products', headers=vending_headers)
+        self.assertEqual(catalog.status_code, 200, catalog.text)
+        self.assertEqual(catalog.json()['items'][0]['price_minor'], 5000)
+
+        balance_before = self.client.post('/api/v2/devices/member-balance',
+            headers=vending_headers, json={'card_uid': card_uid})
+        self.assertEqual(balance_before.status_code, 200, balance_before.text)
+        self.assertEqual(balance_before.json()['balance_minor'], 30000)
+
+        purchase = self.client.post('/api/v2/vending/purchases', headers=vending_headers,
+            json={'request_id': 'shared-card-vend-0001', 'card_uid': card_uid,
+                  'pin': '123456', 'product_id': 1, 'expected_amount_minor': 5000})
+        self.assertEqual(purchase.status_code, 201, purchase.text)
+        self.assertEqual(purchase.json()['amount_minor'], 5000)
+        dispensed = self.client.post(
+            f"/api/v2/vending/transactions/{purchase.json()['transaction_id']}/dispense-result",
+            headers=vending_headers, json={'succeeded': True})
+        self.assertEqual(dispensed.status_code, 200, dispensed.text)
+        self.assertEqual(dispensed.json()['status'], 'succeeded')
+        self.assertEqual(dispensed.json()['balance_after_minor'], 25000)
+
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'shared-card-cashier-01', 'device_type': 'cashier',
+                  'display_name': 'Shared Card Cashier'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        cashier_headers = {'X-Device-Key': cashier.json()['device_key']}
+        merchant = self.client.post('/api/v2/admin/merchant-accounts', headers=self.admin_headers(),
+            json={'label': 'Shared Card Settlement'})
+        self.assertEqual(merchant.status_code, 201, merchant.text)
+        configured = self.client.put(
+            f"/api/v2/admin/cashier-devices/{cashier.json()['registry_id']}/configuration",
+            headers=self.admin_headers(),
+            json={'operator_id': 'shared-card-operator', 'operator_name': 'Operator',
+                  'operator_pin': '654321', 'settlement_account_id': merchant.json()['account_id']})
+        self.assertEqual(configured.status_code, 200, configured.text)
+
+        cashier_balance = self.client.post('/api/v2/devices/member-balance',
+            headers=cashier_headers, json={'card_uid': card_uid})
+        self.assertEqual(cashier_balance.status_code, 200, cashier_balance.text)
+        self.assertEqual(cashier_balance.json()['balance_minor'], 25000)
+        payment_payload = {'request_id': 'shared-card-cash-0001', 'card_uid': card_uid,
+                           'pin': '123456', 'amount_minor': 3000}
+        payment = self.client.post('/api/v2/cashier/payments',
+            headers=cashier_headers, json=payment_payload)
+        self.assertEqual(payment.status_code, 201, payment.text)
+        self.assertEqual(payment.json()['balance_after_minor'], 22000)
+        replay = self.client.post('/api/v2/cashier/payments',
+            headers=cashier_headers, json=payment_payload)
+        self.assertEqual(replay.status_code, 201, replay.text)
+        self.assertTrue(replay.json()['idempotent_replay'])
+
+        final_balance = self.client.post('/api/v2/devices/member-balance',
+            headers=vending_headers, json={'card_uid': card_uid})
+        self.assertEqual(final_balance.status_code, 200, final_balance.text)
+        self.assertEqual(final_balance.json()['balance_minor'], 22000)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            member_account = db.execute(
+                "SELECT account_id,balance_minor FROM accounts WHERE member_id=? AND account_type='member'",
+                (member_id,)).fetchone()
+            self.assertEqual(member_account['balance_minor'], 22000)
+            for request_id in ('shared-card-seed-0001', 'shared-card-vend-0001', 'shared-card-cash-0001'):
+                row = db.execute(
+                    "SELECT transaction_id FROM transactions WHERE request_id=?", (request_id,)).fetchone()
+                self.assertIsNotNone(row, request_id)
+                totals = db.execute(
+                    "SELECT SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) debits, "
+                    "SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) credits "
+                    "FROM ledger_entries WHERE transaction_id=?", (row['transaction_id'],)).fetchone()
+                self.assertEqual(totals['debits'], totals['credits'], request_id)
+            net_ledger = db.execute(
+                "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount_minor ELSE -amount_minor END),0) "
+                "FROM ledger_entries WHERE account_id=?", (member_account['account_id'],)).fetchone()[0]
+            self.assertEqual(net_ledger, 22000)
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM transactions WHERE request_id='shared-card-cash-0001'").fetchone()[0], 1)
+        finally:
+            db.close()
+
 if __name__ == '__main__':
     unittest.main()
