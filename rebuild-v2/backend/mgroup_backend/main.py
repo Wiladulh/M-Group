@@ -511,6 +511,15 @@ def revoke_device_key(registry_id: str, connection: DB):
         row=connection.execute("SELECT registry_id,hardware_id,status FROM device_registry WHERE registry_id=?",(registry_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404,detail={'code':'DEVICE_NOT_FOUND'})
+        if row['hardware_id']:
+            pending=connection.execute(
+                """SELECT COUNT(*) AS count FROM transactions
+                   WHERE hardware_id=? AND transaction_type='purchase' AND status='pending'""",
+                (row['hardware_id'],),
+            ).fetchone()
+            if pending and pending['count']:
+                raise HTTPException(status_code=409,detail={'code':'DEVICE_HAS_PENDING_TRANSACTIONS',
+                    'message':'Reconcile pending vending dispense transactions before revoking this device.'})
         connection.execute('INSERT INTO device_events(event_id,registry_id,hardware_id,event_type,detail_json) VALUES(?,?,?,?,?)',
             (new_id('evt'),registry_id,row['hardware_id'],'device.revoked',json.dumps({'previous_status':row['status']})))
         connection.execute("UPDATE device_registry SET hardware_id=NULL,status='revoked',device_key_hash=NULL,device_key_hint=NULL,revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE registry_id=?",(registry_id,))
