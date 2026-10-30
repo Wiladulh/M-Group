@@ -262,7 +262,7 @@ void handleButtons() {
 void pollCard() {
   if(flow!=WAIT_CARD)return;
   String uid=cardUid();if(uid.isEmpty())return;
-  pendingCardUid=uid;pendingCardReference=MGroupMemberCache::cardReference(uid);
+  pendingCardUid=uid;pendingCardReference=MGroupMemberCache::cardReference(mgroup.prefs(),uid);
   mgroup.prefs().putString("p_cardref",pendingCardReference);
   pinDigits="";currentDigit=0;flow=ENTER_PIN;
   MGroupMemberCache::Snapshot cached;
