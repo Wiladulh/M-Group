@@ -33,7 +33,7 @@ def test_demo_has_matching_admin_login_password_change_and_logout_flow():
     assert demo.index('<section class="page" id="page-audit">') < demo.index('<section class="page" id="page-settings">')
     # Count every nested section, not just top-level page sections. Settings
     # intentionally contains two additional sections inside its page wrapper.
-    assert len(re.findall(r"<section\\b", demo)) == len(re.findall(r"</section\\s*>", demo))
+    assert len(re.findall(r"<section\b", demo)) == len(re.findall(r"</section\s*>", demo))
     assert 'id="demoPasswordForm"' in demo
     assert "old!==demoAdminPassword" in demo
     assert "next.length<12" in demo
