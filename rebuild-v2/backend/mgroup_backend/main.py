@@ -547,7 +547,7 @@ def device_member_balance(payload: MemberBalanceLookup, connection: DB,
         raise HTTPException(status_code=403, detail={'code': 'DEVICE_TYPE_NOT_ALLOWED'})
     row = connection.execute("""
         SELECT m.member_id, m.display_name, m.status AS member_status,
-               a.balance_minor, a.currency, a.status AS account_status
+               a.balance_minor, a.currency, a.status AS account_status,a.updated_at AS balance_version
         FROM member_cards c
         JOIN members m ON m.member_id=c.member_id
         JOIN accounts a ON a.member_id=m.member_id AND a.account_type='member'
@@ -556,7 +556,8 @@ def device_member_balance(payload: MemberBalanceLookup, connection: DB,
     if not row or row['member_status'] != 'active' or row['account_status'] != 'active':
         raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
     return {'member_id': row['member_id'], 'display_name': row['display_name'],
-            'balance_minor': row['balance_minor'], 'currency': row['currency']}
+            'balance_minor': row['balance_minor'], 'currency': row['currency'],
+            'balance_version': row['balance_version']}
 
 
 @app.post('/api/v2/members', status_code=201, dependencies=[Depends(require_admin_session)])
@@ -838,9 +839,11 @@ def cashier_payment_v2(payload: CashierPaymentRequest, connection: DB,
                     or meta.get('card_hash') != digest or meta.get('settlement_account_id') != config['settlement_account_id']
                     or prior['status'] != 'succeeded'):
                     raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
+                current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(prior['member_id'],)).fetchone()
                 return {'transaction_id': prior['transaction_id'], 'request_id': payload.request_id,
-                        'status': prior['status'], 'amount_minor': prior['amount_minor'],
-                        'idempotent_replay': True}
+                        'member_id': prior['member_id'], 'status': prior['status'], 'amount_minor': prior['amount_minor'],
+                        'balance_after_minor': current['balance_minor'] if current else None,
+                        'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
             account = connection.execute(
                 "SELECT account_id,balance_minor,status,currency FROM accounts WHERE member_id=? AND account_type='member'",
                 (member['member_id'],)).fetchone()
@@ -880,8 +883,9 @@ def cashier_payment_v2(payload: CashierPaymentRequest, connection: DB,
             balance_after = account['balance_minor'] - payload.amount_minor
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
-    return {'transaction_id': transaction_id, 'request_id': payload.request_id, 'status': 'succeeded',
-            'amount_minor': payload.amount_minor, 'balance_after_minor': balance_after, 'idempotent_replay': False}
+    return {'transaction_id': transaction_id, 'request_id': payload.request_id, 'member_id': member['member_id'], 'status': 'succeeded',
+            'amount_minor': payload.amount_minor, 'balance_after_minor': balance_after,
+            'balance_version': connection.execute("SELECT updated_at FROM accounts WHERE member_id=? AND account_type='member'",(member['member_id'],)).fetchone()['updated_at'], 'idempotent_replay': False}
 
 
 @app.post('/api/v2/cashier/top-ups', status_code=201)
@@ -905,9 +909,11 @@ def cashier_top_up_v2(payload: CashierTopUpRequest, connection: DB,
                     or meta.get('source') != 'cashier' or meta.get('card_hash') != digest
                     or meta.get('operator_id') != config['operator_id'] or prior['status'] != 'succeeded'):
                     raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
+                current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(prior['member_id'],)).fetchone()
                 return {'transaction_id': prior['transaction_id'], 'request_id': payload.request_id,
-                        'status': prior['status'], 'amount_minor': prior['amount_minor'],
-                        'idempotent_replay': True}
+                        'member_id': prior['member_id'], 'status': prior['status'], 'amount_minor': prior['amount_minor'],
+                        'balance_after_minor': current['balance_minor'] if current else None,
+                        'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
             account = connection.execute(
                 "SELECT account_id,balance_minor,status,currency FROM accounts WHERE member_id=? AND account_type='member'",
                 (member['member_id'],)).fetchone()
@@ -1249,8 +1255,11 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                     or (payload.expected_amount_minor is not None and prior['amount_minor'] != payload.expected_amount_minor)
                     or meta.get('payment_method','nfc') != payload.payment_method):
                     raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
-                return {'transaction_id': prior['transaction_id'], 'status': prior['status'],
-                        'amount_minor': prior['amount_minor'], 'idempotent_replay': True}
+                current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(prior['member_id'],)).fetchone()
+                return {'transaction_id': prior['transaction_id'], 'member_id': prior['member_id'], 'status': prior['status'],
+                        'amount_minor': prior['amount_minor'],
+                        'balance_after_minor': current['balance_minor'] if current else None,
+                        'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
             member = connection.execute("SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
                 (digest,)).fetchone()
             if not member or member['status'] != 'active':
@@ -1306,7 +1315,10 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                    'member_id': member['member_id'], 'amount_minor': amount})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
-    return {'transaction_id': transaction_id, 'status': 'pending', 'amount_minor': amount,
+    current_balance = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(member['member_id'],)).fetchone()
+    return {'transaction_id': transaction_id, 'member_id': member['member_id'], 'status': 'pending', 'amount_minor': amount,
+            'balance_after_minor': current_balance['balance_minor'] if current_balance else None,
+            'balance_version': current_balance['updated_at'] if current_balance else None,
             'dispense_confirmation_required': True, 'idempotent_replay': False}
 
 
