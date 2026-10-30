@@ -556,6 +556,7 @@ def device_member_balance(payload: MemberBalanceLookup, connection: DB,
     if not row or row['member_status'] != 'active' or row['account_status'] != 'active':
         raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
     return {'member_id': row['member_id'], 'display_name': row['display_name'],
+            'member_status': row['member_status'], 'account_status': row['account_status'], 'card_status': 'active',
             'balance_minor': row['balance_minor'], 'currency': row['currency'],
             'balance_version': row['balance_version']}
 
