@@ -1043,8 +1043,6 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
             raise HTTPException(status_code=415,detail={'code':'UNSUPPORTED_IMAGE_FORMAT'})
         if image.width<1 or image.height<1 or image.width>4096 or image.height>4096 or image.width*image.height>16_000_000:
             raise HTTPException(status_code=413,detail={'code':'IMAGE_DIMENSIONS_TOO_LARGE'})
-        image=ImageOps.exif_transpose(image)
-        image.load()
         # Normalize all accepted uploads to bounded JPEG thumbnails so the
         # ESP32-S3 can decode them without a WebP runtime or large heap use.
         image=ImageOps.exif_transpose(image)
