@@ -396,7 +396,7 @@ void setup() {
   mgroup.begin();
   Wire.begin(OLED_SDA,OLED_SCL);
   displayReady=oled.begin(SSD1306_SWITCHCAPVCC,0x3C);
-  imageFsReady=LittleFS.begin(false);if(imageFsReady)recoverImageFiles();else Serial.println("LittleFS mount failed; image cache disabled");
+  imageFsReady=LittleFS.begin(true);if(imageFsReady)recoverImageFiles();else Serial.println("LittleFS mount failed; image cache disabled");
   if(displayReady)draw("M-GROUP VENDING","Memulai...");
   pinMode(BUTTON_UP,INPUT_PULLUP);pinMode(BUTTON_DOWN,INPUT_PULLUP);pinMode(BUTTON_SELECT,INPUT_PULLUP);
   pinMode(IR_SENSOR,INPUT_PULLUP);
