@@ -8,6 +8,7 @@
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
 #include "MGroupV2Runtime.h"
+#include "MGroupMemberCache.h"
 
 namespace {
 constexpr uint8_t OLED_SDA=8,OLED_SCL=9;
@@ -26,7 +27,7 @@ bool displayReady=false,pn532Ready=false,rc522Ready=false,catalogOnline=false;
 struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0;bool enabled=false; };
 Product products[5];
 int productCount=0,selected=0,currentDigit=0;
-String lastCardUid,pinDigits,pendingCardUid,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
+String lastCardUid,pinDigits,pendingCardUid,pendingCardReference,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
 int pendingProduct=0;long pendingAmount=0;bool pendingResult=false;
 enum Flow { SELECT_PRODUCT, WAIT_CARD, ENTER_PIN, MANUAL_REVIEW };
 Flow flow=SELECT_PRODUCT;
@@ -42,8 +43,8 @@ void draw(const String& a,const String& b="",const String& c="") {
 }
 void clearPending() {
   Preferences& p=mgroup.prefs();
-  for(const char* key:{"purchase_req","purchase_product","purchase_amount","purchase_stage","purchase_txn","purchase_result","purchase_reason"})p.remove(key);
-  pendingRequestId="";pendingProduct=0;pendingAmount=0;pendingStage="";pendingTransactionId="";pendingReason="";pendingResult=false;
+  for(const char* key:{"purchase_req","purchase_product","purchase_amount","purchase_stage","purchase_txn","purchase_result","purchase_reason","p_cardref"})p.remove(key);
+  pendingRequestId="";pendingProduct=0;pendingAmount=0;pendingStage="";pendingTransactionId="";pendingReason="";pendingResult=false;pendingCardReference="";
 }
 void persistCreateRequest(int productId,long amount) {
   pendingRequestId=mgroup.nextRequestId("vending-purchase");pendingProduct=productId;pendingAmount=amount;pendingStage="create";
@@ -114,6 +115,29 @@ String cardUid() {
   if(value==lastCardUid)return "";
   lastCardUid=value;return value;
 }
+bool refreshMemberBalance(const String& cardUidValue) {
+  if(cardUidValue.isEmpty())return false;
+  JsonDocument request;request["card_uid"]=cardUidValue;
+  String body;serializeJson(request,body);String response;int status=0;
+  if(!mgroup.apiPost("/api/v2/devices/member-balance",body,response,status))return false;
+  JsonDocument doc;if(deserializeJson(doc,response)!=DeserializationError::Ok)return false;
+  String memberId=doc["member_id"]|String("");
+  if(memberId.isEmpty()||!doc["balance_minor"].is<long>())return false;
+  MGroupMemberCache::saveForCard(mgroup.prefs(),cardUidValue,memberId,
+    doc["display_name"]|memberId,doc["balance_minor"].as<long>(),
+    doc["currency"]|String("IDR"),doc["balance_version"]|String(""));
+  return true;
+}
+void saveBalanceFromResponse(const String& response) {
+  JsonDocument doc;if(deserializeJson(doc,response)!=DeserializationError::Ok)return;
+  String memberId=doc["member_id"]|String("");
+  if(memberId.isEmpty()||!doc["balance_after_minor"].is<long>())return;
+  MGroupMemberCache::Snapshot previous;
+  String displayName=MGroupMemberCache::loadByReference(mgroup.prefs(),pendingCardReference,previous)
+    ?previous.displayName:memberId;
+  MGroupMemberCache::saveByReference(mgroup.prefs(),pendingCardReference,memberId,displayName,
+    doc["balance_after_minor"].as<long>(),"IDR",doc["balance_version"]|String(""));
+}
 bool reportDispenseResult() {
   if(pendingTransactionId.isEmpty()||pendingStage!="report_pending")return false;
   JsonDocument doc;doc["succeeded"]=pendingResult;
@@ -125,6 +149,7 @@ bool reportDispenseResult() {
     return false;
   }
   String resultCode=responseCode(response);
+  saveBalanceFromResponse(response);
   clearPending();flow=SELECT_PRODUCT;pinDigits="";pendingCardUid="";
   refreshCatalog();
   draw(pendingResult?"DISPENSING OK":"REFUND BERHASIL",pendingResult?"Transaksi selesai":"Stok dan saldo dipulihkan",resultCode);
@@ -175,6 +200,7 @@ void sendPurchase() {
   pinDigits="";
   if(!ok) {
     String code=responseCode(response);
+    if(code=="INSUFFICIENT_BALANCE"||status<0||status>=500)refreshMemberBalance(pendingCardUid);
     if(status>=400&&status<500&&code!="IDEMPOTENCY_CONFLICT") {
       clearPending();flow=SELECT_PRODUCT;pendingCardUid="";
       draw("TRANSAKSI DITOLAK",code.substring(0,21),"Pilih ulang");
@@ -190,6 +216,7 @@ void sendPurchase() {
   }
   pendingTransactionId=result["transaction_id"].as<String>();
   String statusText=result["status"]|String("pending");
+  saveBalanceFromResponse(response);
   if(statusText=="succeeded") {clearPending();flow=SELECT_PRODUCT;draw("SUDAH SELESAI","Replay idempoten");return;}
   if(statusText=="reversed"||statusText=="declined") {clearPending();flow=SELECT_PRODUCT;draw("TRANSAKSI REFUND","Servo tidak diulang");return;}
   pendingStage="dispensing";
@@ -201,6 +228,7 @@ void sendPurchase() {
 void restorePending() {
   Preferences& p=mgroup.prefs();pendingRequestId=p.getString("purchase_req","");pendingProduct=p.getInt("purchase_product",0);
   pendingAmount=p.getLong("purchase_amount",0);pendingStage=p.getString("purchase_stage","");
+  pendingCardReference=p.getString("p_cardref","");
   pendingTransactionId=p.getString("purchase_txn","");pendingResult=p.getBool("purchase_result",false);pendingReason=p.getString("purchase_reason","");
   if(pendingStage=="report_pending"&&!pendingTransactionId.isEmpty()) {
     flow=MANUAL_REVIEW;mgroup.setRuntimeStatus("dispense_report_pending","Retry report hasil dispense tanpa menggerakkan servo ulang.");
@@ -234,7 +262,14 @@ void handleButtons() {
 void pollCard() {
   if(flow!=WAIT_CARD)return;
   String uid=cardUid();if(uid.isEmpty())return;
-  pendingCardUid=uid;pinDigits="";currentDigit=0;flow=ENTER_PIN;
+  pendingCardUid=uid;pendingCardReference=MGroupMemberCache::cardReference(uid);
+  mgroup.prefs().putString("p_cardref",pendingCardReference);
+  pinDigits="";currentDigit=0;flow=ENTER_PIN;
+  MGroupMemberCache::Snapshot cached;
+  if(MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached)) {
+    draw("SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
+    delay(700);
+  }
   draw("PIN TRANSAKSI","UP/DN digit SEL","6 digit minimum");
 }
 }
