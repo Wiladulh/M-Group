@@ -183,3 +183,47 @@ def test_login_cookie_secure_flag_matches_http_and_https_scheme():
             assert https_client.get("/api/v1/members").status_code == 200
         finally:
             main.get_settings = old
+
+
+def test_legacy_webui_only_admin_account_migrates_to_fixed_admin_username():
+    with TemporaryDirectory() as tmp:
+        old = main.get_settings
+        main.get_settings = lambda: type(
+            "S", (), {
+                "db_path": Path(tmp) / "m-group.db",
+                "admin_username": "admin",
+                "admin_password_hash": "",
+            },
+        )()
+        try:
+            app = main.create_app()
+            client = TestClient(app)
+            with app.state.db.connect() as c:
+                c.execute(
+                    "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
+                    ("legacy-admin", hash_password("legacy-strong-password"), 1),
+                )
+                c.commit()
+
+            login = client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin", "password": "legacy-strong-password"},
+            )
+            assert login.status_code == 200
+            assert login.json()["username"] == "admin"
+
+            with app.state.db.connect() as c:
+                primary = c.execute(
+                    "SELECT username FROM admin_users WHERE username='admin'"
+                ).fetchone()
+                legacy = c.execute(
+                    "SELECT username FROM webui_admin_accounts WHERE username='legacy-admin'"
+                ).fetchone()
+                migrated = c.execute(
+                    "SELECT username FROM webui_admin_accounts WHERE username='admin'"
+                ).fetchone()
+            assert primary is not None
+            assert legacy is None
+            assert migrated is not None
+        finally:
+            main.get_settings = old
