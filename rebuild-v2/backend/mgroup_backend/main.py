@@ -1045,30 +1045,47 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
             raise HTTPException(status_code=413,detail={'code':'IMAGE_DIMENSIONS_TOO_LARGE'})
         image=ImageOps.exif_transpose(image)
         image.load()
-        if image.mode not in ('RGB','RGBA'):
-            image=image.convert('RGBA' if 'A' in image.getbands() else 'RGB')
-        image.thumbnail((1600,1600),Image.Resampling.LANCZOS)
-        output=BytesIO()
-        image.save(output,format='WEBP',quality=84,method=6)
-        optimized=output.getvalue()
+        # Normalize all accepted uploads to bounded JPEG thumbnails so the
+        # ESP32-S3 can decode them without a WebP runtime or large heap use.
+        image=ImageOps.exif_transpose(image)
+        image.load()
+        if image.mode=='RGBA':
+            background=Image.new('RGB',image.size,(255,255,255))
+            background.paste(image,mask=image.getchannel('A'))
+            image=background
+        else:
+            image=image.convert('RGB')
+        image.thumbnail((320,240),Image.Resampling.LANCZOS)
+        optimized=b''
+        for quality in (82,76,70,64,58,52,46):
+            output=BytesIO()
+            image.save(output,format='JPEG',quality=quality,optimize=True,progressive=False)
+            optimized=output.getvalue()
+            if len(optimized)<=64*1024:
+                break
+        if len(optimized)>64*1024:
+            image.thumbnail((240,180),Image.Resampling.LANCZOS)
+            output=BytesIO()
+            image.save(output,format='JPEG',quality=42,optimize=True,progressive=False)
+            optimized=output.getvalue()
     except HTTPException:
         raise
     except (UnidentifiedImageError,OSError,ValueError) as exc:
         raise HTTPException(status_code=415,detail={'code':'INVALID_IMAGE_CONTENT'}) from exc
-    if not optimized or len(optimized)>2*1024*1024:
-        raise HTTPException(status_code=413,detail={'code':'OPTIMIZED_IMAGE_MUST_BE_2MB_OR_SMALLER'})
+    if not optimized or len(optimized)>64*1024:
+        raise HTTPException(status_code=413,detail={'code':'OPTIMIZED_IMAGE_MUST_BE_64KIB_OR_SMALLER'})
     digest=hashlib.sha256(optimized).hexdigest()
     with transaction(connection):
         slot=connection.execute("SELECT 1 FROM product_slots WHERE registry_id=? AND product_id=?",(registry_id,product_id)).fetchone()
         if not slot:
             raise HTTPException(status_code=404,detail={'code':'PRODUCT_SLOT_NOT_FOUND'})
         connection.execute("""INSERT INTO product_images(registry_id,product_id,content_type,image_data,sha256,byte_size,updated_at)
-            VALUES(?,?, 'image/webp',?,?,?,CURRENT_TIMESTAMP)
+            VALUES(?,?, 'image/jpeg',?,?,?,CURRENT_TIMESTAMP)
             ON CONFLICT(registry_id,product_id) DO UPDATE SET content_type=excluded.content_type,image_data=excluded.image_data,
             sha256=excluded.sha256,byte_size=excluded.byte_size,updated_at=CURRENT_TIMESTAMP""",
             (registry_id,product_id,optimized,digest,len(optimized)))
         audit(connection,'vending.product.image.upload','product_slot',f'{registry_id}:{product_id}',
-              detail={'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'})
+              detail={'sha256':digest,'byte_size':len(optimized),'content_type':'image/jpeg'})
     return {'registry_id':registry_id,'product_id':product_id,'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'}
 
 @app.get('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin_session)])
