@@ -101,7 +101,7 @@
       {key:"phone",label:"No. HP"},{key:"balance_minor",label:"Saldo",render:r=>esc(money(r.balance_minor))},
       {key:"active_cards",label:"Kartu aktif",render:r=>esc(r.active_cards??"—")},
       {key:"status",label:"Status",render:r=>statusPill(r.status)},
-      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(r.member_id)+'">Reset PIN</button> <button type="button" data-member-action="cards" data-member-id="'+esc(r.member_id)+'">Kartu</button>'}
+      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-device-action="rotate" data-registry-id="'+esc(r.registry_id)+'">Rotasi key</button> <button type="button" data-device-action="replace" data-registry-id="'+esc(r.registry_id)+'">Ganti hardware</button> <button type="button" data-device-action="revoke" data-registry-id="'+esc(r.registry_id)+'">Cabut</button>'}
     ],"Belum ada anggota.");
   }
   function clearMemberForm() {
@@ -342,11 +342,13 @@
     const button=event.target.closest("[data-device-action]");if(!button)return;
     const id=button.dataset.registryId,action=button.dataset.deviceAction;
     try {
-      if(action==="revoke"&&!confirm("Cabut key perangkat ini? Semua request dengan key lama akan ditolak."))return;
-      const {data:d}=await request("/admin/devices/"+encodeURIComponent(id)+"/"+(action==="rotate"?"rotate-key":"revoke"),{method:"POST"});
-      if(action==="rotate") {
+      if(action==="revoke"&&!confirm("Cabut permanen perangkat ini? Key lama langsung ditolak dan registry tidak dapat dipakai ulang."))return;
+      if(action==="replace"&&!confirm("Otorisasi penggantian board? Perangkat lama langsung terputus. Registry ID dan konfigurasi produk tetap dipertahankan."))return;
+      const endpoint=action==="rotate"?"rotate-key":action==="replace"?"replace-hardware":"revoke";
+      const {data:d}=await request("/admin/devices/"+encodeURIComponent(id)+"/"+endpoint,{method:"POST"});
+      if(action==="rotate"||action==="replace") {
         $("provisionedDeviceKey").value=d.device_key;$("provisionedDeviceKey").type="password";
-        show("deviceProvisionResult","Key baru dibuat. Perbarui key pada perangkat sekarang; key lama langsung tidak berlaku.");
+        show("deviceProvisionResult",action==="replace"?"Hardware pengganti diotorisasi. Registry ID "+d.registry_id+" tetap sama. Masukkan key baru ke board pengganti; key lama langsung tidak berlaku.":"Key baru dibuat. Perbarui key pada perangkat sekarang; key lama langsung tidak berlaku.");
       } else show("deviceAuthResult","Key perangkat dicabut.");
       await loadDevices();
     } catch(e) { show("deviceAuthResult",errorText(e),true); }
