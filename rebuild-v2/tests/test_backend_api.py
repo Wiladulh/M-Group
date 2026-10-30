@@ -179,8 +179,10 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['registry_id'], vending.json()['registry_id'])
         self.assertEqual(len(response.json()['items']), 5)
-        self.assertEqual(response.json()['items'][0],
+        item = response.json()['items'][0]
+        self.assertEqual({key: item[key] for key in ('product_id', 'name', 'price_minor', 'stock')},
             {'product_id': 1, 'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7})
+        self.assertTrue(item['enabled'])
         self.assertEqual(self.client.get('/api/v2/device/products').status_code, 401)
 
         cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
@@ -210,7 +212,7 @@ class ServerApiTests(unittest.TestCase):
         body = device.json()
         headers = {'X-Device-Key': body['device_key']}
         product = self.client.put(f"/api/v2/vending/devices/{body['registry_id']}/products/1",
-            headers=self.admin_headers(), json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+            headers=self.admin_headers(), json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         self.assertEqual(product.status_code, 200, product.text)
         payload = {'request_id': 'purchase-request-0001', 'card_uid': '04-A1-B2-C3', 'pin': '123456', 'product_id': 1}
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
@@ -446,7 +448,7 @@ class ServerApiTests(unittest.TestCase):
         product = self.client.put(
             f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         self.assertEqual(product.status_code, 200, product.text)
         catalog = self.client.get('/api/v2/device/products', headers=vending_headers)
         self.assertEqual(catalog.status_code, 200, catalog.text)
