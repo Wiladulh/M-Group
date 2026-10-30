@@ -107,6 +107,7 @@
   function clearMemberForm() {
     $("memberForm").reset(); $("memberId").value="";
     $("memberCitizenship").value="WNI"; $("memberStatus").value="active";
+    const submit=$("memberForm").querySelector('button[type="submit"]');if(submit)submit.textContent="Simpan Member";
   }
   function fillMemberForm(m) {
     $("memberId").value=m.member_id||"";$("memberName").value=m.display_name||"";$("memberNik").value=m.nik||"";
@@ -117,6 +118,7 @@
     $("memberReligion").value=m.religion||"";$("memberMarital").value=m.marital_status||"";$("memberOccupation").value=m.occupation||"";
     $("memberCitizenship").value=m.citizenship||"WNI";$("memberRegistrationDate").value=m.registration_date||"";
     $("memberStatus").value=m.status||"active";
+    const submit=$("memberForm").querySelector('button[type="submit"]');if(submit)submit.textContent="Simpan Perubahan";
   }
   async function saveMember(event) {
     event.preventDefault();
