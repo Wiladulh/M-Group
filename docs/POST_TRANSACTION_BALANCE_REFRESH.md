@@ -24,3 +24,17 @@ After every transaction attempt that may have changed a member's funds (successf
 - Offline transactions update provisional local accounting durably and reconcile idempotently after reconnection.
 
 This document is a design requirement only. It does not assert that firmware, API, or UI implementation is already complete; comprehensive testing remains deferred until the implementation phase is finished.
+
+## Implementation status — 2026-10-30
+
+Partially implemented in rebuild-v2:
+- Cashier and Vending cache the last 100 member balance snapshots using salted card references; raw UID and PIN are not persisted.
+- The v2 balance lookup returns the server account update timestamp as `balance_version`.
+- Cashier payment/top-up and Vending purchase/dispense-result responses include the authoritative post-transaction balance and version, including idempotent replay paths.
+- Firmware writes a single snapshot record atomically after a confirmed transaction. It performs a best-effort balance lookup for insufficient-balance and uncertain outcomes, and refreshes missing/stale cache entries when the member taps again.
+- Financial debits remain server-authoritative. The cache is a lookup/display aid only.
+
+Remaining:
+- Background retry queue and authenticated bulk sync on startup/reconnection/periodic schedule are not complete.
+- A transaction result that remains unknown while offline is retained under the original idempotency key; the device must not create a new financial request. The member re-taps to resume and refresh the snapshot.
+- Build and end-to-end validation are not yet run.
