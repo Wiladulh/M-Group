@@ -37,3 +37,13 @@ Scope: source review of the clean-room v2 backend on `rebuild/clean-room-v2`. Th
 ## Gate
 
 Do not merge to `main`, deploy, or treat the rebuild as production-ready until the blocking findings are implemented, tested, and reviewed. Keep work isolated to `rebuild/clean-room-v2`.
+
+## Implementation update — 2026-10-30
+
+The earlier v2 firmware integration blocker above is superseded for source integration: `rebuild-v2/firmware/src/cashier.cpp` and `vending.cpp` now use the v2 runtime and `X-Device-Key`; source scan of the canonical firmware directory found no `/api/v1` route strings. The legacy sketches under `/esp32` remain v1 and are not production rebuild targets.
+
+The canonical WebUI member list now wires Edit, NFC registration/replacement, PIN reset, and card management row actions. Vending image delivery now has a device-key-authenticated v2 route, JPEG/64 KiB normalization, SHA-256 cache verification, LittleFS atomic replacement, and OLED rendering.
+
+The v2 vending build now targets the PlatformIO ESP32-S3-DevKitC-1-N8 8 MiB profile, with 3 MiB OTA app slots and a 1.9375 MiB LittleFS partition. A regression test was added for image upload, digest/catalog linkage, device download authorization, and cashier denial.
+
+**Validation remains pending:** no firmware compile, backend test run, WebUI browser test, OTA test, or physical-device acceptance is claimed in this source-only implementation update. Verify actual board module marking before flashing; the partition map is specifically for the 8 MiB N8 profile.
