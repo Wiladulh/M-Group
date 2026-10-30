@@ -241,12 +241,13 @@ void pollCardForPayment() {
   mode=mode==WAIT_CARD_PAYMENT?ENTER_PIN_PAYMENT:ENTER_PIN_TOPUP;
   MGroupMemberCache::Snapshot cached;
   bool hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  bool refreshed=false;
   if(!hasCached||!MGroupMemberCache::isFresh(cached)) {
-    refreshMemberBalance(uid);
+    refreshed=refreshMemberBalance(uid);
     hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
   }
   if(hasCached) {
-    lines("SALDO TERAKHIR","Rp "+String(cached.balanceMinor));
+    lines(refreshed?"SALDO TERBARU":"SALDO TERAKHIR","Rp "+String(cached.balanceMinor));
     delay(650);
   }
   lines(mode==ENTER_PIN_PAYMENT?"MASUKKAN PIN":"PIN MEMBER","Angka, # OK");
