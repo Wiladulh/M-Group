@@ -101,7 +101,7 @@
       {key:"phone",label:"No. HP"},{key:"balance_minor",label:"Saldo",render:r=>esc(money(r.balance_minor))},
       {key:"active_cards",label:"Kartu aktif",render:r=>esc(r.active_cards??"—")},
       {key:"status",label:"Status",render:r=>statusPill(r.status)},
-      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-device-action="rotate" data-registry-id="'+esc(r.registry_id)+'">Rotasi key</button> <button type="button" data-device-action="replace" data-registry-id="'+esc(r.registry_id)+'">Ganti hardware</button> <button type="button" data-device-action="revoke" data-registry-id="'+esc(r.registry_id)+'">Cabut</button>'}
+      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(r.member_id)+'">Reset PIN</button> <button type="button" data-member-action="cards" data-member-id="'+esc(r.member_id)+'">Kartu</button>'}
     ],"Belum ada anggota.");
   }
   function clearMemberForm() {
@@ -500,8 +500,8 @@
   $("members").addEventListener("click",async event=>{
     const b=event.target.closest("[data-member-action]");if(!b)return;
     const id=b.dataset.memberId, member=state.members.find(m=>m.member_id===id);
-    if(b.dataset.memberAction==="edit"&&member)fillMemberForm(member);
-    if(b.dataset.memberAction==="nfc"){ $("memberId").value=id; await loadCashierChoices(); $("nfcCashier").focus(); }
+    if(b.dataset.memberAction==="edit"&&member){fillMemberForm(member);$("memberName").focus();show("memberAuthResult","Mengedit anggota "+id+". Simpan Perubahan untuk memperbarui data.");}
+    if(b.dataset.memberAction==="nfc"){ $("memberId").value=id; await loadCashierChoices(); $("nfcReplaceExisting").checked=Number(member?.active_cards||0)>0; $("nfcCashier").focus(); show("nfcRegistrationResult","Pilih Cashier aktif lalu mulai registrasi NFC untuk "+(member?.display_name||id)+"."); }
     if(b.dataset.memberAction==="pin")resetMemberPin(id);
     if(b.dataset.memberAction==="cards") {
       try {
