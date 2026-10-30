@@ -269,12 +269,13 @@ void pollCard() {
   pinDigits="";currentDigit=0;flow=ENTER_PIN;
   MGroupMemberCache::Snapshot cached;
   bool hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  bool refreshed=false;
   if(!hasCached||!MGroupMemberCache::isFresh(cached)) {
-    refreshMemberBalance(uid);
+    refreshed=refreshMemberBalance(uid);
     hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
   }
   if(hasCached) {
-    draw("SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
+    draw(refreshed?"SALDO TERBARU":"SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
     delay(700);
   }
   draw("PIN TRANSAKSI","UP/DN digit SEL","6 digit minimum");
