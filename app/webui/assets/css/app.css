@@ -437,3 +437,51 @@ button:hover{filter:brightness(1.08)}
   .account-password-form{grid-template-columns:1fr}
   .account-password-form button{width:100%}
 }
+
+/* Unified responsive management console */
+:root{--control-radius:10px}
+button,input,select,textarea{font:inherit}
+button{min-height:40px;border-radius:var(--control-radius);transition:background .15s,border-color .15s,transform .15s}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select,textarea{width:100%;min-height:42px;border-radius:var(--control-radius);padding:10px 12px}
+label{min-width:0}
+.section{min-width:0;margin:0 0 18px;padding:clamp(14px,2vw,22px);border-radius:var(--radius);background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+.section h2{margin:0 0 10px;font-size:clamp(16px,2vw,19px);letter-spacing:-.25px}
+.section h3{font-size:15px}
+.section form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;align-items:end}
+.section form>label{display:grid;gap:6px;align-content:start;font-size:12px;font-weight:600;color:var(--muted)}
+.section form>button{width:max-content;max-width:100%}
+.section .grid{gap:12px}
+.scroll{max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.scroll table{min-width:680px;width:100%;border-collapse:collapse}
+.scroll th,.scroll td{padding:11px 13px;vertical-align:middle}
+.scroll th{position:sticky;top:0;z-index:1;background:#172238}
+.result,[role=status]{overflow-wrap:anywhere}
+.hint{line-height:1.55}
+.tab-pane{min-width:0}
+.tab-pane[hidden]{display:none}
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:22px}
+.login-card{width:min(430px,100%);padding:clamp(22px,4vw,34px);border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:var(--shadow)}
+.login-card label{display:grid;gap:7px;margin:15px 0;font-size:12px;font-weight:650;color:var(--muted)}
+.login-card .login-submit{width:100%;margin-top:8px}
+.account-password-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;align-items:end}
+.account-password-form label{display:grid;gap:7px;min-width:0}
+.account-password-form button{width:max-content}
+.period-pills{display:flex;flex-wrap:wrap;gap:7px}
+.period-btn{min-width:42px}
+@media(max-width:760px){
+  .content{padding:14px}
+  .sidebar{max-height:100dvh;overflow:auto}
+  .topbar{gap:10px;flex-wrap:wrap}
+  .top-actions{gap:7px;flex-wrap:wrap}
+  .section{padding:14px;margin-bottom:12px}
+  .section form{grid-template-columns:1fr}
+  .section form>button,.account-password-form button{width:100%}
+  .scroll{margin-inline:-2px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:420px){
+  .grid{grid-template-columns:1fr}
+  .login-card{padding:20px}
+  .period-pills{width:100%}
+}
