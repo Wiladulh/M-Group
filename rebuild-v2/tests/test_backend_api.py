@@ -33,6 +33,13 @@ class ServerApiTests(unittest.TestCase):
         for key in ('MGROUP_DB_PATH', 'MGROUP_ADMIN_TOKEN', 'MGROUP_DEVICE_KEY_PEPPER'):
             os.environ.pop(key, None)
 
+    def activate_device(self, provisioned, hardware_id):
+        response = self.client.post('/api/v2/device/register',
+            headers={'X-Device-Key': provisioned['device_key']},
+            json={'hardware_id': hardware_id, 'mac_address': '02:00:00:00:00:01'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'active')
+        return response.json()
     def admin_headers(self):
         return {'Authorization': 'Bearer test-admin-token-long-enough'}
 
@@ -69,6 +76,7 @@ class ServerApiTests(unittest.TestCase):
         response = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'cashier-unit-001', 'device_type': 'cashier', 'display_name': 'Kasir 1'})
         self.assertEqual(response.status_code, 201, response.text)
+        self.activate_device(response.json(), 'cashier-unit-001')
         body = response.json()
         self.assertNotIn('device_key_hash', body)
         auth = self.client.get('/api/v2/device/me', headers={'X-Device-Key': body['device_key']})
@@ -92,6 +100,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'cashier-balance-lookup-01', 'device_type': 'cashier',
                   'display_name': 'Balance Lookup Cashier'})
         self.assertEqual(device.status_code, 201, device.text)
+        self.activate_device(device.json(), 'cashier-balance-lookup-01')
         headers = {'X-Device-Key': device.json()['device_key']}
 
         db = self.main.connect(self.main.settings.database_path)
@@ -141,6 +150,7 @@ class ServerApiTests(unittest.TestCase):
         response = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-unit-001', 'device_type': 'vending', 'display_name': 'Vending 1'})
         self.assertEqual(response.status_code, 201, response.text)
+        self.activate_device(response.json(), 'vending-unit-001')
         registry_id = response.json()['registry_id']
         products = self.client.get(f'/api/v2/vending/devices/{registry_id}/products', headers=self.admin_headers())
         self.assertEqual(products.status_code, 200, products.text)
@@ -160,6 +170,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'vending-catalog-01', 'device_type': 'vending',
                   'display_name': 'Vending Catalog'})
         self.assertEqual(vending.status_code, 201, vending.text)
+        self.activate_device(vending.json(), 'vending-catalog-01')
         self.client.put(f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
             headers=self.admin_headers(),
             json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7})
@@ -176,6 +187,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'cashier-catalog-denied-01', 'device_type': 'cashier',
                   'display_name': 'Cashier Catalog Denied'})
         self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-catalog-denied-01')
         denied = self.client.get('/api/v2/device/products',
             headers={'X-Device-Key': cashier.json()['device_key']})
         self.assertEqual(denied.status_code, 403, denied.text)
@@ -194,6 +206,7 @@ class ServerApiTests(unittest.TestCase):
         device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-purchase-001', 'device_type': 'vending', 'display_name': 'Vending Test'})
         self.assertEqual(device.status_code, 201, device.text)
+        self.activate_device(device.json(), 'vending-purchase-001')
         body = device.json()
         headers = {'X-Device-Key': body['device_key']}
         product = self.client.put(f"/api/v2/vending/devices/{body['registry_id']}/products/1",
@@ -271,6 +284,7 @@ class ServerApiTests(unittest.TestCase):
             json={'card_uid': '04-LOCK-0001'})
         device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-pin-lock-001', 'device_type': 'vending', 'display_name': 'Vending Lock'})
+        self.activate_device(device.json(), 'vending-pin-lock-001')
         headers = {'X-Device-Key': device.json()['device_key']}
         for attempt in range(4):
             response = self.client.post('/api/v2/vending/purchases', headers=headers,
@@ -282,6 +296,7 @@ class ServerApiTests(unittest.TestCase):
         second_device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-pin-lock-002', 'device_type': 'vending', 'display_name': 'Vending Lock 2'})
         self.assertEqual(second_device.status_code, 201, second_device.text)
+        self.activate_device(second_device.json(), 'vending-pin-lock-002')
         second_headers = {'X-Device-Key': second_device.json()['device_key']}
         locked = self.client.post('/api/v2/vending/purchases', headers=second_headers,
             json={'request_id': 'bad-pin-request-04', 'card_uid': '04-LOCK-0001',
@@ -296,6 +311,7 @@ class ServerApiTests(unittest.TestCase):
         device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-blank-name-001', 'device_type': 'vending', 'display_name': 'Vending'})
         self.assertEqual(device.status_code, 201, device.text)
+        self.activate_device(device.json(), 'vending-blank-name-001')
         registry_id = device.json()['registry_id']
         response = self.client.put(f'/api/v2/vending/devices/{registry_id}/products/1',
             headers=self.admin_headers(), json={'name': '   ', 'price_minor': 5000, 'stock': 1})
@@ -308,6 +324,7 @@ class ServerApiTests(unittest.TestCase):
         device = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'cashier-purchase-denied-001', 'device_type': 'cashier', 'display_name': 'Kasir'})
         self.assertEqual(device.status_code, 201, device.text)
+        self.activate_device(device.json(), 'cashier-purchase-denied-001')
         response = self.client.post('/api/v2/vending/purchases',
             headers={'X-Device-Key': device.json()['device_key']},
             json={'request_id': 'cashier-purchase-0001', 'card_uid': '04-CA-FE-01',
@@ -331,6 +348,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'cashier-v2-unit-0001', 'device_type': 'cashier',
                   'display_name': 'Cashier v2'})
         self.assertEqual(device.status_code, 201, device.text)
+        self.activate_device(device.json(), 'cashier-v2-unit-0001')
         registry_id = device.json()['registry_id']
         headers = {'X-Device-Key': device.json()['device_key']}
 
@@ -398,6 +416,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'vending-cashier-endpoint-001', 'device_type': 'vending',
                   'display_name': 'Wrong device'})
         self.assertEqual(vending.status_code, 201, vending.text)
+        self.activate_device(vending.json(), 'vending-cashier-endpoint-001')
         response = self.client.post('/api/v2/cashier/payments',
             headers={'X-Device-Key': vending.json()['device_key']},
             json={'request_id': 'cashier-wrong-type-0001', 'card_uid': '04-UNKNOWN',
@@ -422,6 +441,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'shared-card-vending-01', 'device_type': 'vending',
                   'display_name': 'Shared Card Vending'})
         self.assertEqual(vending.status_code, 201, vending.text)
+        self.activate_device(vending.json(), 'shared-card-vending-01')
         vending_headers = {'X-Device-Key': vending.json()['device_key']}
         product = self.client.put(
             f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
@@ -453,6 +473,7 @@ class ServerApiTests(unittest.TestCase):
             json={'hardware_id': 'shared-card-cashier-01', 'device_type': 'cashier',
                   'display_name': 'Shared Card Cashier'})
         self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'shared-card-cashier-01')
         cashier_headers = {'X-Device-Key': cashier.json()['device_key']}
         merchant = self.client.post('/api/v2/admin/merchant-accounts', headers=self.admin_headers(),
             json={'label': 'Shared Card Settlement'})
