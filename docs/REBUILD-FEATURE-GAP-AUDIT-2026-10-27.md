@@ -107,3 +107,8 @@ Scope: source-only comparison of the rebuild-v2 server, rebuild-v2 firmware, the
 ### Release boundary
 
 Do not claim rebuild-v2 end-to-end ready or flash production devices until the balance/cache gaps above are implemented, the firmware builds, the full test matrix passes, and physical acceptance is recorded.
+### Balance cache implementation update
+
+The v2 firmware now contains a bounded 100-member local snapshot cache and post-transaction snapshot handling for both Cashier and Vending. Server transaction responses expose authoritative post-transaction balances/versions, including Vending dispense refund outcomes. Cache records are atomic NVS values keyed by a device-salted card reference; raw NFC UIDs and PINs are not persisted. A stale or missing snapshot is refreshed when the member taps again, and the server remains the only authority for debit authorization.
+
+The background bulk sync/reconnect queue and offline allowance/reconciliation remain incomplete. Offline payments remain disabled. The audit status above is therefore partial, not release-ready.
