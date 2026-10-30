@@ -156,7 +156,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(products.status_code, 200, products.text)
         self.assertEqual([item['product_id'] for item in products.json()['items']], [1, 2, 3, 4, 5])
         updated = self.client.put(f'/api/v2/vending/devices/{registry_id}/products/1', headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 12})
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 12, 'enabled': True})
         self.assertEqual(updated.status_code, 200, updated.text)
         self.assertEqual(updated.json()['nfc_promo_percent'], 0)
         self.assertEqual(updated.json()['qris_promo_percent'], 0)
@@ -173,7 +173,7 @@ class ServerApiTests(unittest.TestCase):
         self.activate_device(vending.json(), 'vending-catalog-01')
         self.client.put(f"/api/v2/vending/devices/{vending.json()['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7})
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 7, 'enabled': True})
         response = self.client.get('/api/v2/device/products',
             headers={'X-Device-Key': vending.json()['device_key']})
         self.assertEqual(response.status_code, 200, response.text)
