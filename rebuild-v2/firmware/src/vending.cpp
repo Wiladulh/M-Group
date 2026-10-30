@@ -125,7 +125,9 @@ bool refreshMemberBalance(const String& cardUidValue) {
   if(memberId.isEmpty()||!doc["balance_minor"].is<long>())return false;
   MGroupMemberCache::saveForCard(mgroup.prefs(),cardUidValue,memberId,
     doc["display_name"]|memberId,doc["balance_minor"].as<long>(),
-    doc["currency"]|String("IDR"),doc["balance_version"]|String(""));
+    doc["currency"]|String("IDR"),doc["balance_version"]|String(""),
+    doc["member_status"]|String("unknown"),doc["account_status"]|String("unknown"),
+    doc["card_status"]|String("unknown"));
   return true;
 }
 void saveBalanceFromResponse(const String& response) {
