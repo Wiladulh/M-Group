@@ -1,7 +1,7 @@
 <div id="tab-devices" class="tab-pane">
   <section class="section">
     <h2>Perangkat</h2>
-    <div class="hint">Kelola perangkat Cashier dan Vending. Identitas fisik hardware_id dibuat oleh perangkat dan diregistrasikan dengan registry_id server.</div>
+    <div class="hint">Kelola perangkat Cashier dan Vending. Registry ID adalah identitas logis tetap dari server; hardware_id dibuat dari eFuse MAC. Gunakan Ganti hardware saat board rusak agar registry ID dan konfigurasi slot tetap sama, sementara key lama langsung dicabut.</div>
     <form id="deviceAuthForm">
       <button type="submit">Muat Perangkat</button>
     </form>
@@ -29,6 +29,6 @@
       <button type="button" id="toggleDeviceKey">Tampilkan/Sembunyikan Key</button>
       <button type="button" id="copyDeviceKey">Salin Key</button>
     </div>
-    <p class="hint">Masukkan hanya Device Key ke WebUI konfigurasi perangkat. hardware_id tidak perlu diketik manual oleh admin. Database hanya menyimpan hash key.</p>
+    <p class="hint">Masukkan hanya Device Key ke WebUI konfigurasi perangkat. hardware_id dibuat otomatis dari eFuse MAC. Jika board diganti, gunakan aksi Ganti hardware untuk menerbitkan key baru dan membuka enrollment ulang pada registry ID yang sama. Database hanya menyimpan hash key.</p>
   </section>
 </div>
