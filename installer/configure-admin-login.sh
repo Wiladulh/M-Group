@@ -17,6 +17,7 @@ read_config() {
 }
 # The primary WebUI account name is fixed by the product contract.
 ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=${M_GROUP_ADMIN_PASSWORD_HASH:-$(read_config M_GROUP_ADMIN_PASSWORD_HASH)}
 
 if [ -z "$ADMIN_PASSWORD_HASH" ]; then
   if [ ! -t 0 ]; then
