@@ -485,3 +485,5 @@ label{min-width:0}
   .login-card{padding:20px}
   .period-pills{width:100%}
 }
+
+[hidden]{display:none!important}
