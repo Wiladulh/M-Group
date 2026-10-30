@@ -95,6 +95,7 @@
  <div class="grid"><div class="card"><div class="metric-label">Audit event hari ini</div><div class="metric-value">128</div><div class="metric-foot">Login, perubahan data, transaksi</div></div><div class="card"><div class="metric-label">Backup terakhir</div><div class="metric-value" style="font-size:20px">09:00 WIB</div><div class="metric-foot">Status contoh: berhasil</div></div><div class="card"><div class="metric-label">Integritas DB</div><div class="metric-value" style="font-size:20px;color:var(--amber)">Belum diuji</div><div class="metric-foot">Demo tidak menjalankan SQLite</div></div><div class="card"><div class="metric-label">Perlu review</div><div class="metric-value">2</div><div class="metric-foot">Peristiwa simulasi</div></div></div>
  <div class="two-col"><div class="card"><h3 class="section-title">Audit trail terbaru</h3><div class="audit-list"><div class="audit-row"><div><strong>Admin mengubah harga Product ID 3</strong><small>Vending48cd1 · 14:35:12</small></div><span class="pill warn">Perubahan</span></div><div class="audit-row"><div><strong>Top-up saldo member</strong><small>ID-A008 · referensi TOP-DEMO-1008</small></div><span class="pill ok">Keuangan</span></div><div class="audit-row"><div><strong>Login admin berhasil</strong><small>Dashboard · 13:02:45</small></div><span class="pill ok">Autentikasi</span></div><div class="audit-row"><div><strong>Device heartbeat terlewat</strong><small>Cashier_71A2C9 · 12:54:20</small></div><span class="pill bad">Perlu review</span></div></div></div><div class="card"><h3 class="section-title">Checklist sebelum produksi</h3><div class="feed"><span class="dot" style="background:var(--amber)"></span><div><strong>Uji backup & restore</strong><small>Gunakan database disposable, periksa integrity dan foreign key.</small></div></div><div class="feed"><span class="dot" style="background:var(--amber)"></span><div><strong>Uji migrasi database lawas</strong><small>Bandingkan jumlah baris serta identitas relasi.</small></div></div><div class="feed"><span class="dot" style="background:var(--amber)"></span><div><strong>Uji perangkat fisik</strong><small>NFC, Wi-Fi recovery, sensor, servo, dan power-loss recovery.</small></div></div><div class="feed"><span class="dot" style="background:var(--blue)"></span><div><strong>Verifikasi hasil CI terbaru</strong><small>CI hijau tidak menggantikan acceptance test fisik.</small></div></div></div></div>
 
+</section>
 <section class="page" id="page-settings">
  <div class="heading"><div><h1>Pengaturan Administrator</h1><p>Pengelolaan password dan sesi WebUI.</p></div></div>
  <div class="card">
@@ -110,7 +111,6 @@
   <div class="settings-note">Simulasi demo hanya menyimpan status login di memori halaman. Password tidak dikirim ke server dan tidak disimpan sebagai hash. Implementasi keamanan sebenarnya tersedia di WebUI server.</div>
  </div>
  <div class="card" style="margin-top:16px"><h3 class="section-title">Sesi WebUI</h3><p class="muted">Sesi server menggunakan cookie HttpOnly, batas idle 30 menit, dan maksimum 12 jam.</p><button type="button" id="demoLogout">Logout</button></div>
-</section>
 </section>
 </main>
 </div>
