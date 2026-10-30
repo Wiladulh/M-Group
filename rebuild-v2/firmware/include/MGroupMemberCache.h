@@ -93,6 +93,12 @@ inline bool loadByReference(Preferences& prefs, const String& reference, Snapsho
   return false;
 }
 
+inline bool isFresh(const Snapshot& snapshot, unsigned long maxAgeSeconds=300) {
+  time_t now=time(nullptr);
+  if(now<1700000000 || snapshot.syncedAt<1700000000)return false;
+  return (unsigned long)now>=snapshot.syncedAt && (unsigned long)now-snapshot.syncedAt<=maxAgeSeconds;
+}
+
 inline bool loadForCard(Preferences& prefs, const String& cardUid, Snapshot& out) {
   return loadByReference(prefs,cardReference(prefs,cardUid),out);
 }
