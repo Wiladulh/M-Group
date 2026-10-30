@@ -7,6 +7,10 @@
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
+#include <TJpg_Decoder.h>
+#include <mbedtls/sha256.h>
+#include <memory>
 #include "MGroupV2Runtime.h"
 #include "MGroupMemberCache.h"
 
@@ -23,8 +27,9 @@ Adafruit_SSD1306 oled(128,64,&Wire,-1);
 MFRC522 rfid(RFID_SS,RFID_RST);
 Adafruit_PN532 pn532(PN532_IRQ,PN532_RESET);
 Servo servos[SERVO_COUNT];
-bool displayReady=false,pn532Ready=false,rc522Ready=false,catalogOnline=false;
-struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0;bool enabled=false; };
+bool displayReady=false,pn532Ready=false,rc522Ready=false,catalogOnline=false,imageFsReady=false;
+int lastDrawnProduct=-1;String lastDrawnImageHash;
+struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0;bool enabled=false;String imageSha; };
 Product products[5];
 int productCount=0,selected=0,currentDigit=0;
 String lastCardUid,pinDigits,pendingCardUid,pendingCardReference,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
@@ -58,6 +63,95 @@ String responseCode(const String& body) {
   }
   return "";
 }
+
+bool jpegOutput(int16_t x,int16_t y,uint16_t w,uint16_t h,uint16_t *bitmap) {
+  for(uint16_t row=0;row<h;row++)for(uint16_t col=0;col<w;col++) {
+    int px=x+col,py=y+row;
+    if(px<0||px>=128||py<0||py>=64)continue;
+    uint16_t color=bitmap[row*w+col];
+    uint8_t red=((color>>11)&0x1F)*255/31;
+    uint8_t green=((color>>5)&0x3F)*255/63;
+    uint8_t blue=(color&0x1F)*255/31;
+    uint16_t luminance=(uint16_t)(red*30+green*59+blue*11)/100;
+    oled.drawPixel(px,py,luminance>145?SSD1306_WHITE:SSD1306_BLACK);
+  }
+  return true;
+}
+String productImagePath(int id) { return "/product_"+String(id)+".jpg"; }
+void recoverImageFiles() {
+  if(!imageFsReady)return;
+  for(int id=1;id<=5;id++) {
+    String finalPath=productImagePath(id),backupPath=finalPath+".bak",tempPath=finalPath+".tmp";
+    LittleFS.remove(tempPath.c_str());
+    if(LittleFS.exists(backupPath.c_str())) {
+      if(!LittleFS.exists(finalPath.c_str()))LittleFS.rename(backupPath.c_str(),finalPath.c_str());
+      else LittleFS.remove(backupPath.c_str());
+    }
+  }
+}
+bool syncProductImage(const Product& product) {
+  if(!imageFsReady||product.id<1||product.id>5)return false;
+  String finalPath=productImagePath(product.id),tempPath=finalPath+".tmp",backupPath=finalPath+".bak";
+  String prefKey="img_sha_"+String(product.id);
+  if(product.imageSha.isEmpty()) {
+    LittleFS.remove(finalPath.c_str());LittleFS.remove(backupPath.c_str());
+    mgroup.prefs().remove(prefKey.c_str());return true;
+  }
+  if(product.imageSha.length()!=64)return false;
+  if(mgroup.prefs().getString(prefKey.c_str(),"")==product.imageSha&&LittleFS.exists(finalPath.c_str()))return true;
+  String response;int status=0;
+  String endpoint="/api/v2/device/products/"+String(product.id)+"/image";
+  if(!mgroup.apiGet(endpoint,response,status)||status!=200||response.isEmpty()||response.length()>64*1024)return false;
+  uint8_t digest[32];mbedtls_sha256((const unsigned char*)response.c_str(),response.length(),digest,0);
+  char hex[65];for(int i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);hex[64]='\\0';
+  if(String(hex)!=product.imageSha)return false;
+  File output=LittleFS.open(tempPath,"w");if(!output)return false;
+  size_t written=output.write((const uint8_t*)response.c_str(),response.length());output.flush();output.close();
+  if(written!=response.length()){LittleFS.remove(tempPath.c_str());return false;}
+  LittleFS.remove(backupPath.c_str());
+  bool hadOld=LittleFS.exists(finalPath.c_str());
+  if(hadOld&&!LittleFS.rename(finalPath.c_str(),backupPath.c_str())){LittleFS.remove(tempPath.c_str());return false;}
+  if(!LittleFS.rename(tempPath.c_str(),finalPath.c_str())) {
+    if(hadOld)LittleFS.rename(backupPath.c_str(),finalPath.c_str());
+    LittleFS.remove(tempPath.c_str());return false;
+  }
+  LittleFS.remove(backupPath.c_str());
+  mgroup.prefs().putString(prefKey.c_str(),product.imageSha);
+  return true;
+}
+void syncProductImages() {
+  if(!imageFsReady){mgroup.setRuntimeStatus("image_fs_unavailable","LittleFS tidak dapat dipasang; gambar produk tidak disinkronkan.");return;}
+  int checked=0;
+  for(int i=0;i<productCount;i++)if(syncProductImage(products[i]))checked++;
+  mgroup.setRuntimeStatus("catalog_online",String("Katalog sinkron. Cache gambar diperiksa: ")+String(checked)+"/"+String(productCount)+" slot.");
+}
+bool drawProductImage(const Product& product) {
+  if(!imageFsReady||product.imageSha.isEmpty())return false;
+  String path=productImagePath(product.id);File file=LittleFS.open(path,"r");
+  if(!file)return false;
+  size_t size=file.size();if(!size||size>64*1024){file.close();return false;}
+  std::unique_ptr<uint8_t[]> bytes(new(std::nothrow) uint8_t[size]);
+  if(!bytes){file.close();return false;}
+  size_t read=file.read(bytes.get(),size);file.close();if(read!=size)return false;
+  TJpgDec.setJpgScale(4);TJpgDec.setCallback(jpegOutput);
+  TJpgDec.drawJpg(24,4,bytes.get(),size);
+  return true;
+}
+void drawProductCard(const Product& product) {
+  if(!displayReady)return;
+  if(lastDrawnProduct==product.id&&lastDrawnImageHash==product.imageSha)return;
+  lastDrawnProduct=product.id;lastDrawnImageHash=product.imageSha;
+  oled.clearDisplay();oled.setTextSize(1);oled.setTextColor(SSD1306_WHITE);oled.setCursor(0,0);
+  oled.println((String(product.id)+". "+product.name).substring(0,21));
+  bool shown=drawProductImage(product);
+  oled.setCursor(0,56);
+  if(!catalogOnline)oled.print("OFFLINE - BAYAR MATI");
+  else if(!product.enabled)oled.print("NONAKTIF");
+  else if(product.stock<=0)oled.print("STOK HABIS");
+  else oled.print("Rp "+String(product.price));
+  if(!shown&&!product.imageSha.isEmpty()){oled.setCursor(0,44);oled.print("Gambar belum cache");}
+  oled.display();
+}
 bool validateCatalog(const JsonDocument& doc,Product out[5]) {
   JsonArrayConst items=doc["items"].as<JsonArrayConst>();
   if(items.isNull()||items.size()!=SERVO_COUNT)return false;
@@ -66,7 +160,7 @@ bool validateCatalog(const JsonDocument& doc,Product out[5]) {
     int id=item["product_id"]|0;long price=item["price_minor"]|0L;int stock=item["stock"]|0;int capacity=item["capacity"]|0;
     if(id<1||id>SERVO_COUNT||seen[id]||price<0||stock<0||capacity<0||stock>capacity)return false;
     seen[id]=true;out[id-1].id=id;out[id-1].name=item["name"]|String("Produk ")+String(id);
-    out[id-1].price=price;out[id-1].stock=stock;out[id-1].capacity=capacity;out[id-1].enabled=item["enabled"]|false;
+    out[id-1].price=price;out[id-1].stock=stock;out[id-1].capacity=capacity;out[id-1].enabled=item["enabled"]|false;out[id-1].imageSha=item["image_sha256"]|String("");
   }
   for(int id=1;id<=SERVO_COUNT;id++)if(!seen[id])return false;
   return true;
@@ -98,6 +192,7 @@ bool refreshCatalog() {
   mgroup.prefs().putString("catalog_json",normalized);
   for(int i=0;i<SERVO_COUNT;i++)products[i]=candidate[i];
   productCount=SERVO_COUNT;catalogOnline=true;lastCatalogAt=millis();
+  syncProductImages();lastDrawnProduct=-1;
   mgroup.setRuntimeStatus("catalog_online","Katalog valid dan sinkron dengan server.");
   if(selected>=productCount)selected=0;
   return true;
@@ -286,6 +381,7 @@ void setup() {
   mgroup.begin();
   Wire.begin(OLED_SDA,OLED_SCL);
   displayReady=oled.begin(SSD1306_SWITCHCAPVCC,0x3C);
+  imageFsReady=LittleFS.begin(false);if(imageFsReady)recoverImageFiles();else Serial.println("LittleFS mount failed; image cache disabled");
   if(displayReady)draw("M-GROUP VENDING","Memulai...");
   pinMode(BUTTON_UP,INPUT_PULLUP);pinMode(BUTTON_DOWN,INPUT_PULLUP);pinMode(BUTTON_SELECT,INPUT_PULLUP);
   pinMode(IR_SENSOR,INPUT_PULLUP);
@@ -307,8 +403,7 @@ void loop() {
   }
   if(flow==SELECT_PRODUCT&&productCount) {
     Product& p=products[selected];
-    draw(String(p.id)+". "+p.name, !p.enabled?"NONAKTIF":(p.price>0?("Rp "+String(p.price)):"Harga belum diatur"),
-         catalogOnline?(p.enabled&&p.stock>0?"Stok "+String(p.stock)+" | SELECT":(p.stock<=0?"STOK HABIS":"NONAKTIF")):"OFFLINE - BAYAR MATI");
+    drawProductCard(p);
   } else if(flow==SELECT_PRODUCT&&!productCount)draw("KATALOG KOSONG","Atur produk di WebUI");
   pollCard();handleButtons();delay(12);
 }
