@@ -7,6 +7,7 @@
 #include <Adafruit_PN532.h>
 #include <ArduinoJson.h>
 #include "MGroupV2Runtime.h"
+#include "MGroupMemberCache.h"
 
 namespace {
 constexpr uint8_t RFID_SS=27, RFID_RST=4;
@@ -49,6 +50,31 @@ String responseCode(const String& body) {
   }
   return "";
 }
+bool refreshMemberBalance(const String& cardUidValue) {
+  if(cardUidValue.isEmpty())return false;
+  JsonDocument request;request["card_uid"]=cardUidValue;
+  String body;serializeJson(request,body);String response;int status=0;
+  if(!mgroup.apiPost("/api/v2/devices/member-balance",body,response,status))return false;
+  JsonDocument doc;if(deserializeJson(doc,response)!=DeserializationError::Ok)return false;
+  String memberId=doc["member_id"]|String("");
+  if(memberId.isEmpty()||!doc["balance_minor"].is<long>())return false;
+  MGroupMemberCache::saveForCard(mgroup.prefs(),cardUidValue,memberId,
+    doc["display_name"]|memberId,doc["balance_minor"].as<long>(),
+    doc["currency"]|String("IDR"),doc["balance_version"]|String(""));
+  return true;
+}
+void saveBalanceFromTransaction(const String& cardUidValue,const String& response) {
+  JsonDocument doc;if(deserializeJson(doc,response)!=DeserializationError::Ok)return;
+  String memberId=doc["member_id"]|String("");
+  if(memberId.isEmpty()||!doc["balance_after_minor"].is<long>()) {
+    refreshMemberBalance(cardUidValue);return;
+  }
+  MGroupMemberCache::Snapshot previous;
+  String displayName=MGroupMemberCache::loadForCard(mgroup.prefs(),cardUidValue,previous)
+    ?previous.displayName:memberId;
+  MGroupMemberCache::saveForCard(mgroup.prefs(),cardUidValue,memberId,displayName,
+    doc["balance_after_minor"].as<long>(),"IDR",doc["balance_version"]|String(""));
+}
 void finishRequest(const String& path,const String& body) {
   String response;int status=-1;bool ok=mgroup.apiPost(path,body,response,status);
   pinDigits="";operatorPin="";
@@ -56,12 +82,15 @@ void finishRequest(const String& path,const String& body) {
     JsonDocument doc;deserializeJson(doc,response);
     String tx=doc["transaction_id"]|String("");
     String state=doc["status"]|String("succeeded");
+    saveBalanceFromTransaction(pendingCardUid,response);
     clearPending();mode=HOME;pendingCardUid="";
     lines(state=="succeeded"?"TRANSAKSI OK":"TRANSAKSI",tx.length()?tx.substring(0,16):state);
     delay(1400);lines("A=Bayar B=Topup","Tempel kartu saat diminta");
     return;
   }
   String code=responseCode(response);
+  if(code=="INSUFFICIENT_BALANCE")refreshMemberBalance(pendingCardUid);
+  if(status<0||status>=500)refreshMemberBalance(pendingCardUid);
   if(status>=400&&status<500&&code!="IDEMPOTENCY_CONFLICT") {
     clearPending();mode=HOME;pendingCardUid="";
     lines("DITOLAK",code.length()?code.substring(0,16):"Periksa input");
@@ -208,6 +237,11 @@ void pollCardForPayment() {
   String uid=cardUid();if(uid.isEmpty())return;
   pendingCardUid=uid;pinDigits="";
   mode=mode==WAIT_CARD_PAYMENT?ENTER_PIN_PAYMENT:ENTER_PIN_TOPUP;
+  MGroupMemberCache::Snapshot cached;
+  if(MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached)) {
+    lines("SALDO TERAKHIR","Rp "+String(cached.balanceMinor));
+    delay(650);
+  }
   lines(mode==ENTER_PIN_PAYMENT?"MASUKKAN PIN":"PIN MEMBER","Angka, # OK");
 }
 }
