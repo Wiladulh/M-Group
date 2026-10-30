@@ -103,7 +103,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         product = self.client.put(
             f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2},
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True},
         )
         self.assertEqual(product.status_code, 200, product.text)
         payload = {'request_id': 'purchase-idempotency-01', 'card_uid': card_uid,
@@ -155,7 +155,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         product = self.client.put(
             f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 1},
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 1, 'enabled': True},
         )
         self.assertEqual(product.status_code, 200, product.text)
         purchase = self.client.post('/api/v2/vending/purchases',
@@ -197,7 +197,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         updated = self.client.put(
             f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2},
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True},
         )
         self.assertEqual(updated.status_code, 200, updated.text)
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers,
@@ -242,7 +242,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         self.client.put(
             f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 1},
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 1, 'enabled': True},
         )
         purchase = self.client.post('/api/v2/vending/purchases',
             headers={'X-Device-Key': vending['device_key']},
@@ -267,7 +267,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         headers = {'X-Device-Key': vending['device_key']}
         self.client.put(f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 3})
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 3, 'enabled': True})
         payload = {'request_id': 'purchase-concurrent-request-01', 'card_uid': card_uid,
                    'pin': '123456', 'product_id': 1}
 
@@ -305,7 +305,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         headers = {'X-Device-Key': vending['device_key']}
         self.client.put(f"/api/v2/vending/devices/{vending['registry_id']}/products/1",
             headers=self.admin_headers(),
-            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2})
+            json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers,
             json={'request_id': 'purchase-concurrent-refund-01', 'card_uid': card_uid,
                   'pin': '123456', 'product_id': 1})
