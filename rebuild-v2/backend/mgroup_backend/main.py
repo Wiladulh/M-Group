@@ -553,7 +553,12 @@ def device_products(connection: DB, x_device_key: Annotated[str | None, Header()
            WHERE p.registry_id=? ORDER BY p.product_id""",
         (device['registry_id'],),
     ).fetchall()
-    return {'registry_id': device['registry_id'], 'items': [dict(row) for row in rows]}
+    items=[]
+    for row in rows:
+        item=dict(row)
+        item['image_url']=f"/api/v2/device/products/{item['product_id']}/image" if item.get('image_sha256') else None
+        items.append(item)
+    return {'registry_id': device['registry_id'], 'items': items}
 
 
 
@@ -1084,7 +1089,7 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
             (registry_id,product_id,optimized,digest,len(optimized)))
         audit(connection,'vending.product.image.upload','product_slot',f'{registry_id}:{product_id}',
               detail={'sha256':digest,'byte_size':len(optimized),'content_type':'image/jpeg'})
-    return {'registry_id':registry_id,'product_id':product_id,'sha256':digest,'byte_size':len(optimized),'content_type':'image/webp'}
+    return {'registry_id':registry_id,'product_id':product_id,'sha256':digest,'byte_size':len(optimized),'content_type':'image/jpeg'}
 
 @app.get('/api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image', dependencies=[Depends(require_admin_session)])
 def get_product_image(registry_id: str, product_id: int, connection: DB):
