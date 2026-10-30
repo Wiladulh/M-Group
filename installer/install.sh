@@ -117,9 +117,6 @@ if [ "$MODE" = system ] && [ -r "$CONFIG_DIR/m-group.env" ]; then
     saved=$(sed -n 's/^M_GROUP_PORT=//p' "$ENV_FILE" | head -n 1)
     [ -z "$saved" ] || PORT=$saved
   fi
-  if [ -z "$ADMIN_USERNAME" ]; then
-    ADMIN_USERNAME=$(sed -n 's/^M_GROUP_ADMIN_USERNAME=//p' "$ENV_FILE" | head -n 1)
-  fi
   if [ -z "$ADMIN_PASSWORD_HASH" ]; then
     ADMIN_PASSWORD_HASH=$(sed -n 's/^M_GROUP_ADMIN_PASSWORD_HASH=//p' "$ENV_FILE" | head -n 1 | sed "s/^'//;s/'$//")
   fi
