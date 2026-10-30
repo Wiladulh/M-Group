@@ -228,8 +228,7 @@ class AdminLoginRequest(BaseModel):
 
 class AdminAccountUpdateRequest(BaseModel):
     current_password: str
-    username: str
-    new_password: str | None = None
+    new_password: str
 
 class AdminUserCreateRequest(BaseModel):
     username: str
@@ -553,16 +552,13 @@ def build_router(db, app_settings=None):
         origin = request.headers.get("origin")
         if not origin or urlsplit(origin).netloc != request.headers.get("host") or urlsplit(origin).scheme.lower() != request.url.scheme.lower():
             raise HTTPException(403, "same_origin_required")
+        if len(q.new_password) < 12:
+            raise HTTPException(400, "password_too_short")
+        if q.new_password == q.current_password:
+            raise HTTPException(400, "new_password_must_differ")
         token = request.cookies.get("m_group_session", "")
         if not token:
             raise HTTPException(401, "admin_session_required")
-        username = q.username.strip()
-        if len(username) < 3 or len(username) > 64 or any(
-            not (ch.isalnum() or ch in "._-") for ch in username
-        ):
-            raise HTTPException(400, "invalid_admin_username")
-        if q.new_password is not None and len(q.new_password) < 12:
-            raise HTTPException(400, "password_too_short")
         now = int(time.time())
         session_hash = hash_session_token(token)
         with db.connect() as c:
@@ -579,33 +575,29 @@ def build_router(db, app_settings=None):
             ).fetchone()
             if account is None or not verify_password(q.current_password, account["password_hash"]):
                 raise HTTPException(403, "invalid_current_password")
-            password_hash = hash_password(q.new_password) if q.new_password else account["password_hash"]
-            duplicate = c.execute("SELECT 1 FROM admin_users WHERE username<>? AND username=?", (session["username"], username)).fetchone()
-            if duplicate:
-                raise HTTPException(409, "admin_username_already_exists")
+            password_hash = hash_password(q.new_password)
             c.execute(
-                "UPDATE admin_users SET username=?,password_hash=?,updated_at=? WHERE username=?",
-                (username, password_hash, now, session["username"]),
+                "UPDATE admin_users SET password_hash=?,updated_at=? WHERE username=?",
+                (password_hash, now, session["username"]),
             )
-            c.execute("DELETE FROM webui_admin_accounts")
             c.execute(
-                "INSERT INTO webui_admin_accounts(username,password_hash,updated_at) VALUES(?,?,?)",
-                (username, password_hash, now),
+                "UPDATE webui_admin_accounts SET password_hash=?,updated_at=? WHERE username=?",
+                (password_hash, now, session["username"]),
             )
             c.execute(
                 "INSERT INTO admin_security_events(actor_username,event_type,target_username,detail,created_at) VALUES(?,?,?,?,?)",
-                (session["username"], "account_updated", username, "Username/password updated", now),
+                (session["username"], "admin_password_changed", session["username"], "Password changed from WebUI; other sessions revoked", now),
             )
             c.execute(
                 "UPDATE webui_sessions SET revoked_at=? WHERE revoked_at IS NULL AND session_hash<>?",
                 (now, session_hash),
             )
             c.execute(
-                "UPDATE webui_sessions SET username=?,last_seen=? WHERE session_hash=?",
-                (username, now, session_hash),
+                "UPDATE webui_sessions SET last_seen=? WHERE session_hash=?",
+                (now, session_hash),
             )
             c.commit()
-        return {"updated": True, "username": username, "password_changed": bool(q.new_password)}
+        return {"updated": True, "username": session["username"], "password_changed": True}
 
     @r.post("/auth/logout")
     def admin_logout(request: Request, response: Response):
