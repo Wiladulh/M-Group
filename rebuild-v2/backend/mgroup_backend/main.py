@@ -556,6 +556,26 @@ def device_products(connection: DB, x_device_key: Annotated[str | None, Header()
     return {'registry_id': device['registry_id'], 'items': [dict(row) for row in rows]}
 
 
+
+@app.get('/api/v2/device/products/{product_id}/image')
+def device_product_image(product_id: int, connection: DB,
+                         x_device_key: Annotated[str | None, Header()] = None):
+    """Serve a product thumbnail only to the authenticated vending registry."""
+    device=authenticated_device(connection,x_device_key)
+    if device['device_type']!='vending':
+        raise HTTPException(status_code=403,detail={'code':'VENDING_DEVICE_REQUIRED'})
+    if product_id not in range(1,6):
+        raise HTTPException(status_code=404,detail={'code':'PRODUCT_IMAGE_NOT_FOUND'})
+    row=connection.execute(
+        "SELECT image_data,sha256,content_type FROM product_images WHERE registry_id=? AND product_id=?",
+        (device['registry_id'],product_id)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404,detail={'code':'PRODUCT_IMAGE_NOT_FOUND'})
+    return Response(content=bytes(row['image_data']),media_type=row['content_type'],
+                    headers={'ETag':'"'+row['sha256']+'"' ,'Cache-Control':'private, max-age=300'})
+
+
 @app.post('/api/v2/devices/member-balance')
 def device_member_balance(payload: MemberBalanceLookup, connection: DB,
                           x_device_key: Annotated[str | None, Header()] = None):
@@ -985,7 +1005,7 @@ def get_products(registry_id: str, connection: DB):
     items=[]
     for row in rows:
         item=dict(row)
-        item['image_url']=f"/api/v2/admin/vending/devices/{registry_id}/products/{item['product_id']}/image" if item.get('image_sha256') else None
+        item['image_url']=f"/api/v2/device/products/{item['product_id']}/image" if item.get('image_sha256') else None
         items.append(item)
     return {'registry_id': registry_id, 'items': items}
 
