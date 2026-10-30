@@ -59,19 +59,19 @@ def test_webui_static_controls_have_script_targets():
         "promotions", "cashier", "devices", "audit", "settings",
     )
     index = (ROOT / "app" / "webui" / "index.html").read_text()
-    pages = "\\n".join(
+    pages = "\n".join(
         (ROOT / "app" / "webui" / "pages" / f"{name}.html").read_text()
         for name in page_names
     )
     script = (ROOT / "app" / "webui" / "assets" / "js" / "app.js").read_text()
-    markup = index + "\\n" + pages
-    ids = set(re.findall(r'\\bid=["\\']([^"\\']+)["\\']', markup))
-    direct_refs = set(re.findall(r"\\$\\(['\\"]([^'\\"]+)['\\"]\\)", script))
-    direct_refs.update(re.findall(r"document\\.getElementById\\(['\\"]([^'\\"]+)['\\"]\\)", script))
+    markup = index + "\n" + pages
+    ids = set(re.findall(r'\bid=["\']([^"\']+)["\']', markup))
+    direct_refs = set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", script))
+    direct_refs.update(re.findall(r"document\.getElementById\(['\"]([^'\"]+)['\"]\)", script))
     assert direct_refs <= ids
 
-    button_ids = re.findall(r'<button\\b[^>]*\\bid=["\\']([^"\\']+)["\\']', markup, re.I)
+    button_ids = re.findall(r'<button\b[^>]*\bid=["\']([^"\']+)["\']', markup, re.I)
     assert all(f"$('{button_id}')" in script or f'getElementById("{button_id}")' in script
                or f"getElementById('{button_id}')" in script for button_id in button_ids)
-    assert not re.search(r"\\bonclick\\s*=", markup, re.I)
+    assert not re.search(r"\bonclick\s*=", markup, re.I)
     assert "adminCreateForm.addEventListener('submit'" in script
