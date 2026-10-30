@@ -1055,7 +1055,7 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
             image=background
         else:
             image=image.convert('RGB')
-        image.thumbnail((320,240),Image.Resampling.LANCZOS)
+        image.thumbnail((256,192),Image.Resampling.LANCZOS)
         optimized=b''
         for quality in (82,76,70,64,58,52,46):
             output=BytesIO()
@@ -1064,7 +1064,7 @@ async def upload_product_image(registry_id: str, product_id: int, connection: DB
             if len(optimized)<=64*1024:
                 break
         if len(optimized)>64*1024:
-            image.thumbnail((240,180),Image.Resampling.LANCZOS)
+            image.thumbnail((192,144),Image.Resampling.LANCZOS)
             output=BytesIO()
             image.save(output,format='JPEG',quality=42,optimize=True,progressive=False)
             optimized=output.getvalue()
