@@ -79,6 +79,12 @@
  <div class="heading"><div><h1>Perangkat</h1><p>Registry perangkat, status koneksi, dan heartbeat.</p></div><div class="actions"><button onclick="toast('Status diperbarui dari data demo statis.')">↻ Refresh</button><button class="primary" onclick="openModal('deviceModal')">＋ Registrasi Demo</button></div></div>
  <div class="grid" style="margin-bottom:16px"><div class="card"><div class="metric-label">Terdaftar</div><div class="metric-value">10</div></div><div class="card"><div class="metric-label">Online</div><div class="metric-value" style="color:var(--green)">8</div></div><div class="card"><div class="metric-label">Offline</div><div class="metric-value" style="color:var(--amber)">2</div></div><div class="card"><div class="metric-label">Menunggu Enrollment</div><div class="metric-value">1</div></div></div>
  <div class="device-grid" id="deviceGrid"></div>
+ <div class="card" style="margin-top:16px"><h3 class="section-title">Generate Key Perangkat</h3>
+<p class="muted">Pilih jenis dan lokasi. Pada sistem nyata, server membuat ID registry sementara dan Device Key unik; perangkat membentuk hardware ID kanonis dari MAC saat boot. Key hanya ditampilkan satu kali.</p>
+<div class="form-grid"><label class="field">Jenis perangkat<select id="demoProvisionType"><option>Cashier ESP32</option><option>Vending ESP32-S3</option></select></label><label class="field">Lokasi pemasangan<input id="demoProvisionLocation" placeholder="Contoh: Kantin lantai 1"></label></div>
+<button class="primary" style="margin-top:12px" onclick="demoProvisionDevice()">Generate Key Demo</button>
+<div class="form-grid" style="margin-top:12px"><label class="field">ID registry sementara<input id="demoProvisionId" readonly placeholder="Dibuat oleh server"></label><label class="field">Device Key<input id="demoProvisionKey" readonly type="password" placeholder="Ditampilkan satu kali"></label></div>
+<p class="muted">Masukkan hanya Device Key ke WebUI lokal. WebUI perangkat memakai PIN awal 19929900 dan mewajibkan penggantian PIN sebelum konfigurasi disimpan. Untuk HTTPS, pasang CA server tepercaya.</p></div>
 </section>
 <section class="page" id="page-vending">
  <div class="heading"><div><h1>Vending / Machine</h1><p>Pilih mesin untuk melihat lima slot produk tetap dan stok masing-masing.</p></div><div class="actions"><button onclick="toast('Katalog demo diperbarui.')">↻ Refresh</button><button class="primary" onclick="openModal('productModal')">✎ Edit Produk</button></div></div>
