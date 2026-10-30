@@ -1,5 +1,6 @@
 #include "MGroupV2Runtime.h"
 #include <WiFi.h>
+#include <time.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -85,6 +86,7 @@ void MGroupV2Runtime::connectNetwork() {
     Serial.printf("M-GROUP V2 setup AP: %s\nAP password: %s\nOpen http://192.168.4.1/\n",apName.c_str(),apPass.c_str());
   } else {
     apMode_=false;
+    configTime(0,0,"pool.ntp.org","time.google.com");
     Serial.printf("M-GROUP V2 WebUI: http://%s/\n",WiFi.localIP().toString().c_str());
   }
 }
