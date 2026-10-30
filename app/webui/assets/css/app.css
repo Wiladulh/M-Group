@@ -413,3 +413,27 @@ button:hover{filter:brightness(1.08)}
 .analytics-bar-value{font-size:10px;color:#cbd5e1}
 .analytics-bar{width:min(100%,26px);min-height:3px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,#67e8f9,#3b82f6);box-shadow:0 0 12px #38bdf822}
 .analytics-bar-label{font-size:9px;color:var(--muted);white-space:nowrap;transform:rotate(-20deg);transform-origin:center top;margin-top:4px}
+
+
+/* Consistent administrator password-change form. */
+.account-password-form{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  align-items:end;
+  gap:12px;
+}
+.account-password-form label{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  min-width:0;
+  color:#cbd5e1;
+  font-size:12px;
+  font-weight:600;
+}
+.account-password-form input{width:100%;min-height:42px}
+.account-password-form button{width:auto;min-height:42px;align-self:end}
+@media(max-width:600px){
+  .account-password-form{grid-template-columns:1fr}
+  .account-password-form button{width:100%}
+}
