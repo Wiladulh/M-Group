@@ -3,8 +3,9 @@
 </style></head><body><main class="wrap">
 <header><div class="brand"><div class="logo">M</div><div><div class="eyebrow">M-GROUP · DEVICE SETUP</div><h1>Cashier WebUI</h1><div class="muted">Konfigurasi awal terminal kasir</div></div></div><span class="tag">● WebUI perangkat · DEMO</span></header>
 <div class="notice"><b>Pratinjau WebUI firmware rebuild-v2.</b><br>Demo ini mengikuti portal pada rebuild-v2/firmware/src/common.cpp. Halaman GitHub hanya simulasi tampilan; konfigurasi nyata disimpan ke NVS ESP32 setelah login lokal.</div>
-<div class="steps"><span class="step on">1 · Jaringan</span><span class="step on">2 · Server</span><span class="step">3 · Provisioning</span><span class="step">4 · Selesai</span></div>
-<div class="layout"><section>
+<div class="steps"><span class="step on">1 · Login WebUI</span><span class="step">2 · Wi-Fi & server</span><span class="step">3 · Device Key</span><span class="step">4 · Enrollment</span></div>
+<div class="panel" id="loginPreview"><h2>Login WebUI perangkat</h2><p class="muted">PIN lokal 8 digit dibuat otomatis pada boot pertama dan ditampilkan satu kali melalui Serial Monitor. PIN ini bukan PIN member atau Device Key.</p><label>PIN WebUI<input id="loginPin" type="password" minlength="8" maxlength="32" placeholder="Masukkan PIN lokal dari Serial Monitor"></label><button class="btn primary" id="loginBtn">Masuk ke konfigurasi (simulasi)</button><div class="statusbox" id="loginFeedback">Menunggu login lokal.</div></div>
+<div class="layout hidden" id="configLayout"><section>
 <div class="panel"><h2>1. Status perangkat & jaringan</h2>
 <div class="metric"><div class="row"><b>Perangkat</b><span class="tag">ESP32 · Cashier</span></div><small>Alamat WebUI lokal contoh: http://192.168.1.120</small></div>
 <div class="metric"><div class="row"><b>Wi-Fi</b><span class="state">● Terhubung (simulasi)</span></div><small>SSID: MGroup-Office · IP DHCP: 192.168.1.120</small></div>
@@ -51,6 +52,7 @@ Runtime: configuration_required</div>
 <div class="footer">M-Group · Cashier · pratinjau rebuild-v2 firmware · simulasi statis, tidak menghubungi API atau menulis NVS.</div></main>
 <script>
 const $=id=>document.getElementById(id);
+$('loginBtn').onclick=()=>{if($('loginPin').value.length<8){$('loginFeedback').textContent='PIN WebUI harus minimal 8 karakter.';return}$('loginFeedback').textContent='SIMULASI: login lokal diterima. Pada perangkat nyata, PIN diverifikasi firmware.';$('loginPreview').classList.add('hidden');$('configLayout').classList.remove('hidden');document.querySelectorAll('.step')[1].classList.add('on');};
 $('test').onclick=()=>{
  const u=$('server').value.trim(),valid=/^https?:\/\//i.test(u)&&!u.endsWith('/')&&(!u.startsWith('https://')||$('ca').value.trim().length>0);
  if(!valid){$('feedback').textContent='URL harus berupa base URL tanpa slash akhir; HTTPS wajib memakai CA tepercaya.';$('serverstate').textContent='Konfigurasi URL/TLS tidak valid';return}
