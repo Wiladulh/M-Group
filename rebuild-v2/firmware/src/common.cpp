@@ -190,6 +190,8 @@ void MGroupV2Runtime::begin() {
 
 void MGroupV2Runtime::loop() {
   if(serverStarted_)server_.handleClient();
+  static bool ntpConfigured=false;
+  if(wifiConnected()&&!ntpConfigured){configTime(0,0,"pool.ntp.org","time.google.com");ntpConfigured=true;}
   static unsigned long lastReconnect=0;
   if(!wifiConnected()&&ssid_.length()&&millis()-lastReconnect>10000UL) {
     lastReconnect=millis();WiFi.disconnect();WiFi.begin(ssid_.c_str(),wifiPassword_.c_str());
