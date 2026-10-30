@@ -266,7 +266,12 @@ void pollCard() {
   mgroup.prefs().putString("p_cardref",pendingCardReference);
   pinDigits="";currentDigit=0;flow=ENTER_PIN;
   MGroupMemberCache::Snapshot cached;
-  if(MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached)) {
+  bool hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  if(!hasCached||!MGroupMemberCache::isFresh(cached)) {
+    refreshMemberBalance(uid);
+    hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  }
+  if(hasCached) {
     draw("SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
     delay(700);
   }
