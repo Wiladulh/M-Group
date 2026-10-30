@@ -604,24 +604,25 @@ $('cashierPeriod').onchange=loadCashierTransactions;
 $('accountSettings').onsubmit=async e=>{
   e.preventDefault();
   const currentPassword=$('currentAdminPassword').value;
-  const username=$('newAdminUsername').value.trim();
   const newPassword=$('newAdminPassword').value;
   const confirmPassword=$('confirmAdminPassword').value;
   const result=$('accountSettingsResult');
-  if(newPassword && newPassword!==confirmPassword){result.textContent='Konfirmasi password baru tidak cocok.';return}
-  if(!newPassword && confirmPassword){result.textContent='Isi password baru atau kosongkan kedua kolom password baru.';return}
+  if(newPassword.length<12){result.textContent='Password baru minimal 12 karakter.';return}
+  if(newPassword!==confirmPassword){result.textContent='Konfirmasi password baru tidak cocok.';return}
+  if(newPassword===currentPassword){result.textContent='Password baru harus berbeda dari password lama.';return}
   const {r,d}=await json('/api/v1/auth/account',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({current_password:currentPassword,username,new_password:newPassword||null})
+    body:JSON.stringify({current_password:currentPassword,new_password:newPassword})
   });
-  if(!r.ok){result.textContent=d.detail==='invalid_current_password'?'Password saat ini salah.':d.detail==='password_too_short'?'Password baru minimal 8 karakter.':d.detail==='invalid_admin_username'?'Username harus 3–64 karakter (huruf, angka, titik, garis bawah, atau tanda hubung).':d.detail||'Gagal menyimpan akun.';return}
-  $('activeUsername').textContent=d.username;
-  $('newAdminUsername').value=d.username;
+  if(!r.ok){
+    result.textContent=d.detail==='invalid_current_password'?'Password lama salah.':d.detail==='password_too_short'?'Password baru minimal 12 karakter.':d.detail==='new_password_must_differ'?'Password baru harus berbeda dari password lama.':d.detail||'Gagal mengganti password.';
+    return;
+  }
   $('currentAdminPassword').value='';
   $('newAdminPassword').value='';
   $('confirmAdminPassword').value='';
-  result.textContent=d.password_changed?'Akun dan password berhasil diperbarui. Sesi admin lain sudah dicabut.':'Username berhasil diperbarui. Sesi admin lain sudah dicabut.';
+  result.textContent='Password admin berhasil diganti. Sesi ini tetap aktif dan sesi lain sudah dicabut.';
 };
 $('settingsLogout').onclick=()=>$('logoutButton').click();
 
@@ -797,7 +798,6 @@ function unlockApp(username,role=null){
   const adminManagement=$('adminUserManagement');
   if(adminManagement)adminManagement.hidden=role!=='super_admin';
   if(role==='super_admin')loadAdminUsers();
-  if($('newAdminUsername'))$('newAdminUsername').value=username||'admin';
   $('loginError').textContent='';
   load();
 }
