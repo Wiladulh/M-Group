@@ -469,6 +469,15 @@ def replace_device_hardware(registry_id: str, connection: DB):
         if row['status'] in ('disabled','revoked'):
             raise HTTPException(status_code=409,detail={'code':'DEVICE_NOT_ACTIVE'})
         previous_hardware_id=row['hardware_id']
+        if previous_hardware_id:
+            pending=connection.execute(
+                """SELECT COUNT(*) AS count FROM transactions
+                   WHERE hardware_id=? AND transaction_type='purchase' AND status='pending'""",
+                (previous_hardware_id,),
+            ).fetchone()
+            if pending and pending['count']:
+                raise HTTPException(status_code=409,detail={'code':'DEVICE_HAS_PENDING_TRANSACTIONS',
+                    'message':'Reconcile pending vending dispense transactions before replacing this board.'})
         connection.execute(
             """UPDATE device_registry
                SET hardware_id=NULL,mac_address=NULL,status='pending',
