@@ -63,7 +63,8 @@ inline void saveByReference(Preferences& prefs, const String& reference,
     if(readSlot(prefs,i,existing)) {
       String existingRef=existing["card_ref"]|String("");
       if(existingRef==reference) { target=i; break; }
-      unsigned long at=existing["last_used_at"]|existing["synced_at"]|0UL;
+      unsigned long at=existing["last_used_at"]|0UL;
+      if(!at)at=existing["synced_at"]|0UL;
       if(at<oldest) { oldest=at; oldestSlot=i; }
     } else if(target<0) target=i;
   }
