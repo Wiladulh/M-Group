@@ -26,7 +26,11 @@ def test_demo_has_matching_admin_login_password_change_and_logout_flow():
     assert 'id="demoLoginForm"' in demo
     assert 'value="admin"' in demo
     assert "demo-admin" in demo
-    assert 'id="page-settings"' in demo
+    for page in ("dashboard", "members", "finance", "payment", "vending", "promotions", "cashier", "devices", "transactions", "audit", "settings"):
+        assert f'id="page-{page}"' in demo
+        assert f'data-page="{page}"' in demo
+    assert demo.index('<section class="page" id="page-audit">') < demo.index('<section class="page" id="page-settings">')
+    assert demo.count('<section class="page"') == demo.count('</section>') - 1
     assert 'id="demoPasswordForm"' in demo
     assert "old!==demoAdminPassword" in demo
     assert "next.length<12" in demo
