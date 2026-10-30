@@ -21,6 +21,16 @@ Status: read-only member-balance lookup, authenticated vending product catalog, 
 - Cashier devices and unauthenticated requests are rejected. Product reads do not require an admin bearer token.
 - Regression tests cover the returned catalog, device ownership, missing credentials, and wrong device type.
 
+## Authenticated vending product images
+
+`GET /api/v2/device/products/{product_id}/image`
+
+- Requires the active vending device's `X-Device-Key`; the server resolves the owning registry and serves only that registry's Product ID 1–5 image.
+- The catalog includes `image_sha256` and a device-scoped `image_url`. No admin bearer token or legacy `/api/v1` endpoint is used by firmware.
+- Admin uploads use `POST /api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image`, accept PNG/JPEG/WebP source files up to 2 MiB, and normalize them to JPEG thumbnails no larger than 64 KiB.
+- The SHA-256 is computed over the exact JPEG bytes returned to the device. Vending downloads only changed hashes, verifies the bytes before writing, writes a temporary LittleFS file, and swaps it atomically while preserving the previous valid image on failure.
+- The v2 Vending OLED decodes the cached JPEG and renders it in monochrome. A missing/invalid image never blocks catalog use or a purchase.
+
 ## Read-only member balance
 
 `POST /api/v2/devices/member-balance`
