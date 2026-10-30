@@ -238,7 +238,12 @@ void pollCardForPayment() {
   pendingCardUid=uid;pinDigits="";
   mode=mode==WAIT_CARD_PAYMENT?ENTER_PIN_PAYMENT:ENTER_PIN_TOPUP;
   MGroupMemberCache::Snapshot cached;
-  if(MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached)) {
+  bool hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  if(!hasCached||!MGroupMemberCache::isFresh(cached)) {
+    refreshMemberBalance(uid);
+    hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
+  }
+  if(hasCached) {
     lines("SALDO TERAKHIR","Rp "+String(cached.balanceMinor));
     delay(650);
   }
