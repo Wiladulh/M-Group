@@ -1335,15 +1335,20 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
             raise HTTPException(status_code=404, detail={'code': 'PURCHASE_NOT_FOUND'})
         meta = json.loads(row['metadata_json'] or '{}')
         if meta.get('dispense_status') in ('succeeded', 'failed'):
-            return {'transaction_id': transaction_id, 'status': row['status'],
-                    'dispense_status': meta['dispense_status'], 'idempotent_replay': True}
+            current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(row['member_id'],)).fetchone()
+            return {'transaction_id': transaction_id, 'member_id': row['member_id'], 'status': row['status'],
+                    'dispense_status': meta['dispense_status'],
+                    'balance_after_minor': current['balance_minor'] if current else None,
+                    'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
         if payload.succeeded:
             meta['dispense_status'] = 'succeeded'
             connection.execute("UPDATE transactions SET status='succeeded',metadata_json=?,completed_at=CURRENT_TIMESTAMP WHERE transaction_id=?",
                 (json.dumps(meta), transaction_id))
             audit(connection, 'vending.dispense.succeeded', 'transaction', transaction_id, row['request_id'])
-            return {'transaction_id': transaction_id, 'status': 'succeeded', 'dispense_status': 'succeeded',
-                    'idempotent_replay': False}
+            current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(row['member_id'],)).fetchone()
+            return {'transaction_id': transaction_id, 'member_id': row['member_id'], 'status': 'succeeded', 'dispense_status': 'succeeded',
+                    'balance_after_minor': current['balance_minor'] if current else None,
+                    'balance_version': current['updated_at'] if current else None,'idempotent_replay': False}
         account = connection.execute("SELECT account_id FROM accounts WHERE member_id=? AND account_type='member'",
             (row['member_id'],)).fetchone()
         if not account:
@@ -1365,8 +1370,11 @@ def dispense_result(transaction_id: str, payload: DispenseResult, connection: DB
             (json.dumps(meta), transaction_id))
         audit(connection, 'vending.dispense.refund', 'transaction', transaction_id, row['request_id'],
               {'reason': meta['dispense_failure_reason']})
-    return {'transaction_id': transaction_id, 'status': 'reversed', 'dispense_status': 'failed',
-            'refunded_amount_minor': row['amount_minor'], 'idempotent_replay': False}
+    current = connection.execute("SELECT balance_minor,updated_at FROM accounts WHERE member_id=? AND account_type='member'",(row['member_id'],)).fetchone()
+    return {'transaction_id': transaction_id, 'member_id': row['member_id'], 'status': 'reversed', 'dispense_status': 'failed',
+            'refunded_amount_minor': row['amount_minor'],
+            'balance_after_minor': current['balance_minor'] if current else None,
+            'balance_version': current['updated_at'] if current else None,'idempotent_replay': False}
 
 
 @app.get('/api/v2/admin/finance/reconciliation', dependencies=[Depends(require_admin_session)])
