@@ -11,6 +11,7 @@
 #include <TJpg_Decoder.h>
 #include <mbedtls/sha256.h>
 #include <memory>
+#include <new>
 #include "MGroupV2Runtime.h"
 #include "MGroupMemberCache.h"
 
@@ -110,8 +111,9 @@ bool syncProductImage(const Product& product) {
     mgroup.prefs().remove(prefKey.c_str());return true;
   }
   if(product.imageSha.length()!=64)return false;
-  if(mgroup.prefs().getString(prefKey.c_str(),"")==product.imageSha&&verifyCachedProductImage(finalPath,product.imageSha))return true;
-  mgroup.prefs().remove(prefKey.c_str());
+  String cachedHash=mgroup.prefs().getString(prefKey.c_str(),"");
+  if(cachedHash==product.imageSha&&verifyCachedProductImage(finalPath,product.imageSha))return true;
+  if(cachedHash==product.imageSha)mgroup.prefs().remove(prefKey.c_str());
   String response;int status=0;
   String endpoint="/api/v2/device/products/"+String(product.id)+"/image";
   if(!mgroup.apiGet(endpoint,response,status)||status!=200||response.isEmpty()||response.length()>64*1024)return false;
@@ -143,6 +145,8 @@ void syncProductImages() {
 }
 bool drawProductImage(const Product& product) {
   if(!imageFsReady||product.imageSha.isEmpty())return false;
+  String prefKey="img_sha_"+String(product.id);
+  if(mgroup.prefs().getString(prefKey.c_str(),"")!=product.imageSha)return false;
   String path=productImagePath(product.id);
   if(!LittleFS.exists(path.c_str()))return false;
   TJpgDec.setJpgScale(4);TJpgDec.setCallback(jpegOutput);
