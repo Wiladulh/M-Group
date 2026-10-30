@@ -93,18 +93,41 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             invalid_period = client.get("/api/v1/dashboard?period=unknown")
             assert invalid_period.status_code == 400
 
+            weak_password = client.post(
+                "/api/v1/auth/account",
+                headers={"Origin": "http://testserver"},
+                json={
+                    "current_password": "strong-test-password",
+                    "new_password": "short",
+                },
+            )
+            assert weak_password.status_code == 400
+            assert weak_password.json()["detail"] == "password_too_short"
+
+            same_password = client.post(
+                "/api/v1/auth/account",
+                headers={"Origin": "http://testserver"},
+                json={
+                    "current_password": "strong-test-password",
+                    "new_password": "strong-test-password",
+                },
+            )
+            assert same_password.status_code == 400
+            assert same_password.json()["detail"] == "new_password_must_differ"
+
             account_update = client.post(
                 "/api/v1/auth/account",
                 headers={"Origin": "http://testserver"},
                 json={
                     "current_password": "strong-test-password",
-                    "username": "admin-renamed",
                     "new_password": "another-strong-password",
                 },
             )
             assert account_update.status_code == 200
-            assert account_update.json()["username"] == "admin-renamed"
-            assert client.get("/api/v1/auth/session").json()["username"] == "admin-renamed"
+            assert account_update.json()["username"] == "admin-test"
+            assert account_update.json()["password_changed"] is True
+            # The active browser session remains valid after changing its password.
+            assert client.get("/api/v1/auth/session").json()["username"] == "admin-test"
 
             logout = client.post(
                 "/api/v1/auth/logout",
@@ -123,7 +146,7 @@ def test_webui_login_session_authorizes_api_and_logout_revokes_session():
             assert old_credentials.status_code == 401
             new_credentials = client.post(
                 "/api/v1/auth/login",
-                json={"username": "admin-renamed", "password": "another-strong-password"},
+                json={"username": "admin-test", "password": "another-strong-password"},
             )
             assert new_credentials.status_code == 200
         finally:
