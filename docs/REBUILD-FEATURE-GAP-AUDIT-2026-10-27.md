@@ -94,7 +94,7 @@ Scope: source-only comparison of the rebuild-v2 server, rebuild-v2 firmware, the
 - Added `POST /api/v2/admin/devices/{registry_id}/replace-hardware`.
 - This action rotates the key, immediately invalidates the old board credential, clears the previous hardware/MAC binding, and returns the existing registry row to pending enrollment.
 - The operation preserves the server-issued registry ID and all registry-scoped vending product slots, records a device event and audit event, and fails active NFC enrollment sessions for a replaced cashier.
-- Added the corresponding **Ganti hardware** action to the v2 device manager. Key is displayed once for the administrator to enter into the replacement board.
+- Added the corresponding **Ganti hardware** action to the v2 device manager. Key is displayed once for the administrator to enter into the replacement board. Replacement and revocation are blocked while Vending has unresolved `pending` dispense transactions, preventing a board change from orphaning a physical outcome.
 
 ### Remaining source-level gaps
 
