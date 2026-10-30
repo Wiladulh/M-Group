@@ -80,3 +80,21 @@ The server must reconcile each journal event idempotently, detect gaps/replays/c
 7. Cache balance is always labelled last-known and is never treated as the authoritative server balance.
 8. Member/card revocation, insufficient allowance, incorrect PIN, expired cache, journal failure, or integrity failure blocks offline payment.
 9. Vending and Cashier both require NFC plus transaction PIN for member payments.
+
+
+## Implementation status — 2026-10-30
+
+Partially implemented in rebuild-v2 firmware:
+- Shared `MGroupMemberCache.h` stores at most 100 snapshots per device in Preferences.
+- Each snapshot is a single atomic NVS JSON record and contains a device-salted card reference, server member ID, display name, last-known balance, currency, server balance version, and local sync timestamp.
+- Raw NFC UID, PIN, and NIK are not persisted in the cache.
+- Cashier and Vending read a cached snapshot for display; stale/missing snapshots trigger an online balance lookup. The snapshot is explicitly labelled last-known.
+- Online purchase/payment remains authorized by the server's current member/card status, PIN, account status, and ledger balance. Cache values never authorize an offline debit.
+- Transaction responses now return authoritative `balance_after_minor`, `member_id`, and `balance_version` where applicable; vending dispense success/refund responses also return the post-dispense balance. Firmware updates the cache after the result is known.
+
+Still outstanding:
+- Authenticated server bulk snapshot/delta sync for the last 100 members on startup/reconnect and periodic refresh.
+- A durable pending-refresh queue that can resume without retaining raw card UIDs; use a server-issued opaque member/card reference for this rather than persisting UID.
+- Explicit stale/pending-sync status surfaced in a richer device UI.
+- Full build, regression, power-loss, and hardware acceptance tests remain deferred.
+- Offline payment remains disabled until the separately defined allowance, secure PIN, journal, and reconciliation mechanism is complete.
