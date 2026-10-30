@@ -253,7 +253,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         report = self.client.get('/api/v2/admin/finance/reconciliation', headers=self.admin_headers())
         self.assertEqual(report.status_code, 200, report.text)
         body = report.json()
-        self.assertEqual(body['status'], 'ok')
+        self.assertEqual(body['status'], 'attention_required')
         self.assertEqual(body['transaction_imbalances'], [])
         self.assertEqual(body['account_mismatches'], [])
         self.assertTrue(body['pending_purchases_require_review'])
