@@ -129,6 +129,13 @@
   <div class="settings-result" id="demoPasswordResult" role="status"></div>
   <div class="settings-note">Simulasi demo hanya menyimpan status login di memori halaman. Password tidak dikirim ke server dan tidak disimpan sebagai hash. Implementasi keamanan sebenarnya tersedia di WebUI server.</div>
  </div>
+ <div class="card" style="margin-top:16px"><h3 class="section-title">Manajemen Akun dan Hak Akses</h3>
+<p class="muted">Khusus Super Admin. Peran: Super Admin, Operator, dan Auditor. Auditor hanya membaca data; Operator menjalankan operasional sesuai izin endpoint.</p>
+<div class="form-grid"><label class="field">Username baru<input placeholder="Username minimal 3 karakter"></label><label class="field">Password awal<input type="password" minlength="12" placeholder="Minimal 12 karakter"></label><label class="field">Peran<select><option>Operator</option><option>Auditor</option><option>Super Admin</option></select></label></div>
+<button style="margin-top:12px" onclick="toast(&quot;Pembuatan akun hanya simulasi demo.&quot;)">Buat Akun Admin Demo</button>
+<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Username</th><th>Peran</th><th>Status</th></tr></thead><tbody><tr><td>admin</td><td>Super Admin</td><td>Aktif</td></tr><tr><td>operator-demo</td><td>Operator</td><td>Aktif</td></tr><tr><td>auditor-demo</td><td>Auditor</td><td>Aktif</td></tr></tbody></table></div></div>
+ <div class="card" style="margin-top:16px"><h3 class="section-title">Konfigurasi Sesi WebUI</h3><div class="grid"><div class="card"><div class="metric-label">Metode login</div><div class="metric-value" style="font-size:17px">Username + password</div></div><div class="card"><div class="metric-label">Sesi maksimum</div><div class="metric-value">12 jam</div></div><div class="card"><div class="metric-label">Batas idle</div><div class="metric-value">30 menit</div></div></div>
+<p class="muted">Sesi disimpan di server menggunakan cookie HttpOnly dan SameSite. Password maupun token sesi tidak disimpan di localStorage. Interaksi halaman tidak meminta login ulang selama sesi aktif.</p></div>
  <div class="card" style="margin-top:16px"><h3 class="section-title">Sesi WebUI</h3><p class="muted">Sesi server menggunakan cookie HttpOnly, batas idle 30 menit, dan maksimum 12 jam.</p><button type="button" id="demoLogout">Logout</button></div>
 </section>
 </main>
