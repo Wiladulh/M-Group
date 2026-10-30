@@ -36,7 +36,7 @@ class ServerApiTests(unittest.TestCase):
     def activate_device(self, provisioned, hardware_id):
         response = self.client.post('/api/v2/device/register',
             headers={'X-Device-Key': provisioned['device_key']},
-            json={'hardware_id': hardware_id, 'mac_address': '02:00:00:00:00:01'})
+            json={'hardware_id': hardware_id, 'mac_address': None})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['status'], 'active')
         return response.json()
