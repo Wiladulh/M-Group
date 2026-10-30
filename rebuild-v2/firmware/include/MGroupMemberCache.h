@@ -59,7 +59,7 @@ inline void saveByReference(Preferences& prefs, const String& reference,
     if(readSlot(prefs,i,existing)) {
       String existingRef=existing["card_ref"]|String("");
       if(existingRef==reference) { target=i; break; }
-      unsigned long at=existing["synced_at"]|0UL;
+      unsigned long at=existing["last_used_at"]|existing["synced_at"]|0UL;
       if(at<oldest) { oldest=at; oldestSlot=i; }
     } else if(target<0) target=i;
   }
@@ -72,7 +72,9 @@ inline void saveByReference(Preferences& prefs, const String& reference,
   record["currency"]=currency.substring(0,8);
   record["balance_version"]=balanceVersion.substring(0,32);
   time_t now=time(nullptr);
-  record["synced_at"]=now>1700000000?(unsigned long)now:millis()/1000UL;
+  unsigned long stamp=now>1700000000?(unsigned long)now:millis()/1000UL;
+  record["synced_at"]=stamp;
+  record["last_used_at"]=stamp;
   String encoded;serializeJson(record,encoded);
   prefs.putString(slotKey(target).c_str(),encoded);
 }
@@ -88,6 +90,10 @@ inline bool loadByReference(Preferences& prefs, const String& reference, Snapsho
     out.currency=record["currency"]|String("IDR");
     out.balanceVersion=record["balance_version"]|String("");
     out.syncedAt=record["synced_at"]|0UL;
+    time_t now=time(nullptr);
+    record["last_used_at"]=now>1700000000?(unsigned long)now:millis()/1000UL;
+    String encoded;serializeJson(record,encoded);
+    prefs.putString(slotKey(i).c_str(),encoded);
     return !out.memberId.isEmpty();
   }
   return false;
