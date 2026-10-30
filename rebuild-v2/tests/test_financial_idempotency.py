@@ -37,6 +37,14 @@ class FinancialIdempotencyTests(unittest.TestCase):
     def admin_headers(self):
         return {'Authorization': 'Bearer test-admin-token-long-enough'}
 
+    def activate_device(self, provisioned, hardware_id):
+        response = self.client.post('/api/v2/device/register',
+            headers={'X-Device-Key': provisioned['device_key']},
+            json={'hardware_id': hardware_id, 'mac_address': '02:00:00:00:00:02'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'active')
+        return response.json()
+
     def create_member_with_balance(self, suffix):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
             json={'display_name': f'Ledger {suffix}', 'pin': '123456'})
@@ -55,6 +63,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         response = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': hardware_id, 'device_type': 'vending', 'display_name': hardware_id})
         self.assertEqual(response.status_code, 201, response.text)
+        self.activate_device(response.json(), hardware_id)
         return response.json()
 
     def test_top_up_idempotency_conflict_does_not_change_balance(self):
@@ -337,6 +346,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
             json={'hardware_id': 'cashier-config-test-01', 'device_type': 'cashier',
                   'display_name': 'Cashier Config Test'})
         self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-config-test-01')
         vending = self.create_vending('vending-cashier-config-test-01')
 
         db = self.main.connect(self.main.settings.database_path)
