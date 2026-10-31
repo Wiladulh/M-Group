@@ -22,21 +22,16 @@ WebUI ------ HTTPS API ------> API layer
 Ops/CI ----- migrations/tests -> isolated test database
 ```
 
-## Planned package layout
+## Current package layout
 
-- `backend/app/api`: request/response schemas and route handlers only
-- `backend/app/core`: configuration, database sessions, logging, error handling
-- `backend/app/devices`: registry, provisioning, authentication
-- `backend/app/members`: member accounts, NFC association, PIN verification
-- `backend/app/payments`: payment orchestration and idempotency
-- `backend/app/vending`: catalog, stock, vending sessions
-- `backend/app/ledger`: immutable financial entries and reconciliation
-- `backend/app/audit`: security and financial audit events
-- `db/schema.sql`: canonical clean-install schema
-- `tests/unit`, `tests/integration`, `tests/contracts`: separated test layers
-- `webui`: independently built client using documented API schemas
-- `firmware`: device protocol, cashier firmware, vending firmware
-- `ops`: deployment, backup, restore, monitoring, environment templates
+- `backend/mgroup_backend`: active FastAPI runtime, configuration, SQLite access, authentication, and v2 routes.
+- `db/schema.sql`: canonical clean-install schema.
+- `tests`: API, schema, identity, and WebUI contract tests.
+- `webui`: same-origin Admin client using the v2 cookie-session API.
+- `firmware`: Cashier and Vending device protocol and firmware.
+- `ops`: dedicated v2 installation and operations scripts.
+
+There is one human administrator identity (Admin super-admin) and Member client identities. Devices authenticate independently using Device Keys; they are not human accounts.
 
 ## Dependency rules
 
