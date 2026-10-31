@@ -3,6 +3,7 @@ from pathlib import Path
 import fcntl
 import os
 import sqlite3
+import re
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / 'db' / 'schema.sql'
 
@@ -55,6 +56,7 @@ def connect(database_path: str) -> sqlite3.Connection:
 def initialize(database_path: str) -> None:
     connection = connect(database_path)
     try:
+        connection.execute('PRAGMA foreign_keys = OFF')
         connection.executescript(SCHEMA_PATH.read_text(encoding='utf-8'))
         # Idempotent additive migrations keep existing v2 data while the clean
         # schema evolves; no migration drops or rewrites financial records.
@@ -80,57 +82,75 @@ def initialize(database_path: str) -> None:
                 if column not in existing:
                     connection.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
         connection.execute('UPDATE product_slots SET capacity=stock WHERE capacity<stock')
-        connection.executescript('''
-        CREATE TABLE IF NOT EXISTS product_slots (
-            registry_id TEXT NOT NULL,
-            product_id INTEGER NOT NULL CHECK (product_id BETWEEN 1 AND 5),
-            name TEXT NOT NULL,
-            price_minor INTEGER NOT NULL CHECK (price_minor >= 0),
-            stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
-            capacity INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0 AND stock <= capacity),
-            enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
-            image_path TEXT,
-            nfc_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (nfc_promo_percent BETWEEN 0 AND 0),
-            qris_promo_percent INTEGER NOT NULL DEFAULT 0 CHECK (qris_promo_percent BETWEEN 0 AND 0),
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (registry_id, product_id),
-            FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id)
-        );
-        CREATE TABLE IF NOT EXISTS pin_attempts (
-            card_hash TEXT NOT NULL,
-            hardware_id TEXT NOT NULL,
-            failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-            locked_until TEXT,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (card_hash, hardware_id)
-        );
-        CREATE TABLE IF NOT EXISTS pin_card_attempts (
-            card_hash TEXT PRIMARY KEY,
-            failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-            locked_until TEXT,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS cashiers (
-            cashier_id TEXT PRIMARY KEY,
-            display_name TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        connection.executescript("""
         CREATE TABLE IF NOT EXISTS cashier_device_config (
             registry_id TEXT PRIMARY KEY,
-            operator_id TEXT NOT NULL,
-            operator_name TEXT NOT NULL,
-            operator_pin_hash TEXT NOT NULL,
             settlement_account_id TEXT NOT NULL,
-            failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-            locked_until TEXT,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id),
             FOREIGN KEY (settlement_account_id) REFERENCES accounts(account_id)
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_cashier_operator_binding
-            ON cashier_device_config(operator_id);
-        ''')
+        """)
+        config_columns={row[1] for row in connection.execute('PRAGMA table_info(cashier_device_config)')}
+        if 'operator_id' in config_columns:
+            connection.execute('ALTER TABLE cashier_device_config RENAME TO cashier_device_config_old')
+            connection.execute('''CREATE TABLE cashier_device_config (
+                registry_id TEXT PRIMARY KEY,
+                settlement_account_id TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id),
+                FOREIGN KEY (settlement_account_id) REFERENCES accounts(account_id)
+            )''')
+            connection.execute('''INSERT INTO cashier_device_config(registry_id,settlement_account_id,updated_at)
+                SELECT registry_id,settlement_account_id,updated_at FROM cashier_device_config_old''')
+            connection.execute('DROP TABLE cashier_device_config_old')
+        connection.execute('DROP TABLE IF EXISTS cashiers')
+        admin_columns={row[1] for row in connection.execute('PRAGMA table_info(admin_users)')}
+        if 'role' in admin_columns:
+            admins=connection.execute("SELECT admin_id,status FROM admin_users ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END,created_at,admin_id").fetchall()
+            if admins:
+                keep=admins[0]['admin_id']
+                connection.execute("UPDATE admin_users SET status='disabled',role='super_admin',updated_at=CURRENT_TIMESTAMP WHERE admin_id<>?",(keep,))
+                connection.execute("UPDATE admin_users SET role='super_admin',status='active',updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",(keep,))
+        members=connection.execute("SELECT member_id FROM members ORDER BY created_at,member_id").fetchall()
+        existing={row['member_id'] for row in members if re.fullmatch(r'UID-[0-9]+',row['member_id'] or '')}
+        next_number=max((int(value[4:]) for value in existing),default=0)
+        mapping={}
+        for row in members:
+            old=row['member_id']
+            if re.fullmatch(r'NTR-[0-9]+',old or ''):
+                candidate=f'UID-{int(old[4:]):05d}'
+                if candidate in existing or candidate in mapping.values():
+                    next_number+=1
+                    candidate=f'UID-{next_number:05d}'
+                mapping[old]=candidate
+                existing.add(candidate)
+        for old,new in mapping.items():
+            for table in ('member_cards','accounts','transactions','nfc_registration_sessions'):
+                connection.execute(f'UPDATE {table} SET member_id=? WHERE member_id=?',(new,old))
+            connection.execute("UPDATE audit_events SET entity_id=? WHERE entity_type='member' AND entity_id=?",(new,old))
+            connection.execute('UPDATE transactions SET metadata_json=replace(metadata_json,?,?)',(old,new))
+            connection.execute('UPDATE audit_events SET detail_json=replace(detail_json,?,?)',(old,new))
+            connection.execute('UPDATE members SET member_id=? WHERE member_id=?',(new,old))
+        connection.execute('PRAGMA foreign_keys = ON')
+        violations=connection.execute('PRAGMA foreign_key_check').fetchall()
+        if violations:
+            raise sqlite3.IntegrityError(f'Foreign key violations after identity cleanup: {len(violations)}')
+    finally:
+        connection.close()
+
+
+@contextmanager
+def transaction(connection: sqlite3.Connection):
+    connection.execute('BEGIN IMMEDIATE')
+    try:
+        yield connection
+    except Exception:
+        connection.rollback()
+        raise
+    else:
+        connection.commit()
+)
     finally:
         connection.close()
 
