@@ -47,7 +47,6 @@ CREATE TABLE IF NOT EXISTS members (
     profile_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'suspended', 'closed')),
-    pin_hash TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -183,30 +182,6 @@ CREATE TABLE IF NOT EXISTS product_images (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (registry_id, product_id),
     FOREIGN KEY (registry_id, product_id) REFERENCES product_slots(registry_id, product_id)
-);
-
-CREATE TABLE IF NOT EXISTS pin_attempts (
-    card_hash TEXT NOT NULL,
-    hardware_id TEXT NOT NULL,
-    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-    locked_until TEXT,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (card_hash, hardware_id)
-);
-
-CREATE TABLE IF NOT EXISTS pin_card_attempts (
-    card_hash TEXT PRIMARY KEY,
-    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-    locked_until TEXT,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS cashier_device_config (
-    registry_id TEXT PRIMARY KEY,
-    settlement_account_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id),
-    FOREIGN KEY (settlement_account_id) REFERENCES accounts(account_id)
 );
 
 CREATE TABLE IF NOT EXISTS nfc_registration_sessions (
