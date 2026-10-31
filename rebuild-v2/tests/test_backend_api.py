@@ -52,6 +52,17 @@ class ServerApiTests(unittest.TestCase):
         # The authenticated TestClient carries its HttpOnly session cookie automatically.
         return {}
 
+    def test_v2_webui_is_served_by_the_same_origin_as_the_api(self):
+        page = self.client.get('/')
+        self.assertEqual(page.status_code, 200, page.text)
+        self.assertIn('id="loginScreen"', page.text)
+        member_page = self.client.get('/pages/member.html')
+        self.assertEqual(member_page.status_code, 200, member_page.text)
+        self.assertIn('id="memberForm"', member_page.text)
+        api_script = self.client.get('/assets/js/api.js')
+        self.assertEqual(api_script.status_code, 200, api_script.text)
+        self.assertIn('credentials: "same-origin"', api_script.text)
+
     def test_health_and_readiness(self):
         self.assertEqual(self.client.get('/api/v2/health').status_code, 200)
         response = self.client.get('/api/v2/ready')
