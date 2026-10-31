@@ -58,7 +58,7 @@ class WebUiContractTests(unittest.TestCase):
         self.assertIn("/api/v2/admin/backup/restore", self.backend)
 
     def test_webui_styles_include_mobile_breakpoints(self):
-        self.assertRegex(self.css, r"@media\\s*\\(max-width\\s*:")
+        self.assertRegex(self.css, r"@media\s*\(max-width\s*:")
 
 
 if __name__ == "__main__":
