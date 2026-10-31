@@ -38,6 +38,12 @@ class AdminSessionTests(unittest.TestCase):
         )
 
     def test_login_uses_httponly_session_cookie_not_bearer_token(self):
+        cross_origin_login = self.client.post(
+            "/api/v2/admin/auth/login",
+            headers={"Origin": "https://attacker.example"},
+            json={"username": "admin", "password": self.settings.admin_password},
+        )
+        self.assertEqual(cross_origin_login.status_code, 403)
         response = self.login()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["authenticated"])
