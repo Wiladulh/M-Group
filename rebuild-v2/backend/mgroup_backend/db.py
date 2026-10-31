@@ -105,15 +105,18 @@ def initialize(database_path: str) -> None:
 
             # Keep one Admin account. Other historical WebUI roles are disabled.
             admin_columns = {row[1] for row in connection.execute('PRAGMA table_info(admin_users)')}
-            if 'role' in admin_columns:
+            admins = connection.execute(
+                "SELECT admin_id FROM admin_users WHERE status='active' ORDER BY created_at,admin_id"
+            ).fetchall()
+            if not admins:
                 admins = connection.execute(
-                    "SELECT admin_id FROM admin_users WHERE status='active' ORDER BY created_at,admin_id"
+                    "SELECT admin_id FROM admin_users ORDER BY created_at,admin_id"
                 ).fetchall()
-                if admins:
-                    keep = admins[0]['admin_id']
-                    connection.execute(
-                        "UPDATE admin_users SET status='disabled',role='super_admin',updated_at=CURRENT_TIMESTAMP WHERE admin_id<>?",
-                        (keep,))
+            if admins:
+                keep = admins[0]['admin_id']
+                connection.execute("DELETE FROM admin_sessions WHERE admin_id<>?", (keep,))
+                connection.execute("DELETE FROM admin_users WHERE admin_id<>?", (keep,))
+                if 'role' in admin_columns:
                     connection.execute(
                         "UPDATE admin_users SET role='super_admin',status='active',updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",
                         (keep,))
@@ -131,13 +134,9 @@ def initialize(database_path: str) -> None:
             mapping = {}
             for row in members:
                 old = row['member_id']
-                if re.fullmatch(r'NTR-[0-9]+', old or ''):
-                    candidate = f'UID-{int(old[4:]):05d}'
-                    if candidate in existing or candidate in mapping.values():
-                        next_number += 1
-                        candidate = f'UID-{next_number:05d}'
-                    mapping[old] = candidate
-                    existing.add(candidate)
+                if not re.fullmatch(r'UID-[0-9]+', old or ''):
+                    next_number += 1
+                    mapping[old] = f'UID-{next_number:05d}'
 
             for old, new in mapping.items():
                 for table in ('member_cards', 'accounts', 'transactions', 'nfc_registration_sessions'):
