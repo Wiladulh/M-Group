@@ -174,7 +174,9 @@ bool validateCatalog(const JsonDocument& doc,Product out[5]) {
   for(JsonObjectConst item:items) {
     int id=item["product_id"]|0;long price=item["price_minor"]|0L;int stock=item["stock"]|0;int capacity=item["capacity"]|0;
     if(id<1||id>SERVO_COUNT||seen[id]||price<0||stock<0||capacity<0||stock>capacity)return false;
-    seen[id]=true;out[id-1].id=id;out[id-1].name=item["name"]|String("Produk ")+String(id);
+    const char* rawName=item["name"]|"";
+    if(!rawName||!rawName[0])return false;
+    seen[id]=true;out[id-1].id=id;out[id-1].name=String(rawName);
     out[id-1].price=price;out[id-1].stock=stock;out[id-1].capacity=capacity;out[id-1].enabled=item["enabled"]|false;out[id-1].imageSha=item["image_sha256"]|String("");
   }
   for(int id=1;id<=SERVO_COUNT;id++)if(!seen[id])return false;
