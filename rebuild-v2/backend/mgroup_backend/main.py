@@ -140,7 +140,7 @@ class NfcRegistrationStart(BaseModel):
 
 class NfcRegistrationProgress(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
-    status: str = Field(pattern='^(waiting_nfc|processing|failed)
+    status: str = Field(pattern='^(waiting_nfc|processing|failed)$')
 
 class NfcRegistrationComplete(BaseModel):
     model_config = ConfigDict(extra='forbid')
