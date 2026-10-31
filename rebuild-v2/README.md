@@ -36,4 +36,4 @@ This directory is the new implementation boundary for M-Group. Everything outsid
 
 ## Status
 
-Clean-room workspace is under active implementation. Device authentication, member/card management, vending purchase/dispense recovery, financial ledger/reconciliation, and cashier v2 payment/top-up routes exist. Firmware migration, product-image upload, full WebUI API wiring, backup/restore drill, and final acceptance validation remain open. Do not treat this status as release-ready.
+Clean-room v2 now includes username/password administrator login with HttpOnly session cookies, in-WebUI password changes, member editing/NFC registration UI, product-image upload and vending-device image endpoints, device management, ledger/audit views, and native backup/restore endpoints. Vending firmware includes LittleFS image download, SHA-256 verification, atomic cache replacement, and on-screen image rendering. Remaining gates: full WebUI/API contract coverage, automated regression execution, Cashier/Vending firmware builds, physical acceptance tests, backup/restore drill, and production security review. Do not treat this status as release-ready.
