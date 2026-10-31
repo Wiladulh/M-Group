@@ -2,25 +2,22 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Keypad.h>
-#include <LiquidCrystal_I2C.h>
 #include <MFRC522.h>
-#include <Adafruit_PN532.h>
+#include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
 #include "MGroupV2Runtime.h"
 #include "MGroupMemberCache.h"
 
 namespace {
 constexpr uint8_t RFID_SS=27, RFID_RST=4;
-constexpr uint8_t PN532_IRQ=39, PN532_RESET=5;
 constexpr byte ROWS=4,COLS=4;
 char keyMap[ROWS][COLS]={{'1','2','3','A'},{'4','5','6','B'},{'7','8','9','C'},{'*','0','#','D'}};
 byte rowPins[ROWS]={32,33,25,26};
 byte colPins[COLS]={13,14,16,17};
 Keypad keypad=Keypad(makeKeymap(keyMap),rowPins,colPins,ROWS,COLS);
-LiquidCrystal_I2C lcd(0x27,16,2);
+Adafruit_SSD1306 display(128,64,&Wire,-1);
 MFRC522 rfid(RFID_SS,RFID_RST);
-Adafruit_PN532 pn532(PN532_IRQ,PN532_RESET);
-bool pn532Ready=false,rc522Ready=false;
+bool rc522Ready=false;
 enum Mode { HOME, AMOUNT_PAYMENT, AMOUNT_TOPUP, WAIT_CARD_PAYMENT, ENTER_PIN_PAYMENT,
             WAIT_CARD_TOPUP, ENTER_PIN_TOPUP, NFC_WAIT_CARD, NFC_ENTER_PIN };
 Mode mode=HOME;
@@ -31,7 +28,13 @@ String lastCardUid;
 bool cardReadThisLoop=false;
 
 void lines(const String& a,const String& b="") {
-  lcd.clear();lcd.setCursor(0,0);lcd.print(a.substring(0,16));lcd.setCursor(0,1);lcd.print(b.substring(0,16));
+  display.clearDisplay();display.setTextSize(1);display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,8);display.print(a.substring(0,21));
+  display.setCursor(0,36);display.print(b.substring(0,21));display.display();
+}
+void secondLine(const String& value) {
+  display.fillRect(0,32,128,16,SSD1306_BLACK);display.setCursor(0,36);
+  display.print(value.substring(0,21));display.display();
 }
 String masked(const String& s){String out;for(size_t i=0;i<s.length();i++)out+='*';return out;}
 void clearPending() {
@@ -107,13 +110,10 @@ void finishRequest(const String& path,const String& body) {
 }
 String cardUid() {
   uint8_t uid[10];uint8_t length=0;String value;
-  if(pn532Ready) {
-    if(!pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A,uid,&length,30)){lastCardUid="";return "";}
-  } else if(rc522Ready) {
-    if(!rfid.PICC_IsNewCardPresent()||!rfid.PICC_ReadCardSerial()){lastCardUid="";return "";}
-    length=rfid.uid.size;for(uint8_t i=0;i<length;i++)uid[i]=rfid.uid.uidByte[i];
-    rfid.PICC_HaltA();rfid.PCD_StopCrypto1();
-  } else return "";
+  if(!rc522Ready)return "";
+  if(!rfid.PICC_IsNewCardPresent()||!rfid.PICC_ReadCardSerial()){lastCardUid="";return "";}
+  length=rfid.uid.size;for(uint8_t i=0;i<length;i++)uid[i]=rfid.uid.uidByte[i];
+  rfid.PICC_HaltA();rfid.PCD_StopCrypto1();
   for(uint8_t i=0;i<length;i++){char b[3];snprintf(b,sizeof(b),"%02X",uid[i]);value+=b;}
   if(value==lastCardUid)return "";
   lastCardUid=value;
@@ -201,7 +201,7 @@ void handleKey(char key) {
       mode=pendingOp=="topup"?WAIT_CARD_TOPUP:WAIT_CARD_PAYMENT;
       lines("TEMPEL KARTU","Nominal "+String(pendingAmount));
     }
-    lcd.setCursor(0,1);lcd.print("                ");lcd.setCursor(0,1);lcd.print(inputDigits.length()?inputDigits.substring(inputDigits.length()>16?inputDigits.length()-16:0):"Angka, # OK");
+    secondLine(inputDigits.length()?inputDigits.substring(inputDigits.length()>21?inputDigits.length()-21:0):"Angka, # OK");
     return;
   }
   if(mode==ENTER_PIN_PAYMENT||mode==ENTER_PIN_TOPUP||mode==NFC_ENTER_PIN) {
@@ -213,7 +213,7 @@ void handleKey(char key) {
       else submitNfcRegistration();
       return;
     }
-    lcd.setCursor(0,1);lcd.print("                ");lcd.setCursor(0,1);lcd.print(masked(pinDigits));return;
+    secondLine(masked(pinDigits));return;
   }
 }
 void pollPendingRegistration() {
@@ -249,14 +249,13 @@ void pollCardForPayment() {
 
 void setup() {
   mgroup.begin();
-  Wire.begin(21,22);lcd.init();lcd.backlight();
-  SPI.begin(18,19,23,RFID_SS);
-  pn532.begin();uint32_t version=pn532.getFirmwareVersion();
-  if(version){pn532.SAMConfig();pn532Ready=true;}
-  else {rfid.PCD_Init();rc522Ready=rfid.PCD_PerformSelfTest();}
-  Serial.printf("Cashier reader: %s\n",pn532Ready?"PN532":(rc522Ready?"RC522":"NOT_FOUND"));
+  Wire.begin(21,22);
+  if(!display.begin(SSD1306_SWITCHCAPVCC,0x3C))Serial.println("Cashier OLED init failed");
+  else {display.clearDisplay();display.display();}
+  SPI.begin(18,19,23,RFID_SS);rfid.PCD_Init();rc522Ready=rfid.PCD_PerformSelfTest();
+  Serial.printf("Cashier reader: %s\n",rc522Ready?"RC522":"NOT_FOUND");
   restorePending();
-  if(!pn532Ready&&!rc522Ready)lines("NFC READER ERROR","Check wiring");
+  if(!rc522Ready)lines("RC522 ERROR","Check wiring");
 }
 void loop() {
   mgroup.loop();
