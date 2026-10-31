@@ -17,7 +17,8 @@ class FinancialIdempotencyTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         os.environ['MGROUP_DB_PATH'] = str(Path(cls.temp_dir.name) / 'financial-idempotency.sqlite3')
-        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'\n        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
+        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'
+        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
         os.environ['MGROUP_DEVICE_KEY_PEPPER'] = 'test-only-pepper'
         from mgroup_backend import config
         importlib.reload(config)
@@ -39,7 +40,8 @@ class FinancialIdempotencyTests(unittest.TestCase):
             os.environ.pop(key, None)
 
     def admin_headers(self):
-        return {'Authorization': 'Bearer test-admin-token-long-enough'}
+        # The authenticated TestClient carries its HttpOnly session cookie automatically.
+        return {}
 
     def activate_device(self, provisioned, hardware_id):
         response = self.client.post('/api/v2/device/register',
