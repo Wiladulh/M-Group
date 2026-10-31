@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
     admin_id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('super_admin','operator','auditor')),
+    role TEXT NOT NULL DEFAULT 'super_admin' CHECK (role = 'super_admin'),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -201,26 +201,13 @@ CREATE TABLE IF NOT EXISTS pin_card_attempts (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS cashiers (
-    cashier_id TEXT PRIMARY KEY,
-    display_name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS cashier_device_config (
     registry_id TEXT PRIMARY KEY,
-    operator_id TEXT NOT NULL,
-    operator_name TEXT NOT NULL,
-    operator_pin_hash TEXT NOT NULL,
     settlement_account_id TEXT NOT NULL,
-    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-    locked_until TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (registry_id) REFERENCES device_registry(registry_id),
     FOREIGN KEY (settlement_account_id) REFERENCES accounts(account_id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cashier_operator_binding ON cashier_device_config(operator_id);
 
 CREATE TABLE IF NOT EXISTS nfc_registration_sessions (
     session_id TEXT PRIMARY KEY,
