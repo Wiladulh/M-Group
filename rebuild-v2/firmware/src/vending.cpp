@@ -34,9 +34,9 @@ struct Product { int id=0;String name;long price=0;int stock=0;int capacity=0;bo
 Product products[5];
 int productCount=0,selected=0,currentDigit=0;
 String imageSyncStatus="Belum disinkronkan";
-String lastCardUid,pinDigits,pendingCardUid,pendingCardReference,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
+String lastCardUid,pendingCardUid,pendingCardReference,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
 int pendingProduct=0;long pendingAmount=0;bool pendingResult=false;
-enum Flow { SELECT_PRODUCT, WAIT_CARD, ENTER_PIN, MANUAL_REVIEW };
+enum Flow { SELECT_PRODUCT, WAIT_CARD, MANUAL_REVIEW };
 Flow flow=SELECT_PRODUCT;
 unsigned long lastCatalogAt=0,lastReportRetryAt=0,lastButtonAt=0,selectPressedAt=0;
 bool previousUp=HIGH,previousDown=HIGH,previousSelect=HIGH;
@@ -57,7 +57,6 @@ void persistCreateRequest(int productId,long amount) {
   pendingRequestId=mgroup.nextRequestId("vending-purchase");pendingProduct=productId;pendingAmount=amount;pendingStage="create";
   Preferences& p=mgroup.prefs();p.putString("purchase_req",pendingRequestId);p.putInt("purchase_product",productId);p.putLong("purchase_amount",amount);p.putString("purchase_stage",pendingStage);
 }
-String maskPin(const String& pin) {String mask;for(size_t i=0;i<pin.length();i++)mask+='*';return mask;}
 String responseCode(const String& body) {
   JsonDocument doc;if(deserializeJson(doc,body)==DeserializationError::Ok) {
     if(doc["detail"]["code"].is<const char*>())return doc["detail"]["code"].as<String>();
@@ -264,7 +263,7 @@ bool reportDispenseResult() {
   }
   String resultCode=responseCode(response);
   saveBalanceFromResponse(response);
-  clearPending();flow=SELECT_PRODUCT;pinDigits="";pendingCardUid="";
+  clearPending();flow=SELECT_PRODUCT;pendingCardUid="";
   refreshCatalog();
   draw(pendingResult?"DISPENSING OK":"REFUND BERHASIL",pendingResult?"Transaksi selesai":"Stok dan saldo dipulihkan",resultCode);
   delay(1300);return true;
@@ -302,16 +301,14 @@ void beginPurchase() {
   if(p.price<=0){draw("PRODUK BELUM SIAP","Atur harga di WebUI");flow=SELECT_PRODUCT;return;}
   if(p.stock<=0){draw("STOK HABIS",p.name,"Pilih produk lain");flow=SELECT_PRODUCT;return;}
   if(pendingRequestId.isEmpty())persistCreateRequest(p.id,p.price);
-  pendingCardUid="";pinDigits="";currentDigit=0;flow=WAIT_CARD;
+  pendingCardUid="";flow=WAIT_CARD;
   draw(p.name,"Tempel kartu NFC","Harga "+String(p.price));
 }
 void sendPurchase() {
-  if(pinDigits.length()<6){draw("PIN MINIMAL 6","Pilih 6 digit");return;}
-  JsonDocument doc;doc["request_id"]=pendingRequestId;doc["card_uid"]=pendingCardUid;doc["pin"]=pinDigits;
+  JsonDocument doc;doc["request_id"]=pendingRequestId;doc["card_uid"]=pendingCardUid;
   doc["product_id"]=pendingProduct;doc["payment_method"]="nfc";doc["expected_amount_minor"]=pendingAmount;
   String body;serializeJson(doc,body);String response;int status=0;
   bool ok=mgroup.apiPost("/api/v2/vending/purchases",body,response,status);
-  pinDigits="";
   if(!ok) {
     String code=responseCode(response);
     if(code=="INSUFFICIENT_BALANCE"||status<0||status>=500)refreshMemberBalance(pendingCardUid);
@@ -320,13 +317,13 @@ void sendPurchase() {
       draw("TRANSAKSI DITOLAK",code.substring(0,21),"Pilih ulang");
     } else {
       flow=WAIT_CARD;pendingCardUid="";
-      draw("HASIL BELUM ADA","Tap ulang; PIN ulang","Request tetap sama");
+      draw("HASIL BELUM ADA","Tap ulang kartu","Request tetap sama");
     }
     return;
   }
   JsonDocument result;
   if(deserializeJson(result,response)!=DeserializationError::Ok||!result["transaction_id"].is<const char*>()) {
-    flow=WAIT_CARD;pendingCardUid="";draw("RESPONS INVALID","Tap ulang; PIN ulang");return;
+    flow=WAIT_CARD;pendingCardUid="";draw("RESPONS INVALID","Tap ulang kartu");return;
   }
   pendingTransactionId=result["transaction_id"].as<String>();
   String statusText=result["status"]|String("pending");
@@ -351,7 +348,7 @@ void restorePending() {
     flow=MANUAL_REVIEW;mgroup.setRuntimeStatus("dispense_manual_review","Daya terputus saat dispensing; tindakan fisik tidak diulang otomatis.");
     draw("MANUAL REVIEW","Dispense ambigu","Jangan ulangi servo");
   } else if(pendingStage=="create"&&!pendingRequestId.isEmpty()&&pendingProduct>0&&pendingAmount>0) {
-    flow=WAIT_CARD;draw("TRANSAKSI TERTUNDA","Tap ulang kartu","PIN ulang; request sama");
+    flow=WAIT_CARD;draw("TRANSAKSI TERTUNDA","Tap ulang kartu","Request tetap sama");
   } else {clearPending();flow=SELECT_PRODUCT;}
 }
 void handleButtons() {
@@ -361,15 +358,6 @@ void handleButtons() {
     if(previousUp==HIGH&&up==LOW&&productCount){selected=(selected+productCount-1)%productCount;lastButtonAt=now;}
     else if(previousDown==HIGH&&down==LOW&&productCount){selected=(selected+1)%productCount;lastButtonAt=now;}
     else if(previousSelect==HIGH&&select==LOW){lastButtonAt=now;beginPurchase();}
-  } else if(flow==ENTER_PIN) {
-    if(previousUp==HIGH&&up==LOW){currentDigit=(currentDigit+1)%10;lastButtonAt=now;}
-    if(previousDown==HIGH&&down==LOW){currentDigit=(currentDigit+9)%10;lastButtonAt=now;}
-    if(previousSelect==HIGH&&select==LOW) {
-      if(pinDigits.length()<6)pinDigits+=char('0'+currentDigit);
-      currentDigit=0;lastButtonAt=now;
-      if(pinDigits.length()>=6)sendPurchase();
-    }
-    draw("MASUKKAN PIN",String("PIN: ")+maskPin(pinDigits),"UP/DN digit SEL");
   }
   previousUp=up;previousDown=down;previousSelect=select;
 }
@@ -378,7 +366,7 @@ void pollCard() {
   String uid=cardUid();if(uid.isEmpty())return;
   pendingCardUid=uid;pendingCardReference=MGroupMemberCache::cardReference(mgroup.prefs(),uid);
   mgroup.prefs().putString("p_cardref",pendingCardReference);
-  pinDigits="";currentDigit=0;flow=ENTER_PIN;
+  flow=WAIT_CARD;
   MGroupMemberCache::Snapshot cached;
   bool hasCached=MGroupMemberCache::loadForCard(mgroup.prefs(),uid,cached);
   bool refreshed=false;
@@ -390,7 +378,7 @@ void pollCard() {
     draw(refreshed?"SALDO TERBARU":"SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
     delay(700);
   }
-  draw("PIN TRANSAKSI","UP/DN digit SEL","6 digit minimum");
+  sendPurchase();
 }
 }
 
