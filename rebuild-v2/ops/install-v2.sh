@@ -72,7 +72,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   fi
 fi
 
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)-$
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)-$(date +%s)
 RELEASE="$PREFIX/releases/$STAMP"
 mkdir -p "$RELEASE/backend" "$RELEASE/webui" "$PREFIX/releases" "$DATA" "$CONFIG"
 cp -R "$V2_DIR/backend/." "$RELEASE/backend/"
