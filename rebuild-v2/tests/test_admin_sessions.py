@@ -47,6 +47,12 @@ class AdminSessionTests(unittest.TestCase):
         self.assertIn("httponly", cookie)
         self.assertIn("samesite=strict", cookie)
         self.assertEqual(self.client.get("/api/v2/admin/auth/me").json()["username"], "admin")
+        cross_origin = self.client.post(
+            "/api/v2/admin/auth/logout",
+            headers={"Origin": "https://attacker.example"},
+        )
+        self.assertEqual(cross_origin.status_code, 403)
+        self.assertEqual(self.client.get("/api/v2/admin/auth/me").status_code, 200)
 
     def test_admin_routes_reject_missing_cookie_and_logout_revokes_session(self):
         self.assertEqual(self.client.get("/api/v2/admin/auth/me").status_code, 401)
