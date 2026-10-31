@@ -91,10 +91,10 @@ import re, sys
 username, password, pepper = sys.argv[1:]
 if not re.fullmatch(r"[a-zA-Z0-9_.-]{3,64}", username):
     raise SystemExit("MGROUP_ADMIN_USERNAME must be 3-64 characters: letters, numbers, dot, underscore or hyphen.")
-if not 12 <= len(password) <= 128 or any(c in password for c in "\r\n"):
-    raise SystemExit("MGROUP_ADMIN_PASSWORD must be 12-128 characters and contain no newline.")
-if len(pepper) < 32 or any(c in pepper for c in "\r\n"):
-    raise SystemExit("MGROUP_DEVICE_KEY_PEPPER must be at least 32 characters and contain no newline.")
+if not re.fullmatch(r"[A-Za-z0-9_.~-]{12,128}", password):
+    raise SystemExit("MGROUP_ADMIN_PASSWORD must be 12-128 safe characters (letters, numbers, dot, underscore, tilde or hyphen).")
+if not re.fullmatch(r"[A-Za-z0-9_.~-]{32,}", pepper):
+    raise SystemExit("MGROUP_DEVICE_KEY_PEPPER must be at least 32 safe characters (letters, numbers, dot, underscore, tilde or hyphen).")
 PY
   umask 077
   {
