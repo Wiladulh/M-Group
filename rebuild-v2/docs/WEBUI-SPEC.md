@@ -55,7 +55,14 @@ Pertamini must have its own explicit contract and tests. Do not silently model a
 ## Clean-room implementation rules
 
 - The copied HTML/CSS is a visual baseline, not evidence that a feature is implemented.
-- Legacy `app.js` API calls are not reused. The v2 bootstrap explicitly indicates that backend connectivity is not ready and must not pretend login or business actions succeeded.
-- All v2 API access will be added only after the endpoint schemas, authentication, authorization, and error contracts are reviewed.
+- Legacy `app.js` API calls are not reused. The current v2 WebUI uses `MGroupApiV2` and versioned `/api/v2` endpoints.
+- Administrator login uses username/password and a server-side HttpOnly SameSite=Strict session cookie; Admin API Tokens are not accepted by the WebUI.
+- The initial super-admin is created at fresh installation from `MGROUP_ADMIN_USERNAME` and `MGROUP_ADMIN_PASSWORD`; password changes are performed inside WebUI Settings using the old password and a twice-entered new password.
+- Admin API calls use same-origin cookies and server-side session/RBAC checks. State-changing admin requests validate Origin when supplied.
 - Keep the UI responsive and accessible; show loading, empty, success, and error states for each real request.
 - No merge to `main` until feature contracts, UI, API, integration tests, security review, and deployment rehearsal are complete.
+
+
+## Implementation status — source update
+
+The canonical WebUI now includes username/password login, cookie-session restoration after page refresh, explicit logout, password change settings, member Edit and NFC enrollment/replacement actions, product image upload/preview, device management, ledger/transaction/audit views, and backup/restore controls. These are source-level implementations wired to v2 endpoints; their presence is not a claim of completed browser or end-to-end acceptance. Automated tests, full API contract coverage, firmware compilation, physical NFC and vending tests, and backup/restore rehearsal remain required before release.
