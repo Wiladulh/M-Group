@@ -33,7 +33,7 @@ inline String cardReference(Preferences& prefs, const String& cardUid) {
   mbedtls_sha256((const unsigned char*)input.c_str(), input.length(), digest, 0);
   char hex[65];
   for(int i=0;i<32;i++) snprintf(hex+i*2,3,"%02x",digest[i]);
-  hex[64]='\\0';
+  hex[64]='\0';
   return String(hex);
 }
 
