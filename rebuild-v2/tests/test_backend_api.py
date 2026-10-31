@@ -2,7 +2,6 @@ import importlib
 import hashlib
 import io
 import os
-import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -641,12 +640,8 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(second.status_code, 201, second.text)
         first_uid = first.json()['member_id']
         second_uid = second.json()['member_id']
-        self.assertRegex(first_uid, r'^UID-[0-9]{5,}
-    unittest.main()
-)
-        self.assertRegex(second_uid, r'^UID-[0-9]{5,}
-    unittest.main()
-)
+        self.assertTrue(first_uid.startswith('UID-') and first_uid[4:].isdigit())
+        self.assertTrue(second_uid.startswith('UID-') and second_uid[4:].isdigit())
         self.assertEqual(int(second_uid[4:]), int(first_uid[4:]) + 1)
         self.assertNotEqual(first_uid, 'CUSTOM-001')
         self.assertNotEqual(second_uid, 'CUSTOM-002')
