@@ -214,6 +214,33 @@ class ServerApiTests(unittest.TestCase):
             headers={'X-Device-Key': cashier.json()['device_key']})
         self.assertEqual(denied.status_code, 403, denied.text)
 
+    def test_native_backup_restore_roundtrip_restores_database_snapshot(self):
+        before = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Member Before Backup'})
+        self.assertEqual(before.status_code, 201, before.text)
+        before_id = before.json()['member_id']
+
+        backup = self.client.post('/api/v2/admin/backup', headers=self.admin_headers())
+        self.assertEqual(backup.status_code, 200, backup.text)
+        self.assertTrue(backup.content.startswith(b'PK'))
+
+        after = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Member After Backup'})
+        self.assertEqual(after.status_code, 201, after.text)
+        after_id = after.json()['member_id']
+
+        restored = self.client.post('/api/v2/admin/backup/restore',
+            headers=self.admin_headers(),
+            files={'file': ('M-Group-test.mgroup.zip', backup.content, 'application/zip')})
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json()['status'], 'restored')
+        self.assertEqual(restored.json()['integrity_check'], 'ok')
+        members = self.client.get('/api/v2/members', headers=self.admin_headers())
+        self.assertEqual(members.status_code, 200, members.text)
+        member_ids = {item['member_id'] for item in members.json()['items']}
+        self.assertIn(before_id, member_ids)
+        self.assertNotIn(after_id, member_ids)
+
     def test_vending_product_image_upload_and_device_scoped_download(self):
         vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-image-01', 'device_type': 'vending',
