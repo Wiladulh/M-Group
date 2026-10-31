@@ -89,7 +89,7 @@ def initialize(database_path: str) -> None:
         connection.execute('BEGIN IMMEDIATE')
         try:
             config_columns = {row[1] for row in connection.execute('PRAGMA table_info(cashier_device_config)')}
-            if 'operator_id' in config_columns:
+            if 'settlement_account_id' in config_columns and len(config_columns) > 3:
                 connection.execute('ALTER TABLE cashier_device_config RENAME TO cashier_device_config_old')
                 connection.execute('''CREATE TABLE cashier_device_config (
                     registry_id TEXT PRIMARY KEY,
@@ -103,7 +103,7 @@ def initialize(database_path: str) -> None:
                 connection.execute('DROP TABLE cashier_device_config_old')
             connection.execute('DROP TABLE IF EXISTS cashiers')
 
-            # Keep one Admin account. Other historical WebUI roles are disabled.
+            # Keep exactly one active Admin super-admin account.
             admin_columns = {row[1] for row in connection.execute('PRAGMA table_info(admin_users)')}
             admins = connection.execute(
                 "SELECT admin_id FROM admin_users WHERE status='active' ORDER BY created_at,admin_id"
