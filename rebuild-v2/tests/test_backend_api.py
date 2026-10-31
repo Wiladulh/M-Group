@@ -2,6 +2,7 @@ import importlib
 import hashlib
 import io
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -629,6 +630,26 @@ class ServerApiTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM transactions WHERE request_id='shared-card-cash-0001'").fetchone()[0], 1)
         finally:
             db.close()
+
+
+    def test_member_uid_is_server_generated_and_sequential(self):
+        first = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'UID Sequence A', 'member_id': 'CUSTOM-001'})
+        second = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'UID Sequence B', 'member_id': 'CUSTOM-002'})
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertEqual(second.status_code, 201, second.text)
+        first_uid = first.json()['member_id']
+        second_uid = second.json()['member_id']
+        self.assertRegex(first_uid, r'^UID-[0-9]{5,}
+    unittest.main()
+)
+        self.assertRegex(second_uid, r'^UID-[0-9]{5,}
+    unittest.main()
+)
+        self.assertEqual(int(second_uid[4:]), int(first_uid[4:]) + 1)
+        self.assertNotEqual(first_uid, 'CUSTOM-001')
+        self.assertNotEqual(second_uid, 'CUSTOM-002')
 
 if __name__ == '__main__':
     unittest.main()
