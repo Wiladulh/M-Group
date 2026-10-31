@@ -19,7 +19,8 @@ class ServerApiTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         os.environ['MGROUP_DB_PATH'] = str(Path(cls.temp_dir.name) / 'server-test.sqlite3')
-        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'\n        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
+        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'
+        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
         os.environ['MGROUP_DEVICE_KEY_PEPPER'] = 'test-only-pepper'
         from mgroup_backend import config
         importlib.reload(config)
@@ -48,7 +49,8 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(response.json()['status'], 'active')
         return response.json()
     def admin_headers(self):
-        return {'Authorization': 'Bearer test-admin-token-long-enough'}
+        # The authenticated TestClient carries its HttpOnly session cookie automatically.
+        return {}
 
     def test_health_and_readiness(self):
         self.assertEqual(self.client.get('/api/v2/health').status_code, 200)
