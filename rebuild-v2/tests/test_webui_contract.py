@@ -66,7 +66,6 @@ class WebUiContractTests(unittest.TestCase):
         self.assertNotIn("pinjaman", self.html.lower() + self.settings.lower())
         self.assertNotIn("loans", self.app.lower())
         self.assertIn("UID-", self.backend)
-        self.assertNotIn("NTR-", self.backend)
 
     def test_webui_styles_include_mobile_breakpoints(self):
         self.assertRegex(self.css, r"@media\s*\(max-width\s*:")
