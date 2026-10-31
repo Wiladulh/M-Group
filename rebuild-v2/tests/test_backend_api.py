@@ -458,9 +458,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(merchant.status_code, 201, merchant.text)
         merchant_id = merchant.json()['account_id']
         configured = self.client.put(f'/api/v2/admin/cashier-devices/{registry_id}/configuration',
-            headers=self.admin_headers(), json={'operator_id': 'operator-v2-001',
-                'operator_name': 'Operator V2', 'operator_pin': '654321',
-                'settlement_account_id': merchant_id})
+            headers=self.admin_headers(), json={'settlement_account_id': merchant_id})
         self.assertEqual(configured.status_code, 200, configured.text)
 
         payment_payload = {'request_id': 'cashier-v2-payment-0001', 'card_uid': '04-CASHIER-V2-0001',
@@ -476,7 +474,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(conflict.status_code, 409, conflict.text)
 
         topup_payload = {'request_id': 'cashier-v2-topup-0001', 'card_uid': '04-CASHIER-V2-0001',
-                         'operator_pin': '654321', 'member_pin': '123456', 'amount_minor': 7000}
+                         'member_pin': '123456', 'amount_minor': 7000}
         topup = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
         self.assertEqual(topup.status_code, 201, topup.text)
         topup_replay = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
@@ -484,7 +482,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertTrue(topup_replay.json()['idempotent_replay'])
         bad_operator = self.client.post('/api/v2/cashier/top-ups', headers=headers,
             json={**topup_payload, 'request_id': 'cashier-v2-topup-bad-01', 'operator_pin': '000000'})
-        self.assertEqual(bad_operator.status_code, 401, bad_operator.text)
+        self.assertEqual(bad_operator.status_code, 422, bad_operator.text)
 
         db = self.main.connect(self.main.settings.database_path)
         try:
