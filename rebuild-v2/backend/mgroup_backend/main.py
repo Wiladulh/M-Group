@@ -567,10 +567,10 @@ def create_member(payload: MemberCreate, connection: DB):
             ids = connection.execute("SELECT member_id FROM members WHERE member_id GLOB 'UID-[0-9]*'").fetchall()
             largest = max((int(row['member_id'][4:]) for row in ids if row['member_id'][4:].isdigit()), default=0)
             member_id = f'UID-{largest + 1:05d}'
-            profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin','status'}, exclude_none=True)
-            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status,pin_hash) VALUES(?,?,?,?,?,?,?,?)',
+            profile = payload.model_dump(exclude={'display_name','nik','phone','email','status'}, exclude_none=True)
+            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status) VALUES(?,?,?,?,?,?,?)',
                 (member_id, display_name, payload.nik, payload.phone, payload.email,
-                 json.dumps(profile, separators=(',', ':')),payload.status,None))
+                 json.dumps(profile, separators=(',', ':')),payload.status))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
             audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
@@ -1988,10 +1988,10 @@ def create_member(payload: MemberCreate, connection: DB):
             ids = connection.execute("SELECT member_id FROM members WHERE member_id GLOB 'UID-[0-9]*'").fetchall()
             largest = max((int(row['member_id'][4:]) for row in ids if row['member_id'][4:].isdigit()), default=0)
             member_id = f'UID-{largest + 1:05d}'
-            profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin','status'}, exclude_none=True)
-            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status,pin_hash) VALUES(?,?,?,?,?,?,?,?)',
+            profile = payload.model_dump(exclude={'display_name','nik','phone','email','status'}, exclude_none=True)
+            connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status) VALUES(?,?,?,?,?,?,?)',
                 (member_id, display_name, payload.nik, payload.phone, payload.email,
-                 json.dumps(profile, separators=(',', ':')),payload.status,None))
+                 json.dumps(profile, separators=(',', ':')),payload.status))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
             audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
