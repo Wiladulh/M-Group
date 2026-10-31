@@ -13,28 +13,30 @@ from io import BytesIO
 from typing import Annotated
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import settings
 from .db import connect, initialize, transaction
-from .security import hash_secret, new_id, require_admin, verify_secret
+from .security import hash_secret, new_id, verify_secret
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail closed: without these secrets, admin auth is unavailable and card UID
     # hashes/device-key hashes would be stored without the configured pepper.
-    if not settings.admin_token or not settings.device_key_pepper:
-        raise RuntimeError('MGROUP_ADMIN_TOKEN and MGROUP_DEVICE_KEY_PEPPER must be configured')
+    if not settings.device_key_pepper:
+        raise RuntimeError('MGROUP_DEVICE_KEY_PEPPER must be configured')
     initialize(settings.database_path)
     bootstrap=connect(settings.database_path)
     try:
         with transaction(bootstrap):
             if not bootstrap.execute("SELECT 1 FROM admin_users LIMIT 1").fetchone():
-                bootstrap.execute("INSERT INTO admin_users(admin_id,username,password_hash,role,status) VALUES(?, 'admin', ?, 'super_admin', 'active')",
-                                  (new_id('adm'),pin_hash(settings.admin_token)))
+                if not settings.admin_username or not settings.admin_password:
+                    raise RuntimeError('Set MGROUP_ADMIN_USERNAME and MGROUP_ADMIN_PASSWORD during first server installation')
+                bootstrap.execute("INSERT INTO admin_users(admin_id,username,password_hash,role,status) VALUES(?,?,?,'super_admin','active')",
+                                  (new_id('adm'),settings.admin_username.strip().lower(),pin_hash(settings.admin_password)))
     finally:
         bootstrap.close()
     yield
@@ -242,14 +244,22 @@ def audit(connection, action, entity_type, entity_id, request_id=None, detail=No
         (new_id('aud'), 'server', action, entity_type, entity_id, request_id, json.dumps(detail or {}, separators=(',', ':'))))
 
 
-def require_admin_session(connection: DB, authorization: str | None = Header(default=None)):
-    if not authorization or not authorization.startswith('Bearer '):
-        raise HTTPException(status_code=401,detail={'code':'ADMIN_AUTH_REQUIRED'})
-    token=authorization[7:].strip()
+def require_admin_session(connection: DB, request: Request):
+    # Admin authentication is exclusively a server-side session cookie.
+    # Browser-origin checks plus SameSite=Strict protect state-changing requests.
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin=request.headers.get("origin")
+        if origin:
+            from urllib.parse import urlsplit
+            parsed=urlsplit(origin)
+            expected_host=request.headers.get("host","")
+            forwarded_proto=request.headers.get("x-forwarded-proto","").split(",")[0].strip()
+            expected_scheme=forwarded_proto or request.url.scheme
+            if parsed.netloc.lower()!=expected_host.lower() or parsed.scheme.lower()!=expected_scheme.lower():
+                raise HTTPException(status_code=403,detail={'code':'CROSS_ORIGIN_REQUEST_REJECTED'})
+    token=request.cookies.get("m_group_admin_session","")
     if not token:
         raise HTTPException(status_code=401,detail={'code':'ADMIN_AUTH_REQUIRED'})
-    if hmac.compare_digest(token,settings.admin_token):
-        return {'admin_id':None,'username':'bootstrap','role':'super_admin','session_id':None,'token':token,'bootstrap':True}
     digest=hash_secret(token,settings.device_key_pepper)
     row=connection.execute("""SELECT s.session_id,s.admin_id,u.username,u.role,u.status,s.expires_at
         FROM admin_sessions s JOIN admin_users u ON u.admin_id=s.admin_id
@@ -258,8 +268,11 @@ def require_admin_session(connection: DB, authorization: str | None = Header(def
     if not row:
         raise HTTPException(status_code=401,detail={'code':'ADMIN_SESSION_INVALID_OR_EXPIRED'})
     connection.execute("UPDATE admin_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?",(row['session_id'],))
-    result=dict(row);result['token']=token;result['bootstrap']=False
-    return result
+    return dict(row)
+
+def secure_admin_cookie(request: Request) -> bool:
+    forwarded=request.headers.get("x-forwarded-proto","").split(",")[0].strip().lower()
+    return request.url.scheme.lower()=="https" or forwarded=="https"
 
 def require_roles(*allowed_roles):
     def dependency(user=Depends(require_admin_session)):
@@ -269,13 +282,13 @@ def require_roles(*allowed_roles):
     return dependency
 
 @app.post('/api/v2/admin/auth/login')
-def admin_login(payload: AdminLogin, connection: DB):
+def admin_login(payload: AdminLogin, connection: DB, request: Request, response: Response):
     username=payload.username.strip().lower()
-    now_locked=False;error_status=0;token=None;user_result=None
+    error_status=0;token=None;user_result=None
     with transaction(connection):
         attempt=connection.execute("SELECT failed_attempts,locked_until FROM admin_login_attempts WHERE username=?",(username,)).fetchone()
         if attempt and attempt['locked_until'] and connection.execute("SELECT julianday(?)>julianday('now')",(attempt['locked_until'],)).fetchone()[0]:
-            now_locked=True;error_status=429
+            error_status=429
         else:
             user=connection.execute("SELECT admin_id,username,password_hash,role,status FROM admin_users WHERE username=?",(username,)).fetchone()
             valid=bool(user and user['status']=='active' and verify_pin(payload.password,user['password_hash']))
@@ -291,31 +304,33 @@ def admin_login(payload: AdminLogin, connection: DB):
                 connection.execute("DELETE FROM admin_login_attempts WHERE username=?",(username,))
                 token=secrets.token_urlsafe(32);session_id=new_id('ses')
                 connection.execute("""INSERT INTO admin_sessions(session_id,admin_id,token_hash,expires_at)
-                    VALUES(?,?,?,datetime('now','+8 hours'))""",
+                    VALUES(?,?,?,datetime('now','+12 hours'))""",
                     (session_id,user['admin_id'],hash_secret(token,settings.device_key_pepper)))
                 connection.execute("UPDATE admin_users SET last_login_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE admin_id=?",(user['admin_id'],))
                 audit(connection,'admin.login','admin_user',user['admin_id'],detail={'username':username,'role':user['role']})
                 user_result={'admin_id':user['admin_id'],'username':user['username'],'role':user['role'],'session_id':session_id}
     if error_status:
         raise HTTPException(status_code=error_status,detail={'code':'ADMIN_LOGIN_RATE_LIMITED' if error_status==429 else 'INVALID_ADMIN_CREDENTIALS'})
-    return {'access_token':token,'token_type':'Bearer','expires_in':28800,'user':user_result}
+    response.set_cookie(key='m_group_admin_session',value=token,httponly=True,secure=secure_admin_cookie(request),
+                        samesite='strict',path='/api/v2',max_age=None)
+    return {'authenticated':True,'user':user_result}
 
 @app.get('/api/v2/admin/auth/me',dependencies=[Depends(require_admin_session)])
 def admin_me(user=Depends(require_admin_session)):
-    return {'admin_id':user['admin_id'],'username':user['username'],'role':user['role'],'expires_at':user.get('expires_at'),'bootstrap':user['bootstrap']}
+    return {'admin_id':user['admin_id'],'username':user['username'],'role':user['role'],'expires_at':user.get('expires_at')}
 
 @app.post('/api/v2/admin/auth/logout',dependencies=[Depends(require_admin_session)])
-def admin_logout(connection: DB,user=Depends(require_admin_session)):
+def admin_logout(connection: DB,request: Request,response: Response,user=Depends(require_admin_session)):
     if user.get('session_id'):
         with transaction(connection):
             connection.execute("UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE session_id=? AND revoked_at IS NULL",(user['session_id'],))
             audit(connection,'admin.logout','admin_user',user['admin_id'],detail={'session_id':user['session_id']})
-    return {'logged_out':bool(user.get('session_id'))}
+    response.delete_cookie(key='m_group_admin_session',path='/api/v2',httponly=True,
+                           secure=secure_admin_cookie(request),samesite='strict')
+    return {'logged_out':True}
 
 @app.post('/api/v2/admin/auth/change-password',dependencies=[Depends(require_roles('super_admin','operator','auditor'))])
 def admin_change_password(payload: AdminPasswordChange, connection: DB, user=Depends(require_admin_session)):
-    if not user.get('admin_id'):
-        raise HTTPException(status_code=409,detail={'code':'BOOTSTRAP_TOKEN_HAS_NO_USER_PASSWORD'})
     if payload.new_password!=payload.confirm_password:
         raise HTTPException(status_code=422,detail={'code':'PASSWORD_CONFIRMATION_MISMATCH'})
     with transaction(connection):
