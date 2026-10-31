@@ -53,7 +53,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
 
     def create_member_with_balance(self, suffix):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
-            json={'display_name': f'Ledger {suffix}', 'pin': '123456'})
+            json={'display_name': f'Ledger {suffix}'})
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
@@ -113,7 +113,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         )
         self.assertEqual(product.status_code, 200, product.text)
         payload = {'request_id': 'purchase-idempotency-01', 'card_uid': card_uid,
-                   'pin': '123456', 'product_id': 1}
+                   'product_id': 1}
         first = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
         self.assertEqual(first.status_code, 201, first.text)
         self.assertEqual(first.json()['status'], 'pending', 'purchase must not be final before dispense confirmation')
@@ -167,7 +167,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         purchase = self.client.post('/api/v2/vending/purchases',
             headers={'X-Device-Key': vending['device_key']},
             json={'request_id': 'dispense-origin-request-01', 'card_uid': card_uid,
-                  'pin': '123456', 'product_id': 1})
+                  'product_id': 1})
         self.assertEqual(purchase.status_code, 201, purchase.text)
         transaction_id = purchase.json()['transaction_id']
 
@@ -208,7 +208,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         self.assertEqual(updated.status_code, 200, updated.text)
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers,
             json={'request_id': 'purchase-reconcile-01', 'card_uid': card_uid,
-                  'pin': '123456', 'product_id': 1})
+                  'product_id': 1})
         self.assertEqual(purchase.status_code, 201, purchase.text)
         failed = self.client.post(
             f"/api/v2/vending/transactions/{purchase.json()['transaction_id']}/dispense-result",
@@ -253,7 +253,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         purchase = self.client.post('/api/v2/vending/purchases',
             headers={'X-Device-Key': vending['device_key']},
             json={'request_id': 'purchase-reconcile-pending-01', 'card_uid': card_uid,
-                  'pin': '123456', 'product_id': 1})
+                  'product_id': 1})
         self.assertEqual(purchase.status_code, 201, purchase.text)
 
         report = self.client.get('/api/v2/admin/finance/reconciliation', headers=self.admin_headers())
@@ -275,7 +275,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
             headers=self.admin_headers(),
             json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 3, 'enabled': True})
         payload = {'request_id': 'purchase-concurrent-request-01', 'card_uid': card_uid,
-                   'pin': '123456', 'product_id': 1}
+                   'product_id': 1}
 
         def send_purchase(_):
             return self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
@@ -314,7 +314,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
             json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers,
             json={'request_id': 'purchase-concurrent-refund-01', 'card_uid': card_uid,
-                  'pin': '123456', 'product_id': 1})
+                  'product_id': 1})
         self.assertEqual(purchase.status_code, 201, purchase.text)
         transaction_id = purchase.json()['transaction_id']
 
