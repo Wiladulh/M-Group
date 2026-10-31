@@ -59,6 +59,7 @@ The canonical WebUI now includes username/password login, cookie-session restora
 - Exactly two actor categories exist: **Admin** (one super-admin account, also the WebUI administrator) and **Member** (client identity for NFC transactions).
 - No operator, teller, auditor, or additional WebUI admin roles exist. Their accounts, screens, APIs, schema fields, PINs, and authorization branches are removed.
 - Each Member receives a sequential server-generated UID (`UID-00001`, `UID-00002`, ...). Allocation is atomic in a database write transaction; Admin cannot type or edit it.
-- Cashier payment and top-up verify the Member PIN. No operator identity or operator PIN is required.
+- Member cards are identity only. Cashier and Vending transactions identify the Member by registered card UID; no Member PIN is requested.
+- Top-up is performed only by Admin from the server WebUI. Cashier has no top-up function or endpoint.
 - Cashier configuration stores only its settlement-account binding; device authentication remains based on Device Key.
 - Pertamini and loan features are deferred and excluded from active navigation and runtime scope.
