@@ -462,7 +462,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(configured.status_code, 200, configured.text)
 
         payment_payload = {'request_id': 'cashier-v2-payment-0001', 'card_uid': '04-CASHIER-V2-0001',
-                           'pin': '123456', 'amount_minor': 5000}
+                           'amount_minor': 5000}
         payment = self.client.post('/api/v2/cashier/payments', headers=headers, json=payment_payload)
         self.assertEqual(payment.status_code, 201, payment.text)
         self.assertEqual(payment.json()['balance_after_minor'], 25000)
@@ -473,28 +473,20 @@ class ServerApiTests(unittest.TestCase):
             json={**payment_payload, 'amount_minor': 6000})
         self.assertEqual(conflict.status_code, 409, conflict.text)
 
-        topup_payload = {'request_id': 'cashier-v2-topup-0001', 'card_uid': '04-CASHIER-V2-0001',
-                         'member_pin': '123456', 'amount_minor': 7000}
-        topup = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
-        self.assertEqual(topup.status_code, 201, topup.text)
-        topup_replay = self.client.post('/api/v2/cashier/top-ups', headers=headers, json=topup_payload)
-        self.assertEqual(topup_replay.status_code, 201, topup_replay.text)
-        self.assertTrue(topup_replay.json()['idempotent_replay'])
-        bad_operator = self.client.post('/api/v2/cashier/top-ups', headers=headers,
-            json={**topup_payload, 'request_id': 'cashier-v2-topup-bad-01', 'operator_pin': '000000'})
-        self.assertEqual(bad_operator.status_code, 422, bad_operator.text)
+        # Cashier has no top-up route; all credits are entered by Admin WebUI.
+        removed_topup = self.client.post('/api/v2/cashier/top-ups', headers=headers,
+            json={'request_id': 'cashier-v2-topup-0001', 'card_uid': '04-CASHIER-V2-0001',
+                  'amount_minor': 7000})
+        self.assertEqual(removed_topup.status_code, 404, removed_topup.text)
 
         db = self.main.connect(self.main.settings.database_path)
         try:
             payment_row = db.execute("SELECT transaction_id FROM transactions WHERE request_id=?",
                                      (payment_payload['request_id'],)).fetchone()
-            topup_row = db.execute("SELECT transaction_id FROM transactions WHERE request_id=?",
-                                   (topup_payload['request_id'],)).fetchone()
             self.assertIsNotNone(payment_row)
-            self.assertIsNotNone(topup_row)
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM transactions WHERE request_id IN (?,?)",
-                (payment_payload['request_id'], topup_payload['request_id'])).fetchone()[0], 2)
-            for transaction_id in (payment_row['transaction_id'], topup_row['transaction_id']):
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM transactions WHERE request_id=?",
+                (payment_payload['request_id'],)).fetchone()[0], 1)
+            for transaction_id in (payment_row['transaction_id'],):
                 totals = db.execute("SELECT SUM(CASE WHEN direction='debit' THEN amount_minor ELSE 0 END) debits, SUM(CASE WHEN direction='credit' THEN amount_minor ELSE 0 END) credits, COUNT(*) entries FROM ledger_entries WHERE transaction_id=?",
                                     (transaction_id,)).fetchone()
                 self.assertEqual(totals['debits'], totals['credits'])
@@ -502,7 +494,7 @@ class ServerApiTests(unittest.TestCase):
             member_balance = db.execute("SELECT balance_minor FROM accounts WHERE member_id=? AND account_type='member'",
                                         (member_id,)).fetchone()[0]
             merchant_balance = db.execute("SELECT balance_minor FROM accounts WHERE account_id=?", (merchant_id,)).fetchone()[0]
-            self.assertEqual(member_balance, 32000)
+            self.assertEqual(member_balance, 25000)
             self.assertEqual(merchant_balance, 5000)
         finally:
             db.close()
