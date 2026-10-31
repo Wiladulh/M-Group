@@ -38,6 +38,7 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 - * removes the last digit; # confirms the current amount/PIN.
 - NFC enrollment sessions created by the admin WebUI are polled from /api/v2/cashier/nfc-registration. The selected cashier advances the server-side session and submits card UID plus new PIN to the completion endpoint.
 - Payment/top-up request_id and amount are persisted before submission. Raw card UID and PIN are never written to NVS or Serial. If a response is lost, the user must tap the card and re-enter the PIN to retry the exact request ID.
+- After a confirmed payment/top-up, firmware attempts a fresh individual member-balance lookup and displays the updated balance. A failed refresh does not change the already-confirmed transaction result. This is not the requested mass cache synchronization.
 
 ## Vending workflow
 
