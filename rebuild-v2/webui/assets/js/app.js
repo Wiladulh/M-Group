@@ -479,16 +479,37 @@
 
   $("loginForm").addEventListener("submit",async event=>{
     event.preventDefault();
-    const token=$("loginPassword").value;
-    $("loginError").textContent="Memverifikasi token admin...";
+    const username=$("loginUsername").value.trim();
+    const password=$("loginPassword").value;
+    $("loginError").textContent="Memeriksa akun admin...";
     try {
-      await api.verifyToken(token);
+      const {data}=await api.login(username,password);
       $("loginPassword").value="";
-      unlockApp($("loginUsername").value.trim()||"admin");
-    } catch(e) { showLogin("Token admin ditolak atau API belum siap: "+errorText(e)); }
+      unlockApp(data.user.username);
+    } catch(e) { showLogin(e.status===429?"Terlalu banyak percobaan login. Coba kembali setelah 15 menit.":"Username atau password admin tidak valid."); }
   });
-  $("logoutButton").addEventListener("click",()=>{api.clearToken();showLogin("Token dihapus dari sesi browser.");});
-  if($("settingsLogout"))$("settingsLogout").addEventListener("click",()=>{api.clearToken();showLogin("Token dihapus dari sesi browser.");});
+  async function endAdminSession() {
+    try { await api.logout(); } catch (_) {}
+    showLogin("Sesi WebUI telah diakhiri.");
+  }
+  $("logoutButton").addEventListener("click",endAdminSession);
+  if($("settingsLogout"))$("settingsLogout").addEventListener("click",endAdminSession);
+  window.addEventListener("mgroup:unauthorized",()=>showLogin("Sesi WebUI berakhir. Silakan masuk kembali."));
+  $("accountSettings").addEventListener("submit",async event=>{
+    event.preventDefault();
+    const current=$("currentAdminPassword").value;
+    const next=$("newAdminPassword").value;
+    const confirm=$("confirmAdminPassword").value;
+    const result=$("accountSettingsResult");
+    if(next.length<12){result.textContent="Password baru minimal 12 karakter.";return;}
+    if(next!==confirm){result.textContent="Konfirmasi password baru tidak cocok.";return;}
+    if(next===current){result.textContent="Password baru harus berbeda dari password lama.";return;}
+    try {
+      await api.request("/admin/auth/change-password",{method:"POST",body:{current_password:current,new_password:next,confirm_password:confirm}});
+      $("accountSettings").reset();
+      result.textContent="Password berhasil diganti. Sesi WebUI saat ini tetap aktif; sesi lain telah dicabut.";
+    } catch(e) { result.textContent=errorText(e); }
+  });
   $("dashboardForm").addEventListener("submit",e=>{e.preventDefault();loadDashboard();});
   document.querySelectorAll("[data-analytics-period]").forEach(btn=>btn.addEventListener("click",()=>{
     document.querySelectorAll("[data-analytics-period]").forEach(b=>b.classList.toggle("active",b===btn));
@@ -547,8 +568,5 @@
   $("backupRestore").addEventListener("click",restoreBackup);
   if($("createMerchantAccount"))$("createMerchantAccount").addEventListener("click",createMerchantAccount);
   document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>btn.addEventListener("click",()=>switchTab(btn.dataset.tab)));
-  const savedToken=api.getToken();
-  if(savedToken) {
-    api.request("/admin/audit?limit=1").then(()=>unlockApp("admin")).catch(()=>{api.clearToken();showLogin("");});
-  } else showLogin("");
+  api.currentSession().then(({data})=>unlockApp(data.username)).catch(()=>showLogin(""));
 })();
