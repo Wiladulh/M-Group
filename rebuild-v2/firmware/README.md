@@ -23,14 +23,14 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 
 - A: payment, enter amount, then tap the registered Member card. No PIN or top-up menu exists on Cashier.
 - Top-up is performed only by Admin from the server WebUI.
-- * removes the last digit; # confirms the current amount/PIN.
-- NFC enrollment sessions created by the admin WebUI are polled from /api/v2/cashier/nfc-registration. The selected cashier advances the server-side session and submits card UID plus new PIN to the completion endpoint.
-- Payment/top-up request_id and amount are persisted before submission. Raw card UID and PIN are never written to NVS or Serial. If a response is lost, the user must tap the card and re-enter the PIN to retry the exact request ID.
+- * removes the last digit; # confirms the current amount.
+- NFC enrollment sessions created by the admin WebUI are polled from /api/v2/cashier/nfc-registration. The selected Cashier advances the server-side session and submits only the scanned card UID to the completion endpoint.
+- Payment request_id and amount are persisted before submission. Raw card UID is never written to NVS or Serial. If a response is lost, the Member taps the card again to retry the exact request ID.
 
 ## Vending workflow
 
 - UP/DOWN selects a fixed slot; SELECT begins a purchase only while a valid live server catalog is available.
-- The PIN is entered through the three-button interface: UP/DOWN changes the current digit and SELECT accepts it. Six digits are required.
+- The registered Member card UID identifies the Member; no PIN entry is required.
 - The server verifies expected_amount_minor against its current catalog price before debiting. QRIS is rejected until a provider integration is implemented.
 - The firmware persists the request ID and amount before purchase submission. After the server creates a pending purchase, the transaction ID and dispensing stage are persisted before the servo moves.
 - The IR sensor must observe a blocked-then-clear transition within four seconds. A failed dispense is reported to the server for atomic refund and stock restoration.
@@ -59,7 +59,7 @@ The Cashier target uses a dedicated 4 MiB single-factory-app partition table at 
 ## Security and recovery invariants
 
 - Device keys, Wi-Fi passwords, PINs, and raw card UIDs are not logged.
-- PIN and card UID are held in RAM only while completing a user operation.
+- Raw card UID is held in RAM only while completing a user operation.
 - Stable request IDs survive retries/reboots; request IDs are not regenerated while an operation is unresolved.
 - Physical dispensing is never repeated automatically after an ambiguous reboot.
 - Firmware compilation is verified by the v2 CI build; physical NFC, OLED, keypad, and power-recovery acceptance still requires the actual Cashier hardware.
