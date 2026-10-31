@@ -82,6 +82,10 @@ Request:
 4. Card UIDs are pepper-hashed before lookup and are not stored in transaction metadata or audit detail. PIN values are never written to logs or transaction metadata.
 5. Remaining: add operator disable/reset lifecycle, connect v2 firmware and WebUI, and complete clean-install/upgrade and end-to-end validation before release.
 
+## Balance cache synchronization status
+
+The current v2 Cashier firmware does not yet perform a mass member-balance snapshot on startup, Wi-Fi reconnect, or a periodic schedule. The v2 backend exposes only an individual card lookup. The database stores card UIDs as peppered hashes, so a bulk sync cannot return a UID-to-member map without a separately reviewed device-cache design (for example, a server-issued opaque card reference that can be matched locally, with explicit protection and revocation/freshness semantics). Do not export raw PINs, PIN verifiers, or unprotected card identifiers as a shortcut. Until this contract is implemented and tested, treat this acceptance item as NOT IMPLEMENTED.
+
 ## Required tests
 
 - Wrong device type, missing/invalid/revoked device key, inactive member/card/account, invalid PIN, lockout, and expired operator authorization.
