@@ -166,9 +166,9 @@ class DeviceProvision(BaseModel):
 
 
 class PurchaseRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
     payment_method: str = Field(default='nfc', pattern='^(nfc|qris)$')
     expected_amount_minor: int | None = Field(default=None, gt=0, le=100_000_000)
@@ -1062,48 +1062,11 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
     if payload.payment_method == 'qris':
         raise HTTPException(status_code=409, detail={'code': 'QRIS_PROVIDER_NOT_CONFIGURED'})
     digest = card_hash(payload.card_uid)
-    # Persist throttling in its own transaction so a rejected PIN does not roll
-    # back the security counter with the purchase transaction.
-    with transaction(connection):
-        pin_member = connection.execute(
-            "SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
-            (digest,)).fetchone()
-        if not pin_member or pin_member['status'] != 'active':
-            raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
-        attempt = connection.execute(
-            'SELECT failed_attempts,locked_until FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
-            (digest, device['hardware_id'])).fetchone()
-        card_attempt = connection.execute(
-            'SELECT failed_attempts,locked_until FROM pin_card_attempts WHERE card_hash=?',
-            (digest,)).fetchone()
-        locked = connection.execute(
-            "SELECT CASE WHEN (? IS NOT NULL AND julianday(?) > julianday('now')) OR (? IS NOT NULL AND julianday(?) > julianday('now')) THEN 1 ELSE 0 END",
-            (attempt['locked_until'] if attempt else None, attempt['locked_until'] if attempt else None,
-             card_attempt['locked_until'] if card_attempt else None, card_attempt['locked_until'] if card_attempt else None)).fetchone()[0]
-        if locked:
-            raise HTTPException(status_code=429, detail={'code': 'PIN_TEMPORARILY_LOCKED'})
-        if not verify_pin(payload.pin, pin_member['pin_hash']):
-            device_failures = (attempt['failed_attempts'] if attempt else 0) + 1
-            card_failures = (card_attempt['failed_attempts'] if card_attempt else 0) + 1
-            device_lock = device_failures >= 5
-            card_lock = card_failures >= 5
-            connection.execute(
-                "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
-                (digest, device['hardware_id'], device_failures, int(device_lock)))
-            connection.execute(
-                "INSERT INTO pin_card_attempts(card_hash,failed_attempts,locked_until,updated_at) VALUES(?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
-                (digest, card_failures, int(card_lock)))
-            pin_error = {'code': 'PIN_TEMPORARILY_LOCKED'} if card_lock or device_lock else {'code': 'INVALID_PIN'}
-        else:
-            connection.execute(
-                'DELETE FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
-                (digest, device['hardware_id']))
-            connection.execute(
-                'DELETE FROM pin_card_attempts WHERE card_hash=?',
-                (digest,))
-            pin_error = None
-    if pin_error:
-        raise HTTPException(status_code=429 if pin_error['code'] == 'PIN_TEMPORARILY_LOCKED' else 401, detail=pin_error)
+    member = connection.execute(
+        "SELECT m.member_id,m.status FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+        (digest,)).fetchone()
+    if not member or member['status'] != 'active':
+        raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
     try:
         with transaction(connection):
             prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,hardware_id,transaction_type,metadata_json FROM transactions WHERE request_id=?",
@@ -1120,12 +1083,10 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                         'amount_minor': prior['amount_minor'],
                         'balance_after_minor': current['balance_minor'] if current else None,
                         'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
-            member = connection.execute("SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+            member = connection.execute("SELECT m.member_id,m.status FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
                 (digest,)).fetchone()
             if not member or member['status'] != 'active':
                 raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
-            if not verify_pin(payload.pin, member['pin_hash']):
-                raise HTTPException(status_code=401, detail={'code': 'INVALID_PIN'})
             product = connection.execute('SELECT name,price_minor,stock,enabled FROM product_slots WHERE registry_id=? AND product_id=?',
                 (device['registry_id'], payload.product_id)).fetchone()
             if not product:
@@ -2536,48 +2497,11 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
     if payload.payment_method == 'qris':
         raise HTTPException(status_code=409, detail={'code': 'QRIS_PROVIDER_NOT_CONFIGURED'})
     digest = card_hash(payload.card_uid)
-    # Persist throttling in its own transaction so a rejected PIN does not roll
-    # back the security counter with the purchase transaction.
-    with transaction(connection):
-        pin_member = connection.execute(
-            "SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
-            (digest,)).fetchone()
-        if not pin_member or pin_member['status'] != 'active':
-            raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
-        attempt = connection.execute(
-            'SELECT failed_attempts,locked_until FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
-            (digest, device['hardware_id'])).fetchone()
-        card_attempt = connection.execute(
-            'SELECT failed_attempts,locked_until FROM pin_card_attempts WHERE card_hash=?',
-            (digest,)).fetchone()
-        locked = connection.execute(
-            "SELECT CASE WHEN (? IS NOT NULL AND julianday(?) > julianday('now')) OR (? IS NOT NULL AND julianday(?) > julianday('now')) THEN 1 ELSE 0 END",
-            (attempt['locked_until'] if attempt else None, attempt['locked_until'] if attempt else None,
-             card_attempt['locked_until'] if card_attempt else None, card_attempt['locked_until'] if card_attempt else None)).fetchone()[0]
-        if locked:
-            raise HTTPException(status_code=429, detail={'code': 'PIN_TEMPORARILY_LOCKED'})
-        if not verify_pin(payload.pin, pin_member['pin_hash']):
-            device_failures = (attempt['failed_attempts'] if attempt else 0) + 1
-            card_failures = (card_attempt['failed_attempts'] if card_attempt else 0) + 1
-            device_lock = device_failures >= 5
-            card_lock = card_failures >= 5
-            connection.execute(
-                "INSERT INTO pin_attempts(card_hash,hardware_id,failed_attempts,locked_until,updated_at) VALUES(?,?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash,hardware_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
-                (digest, device['hardware_id'], device_failures, int(device_lock)))
-            connection.execute(
-                "INSERT INTO pin_card_attempts(card_hash,failed_attempts,locked_until,updated_at) VALUES(?,?,CASE WHEN ? THEN datetime('now','+5 minutes') ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(card_hash) DO UPDATE SET failed_attempts=excluded.failed_attempts,locked_until=excluded.locked_until,updated_at=CURRENT_TIMESTAMP",
-                (digest, card_failures, int(card_lock)))
-            pin_error = {'code': 'PIN_TEMPORARILY_LOCKED'} if card_lock or device_lock else {'code': 'INVALID_PIN'}
-        else:
-            connection.execute(
-                'DELETE FROM pin_attempts WHERE card_hash=? AND hardware_id=?',
-                (digest, device['hardware_id']))
-            connection.execute(
-                'DELETE FROM pin_card_attempts WHERE card_hash=?',
-                (digest,))
-            pin_error = None
-    if pin_error:
-        raise HTTPException(status_code=429 if pin_error['code'] == 'PIN_TEMPORARILY_LOCKED' else 401, detail=pin_error)
+    member = connection.execute(
+        "SELECT m.member_id,m.status FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+        (digest,)).fetchone()
+    if not member or member['status'] != 'active':
+        raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
     try:
         with transaction(connection):
             prior = connection.execute("SELECT transaction_id,status,member_id,amount_minor,hardware_id,transaction_type,metadata_json FROM transactions WHERE request_id=?",
@@ -2594,12 +2518,10 @@ def purchase(payload: PurchaseRequest, connection: DB, x_device_key: Annotated[s
                         'amount_minor': prior['amount_minor'],
                         'balance_after_minor': current['balance_minor'] if current else None,
                         'balance_version': current['updated_at'] if current else None,'idempotent_replay': True}
-            member = connection.execute("SELECT m.member_id,m.status,m.pin_hash FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
+            member = connection.execute("SELECT m.member_id,m.status FROM member_cards c JOIN members m ON m.member_id=c.member_id WHERE c.card_uid_hash=? AND c.status='active'",
                 (digest,)).fetchone()
             if not member or member['status'] != 'active':
                 raise HTTPException(status_code=401, detail={'code': 'CARD_NOT_AUTHORIZED'})
-            if not verify_pin(payload.pin, member['pin_hash']):
-                raise HTTPException(status_code=401, detail={'code': 'INVALID_PIN'})
             product = connection.execute('SELECT name,price_minor,stock,enabled FROM product_slots WHERE registry_id=? AND product_id=?',
                 (device['registry_id'], payload.product_id)).fetchone()
             if not product:
