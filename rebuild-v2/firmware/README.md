@@ -4,7 +4,7 @@ This directory is the v2 firmware implementation. It targets only the /api/v2 co
 
 ## Environments
 
-- pio run -e cashier: ESP32 DevKit, LCD 16x2 I2C, 4x4 keypad, PN532 I2C preferred with RC522 SPI fallback.
+- pio run -e cashier: ESP32 DevKit, 0.96-inch SSD1306 OLED I2C, 4x4 keypad, and RC522 SPI only.
 - pio run -e vending: ESP32-S3, SSD1306 OLED, UP/DOWN/SELECT buttons, PN532 I2C preferred with RC522 SPI fallback, five servo outputs, one shared IR break-beam sensor.
 
 This source has NOT been compiled or hardware-tested yet. Do not flash production hardware until the requested full test phase passes and each pinout is confirmed against the actual board revision.
@@ -40,9 +40,9 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 ## Pin map
 
 ### Cashier ESP32 DevKit
-- LCD + PN532 I2C: SDA 21, SCL 22; PN532 IRQ 39, reset 5.
-- Keypad rows 32, 33, 25, 26; columns 13, 14, 16, 17.
-- RC522 fallback: SCK 18, MISO 19, MOSI 23, SS 27, RST 4.
+- SSD1306 OLED 0.96-inch I2C: SDA 21, SCL 22, address 0x3C.
+- RC522 SPI only: SCK 18, MISO 19, MOSI 23, SS 27, RST 4.
+- 4x4 keypad: rows 32, 33, 25, 26; columns 13, 14, 16, 17.
 
 ### Vending ESP32-S3
 - OLED + PN532 I2C: SDA 8, SCL 9; PN532 IRQ 7, reset 10.
