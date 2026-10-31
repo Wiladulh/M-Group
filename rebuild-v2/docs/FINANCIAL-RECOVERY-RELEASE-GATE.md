@@ -29,7 +29,7 @@ This runbook is an acceptance checklist, not evidence that a backup or restore h
 3. Start the exact application commit against the restored copy and verify readiness.
 4. Run ledger reconciliation: per-transaction debit total equals credit total; account balances reconcile; no duplicate request IDs; failed-dispense reversals and stock changes are idempotent.
 5. Exercise a test top-up, purchase, retry, failed dispense, and repeated refund using synthetic records only.
-6. Record duration, observed data-loss window, errors, application commit, schema, operator, and pass/fail. Repeat after schema or backup-process changes.
+6. Record duration, observed data-loss window, errors, application commit, schema, responsible Admin, and pass/fail. Repeat after schema or backup-process changes.
 
 ## Deployment and recovery gates
 
