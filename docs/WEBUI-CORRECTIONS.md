@@ -51,7 +51,7 @@ Demo HTML tidak terhubung ke backend dan perangkat fisik. Perilaku di atas baru 
 
 - Tab **Vending & Inventory** harus memiliki dropdown mesin yang diisi dari daftar vending yang dikenali/terdaftar oleh server; bukan daftar Machine ID statis di HTML.
 - Setiap entri mesin mengikat identitas perangkat yang stabil: device name/Machine ID, MAC address, kredensial perangkat terdaftar, status heartbeat/online-offline, dan metadata lokasi/nama tampilan.
-- Contoh label lokasi yang ditampilkan admin: `Vending48cd1` → **Depan Natura**, mesin kedua → **Dalam Natura**, mesin ketiga → **Sekolahan**. Nama lokasi adalah metadata yang dapat diubah admin; jangan menganggap lokasi bisa disimpulkan dari MAC.
+- Contoh label lokasi yang ditampilkan admin: `Vending48cd1` → **Depan Gedung**, mesin kedua → **Dalam Natura**, mesin ketiga → **Sekolahan**. Nama lokasi adalah metadata yang dapat diubah admin; jangan menganggap lokasi bisa disimpulkan dari MAC.
 - Dropdown dan tabel registry menampilkan nama lokasi, device name/Machine ID, MAC, dan status. Mesin offline tetap terlihat agar admin dapat memilih dan memeriksa katalog/stok terakhir yang diketahui, dengan status offline yang jelas.
 - Saat mesin dipilih, tabel katalog, stok, dan editor hanya menampilkan data milik mesin tersebut. Setiap mesin memiliki tepat lima Product ID (1–5); Product ID sama pada dua mesin tidak berbagi stok atau konfigurasi.
 - MAC address membantu identifikasi, tetapi bukan autentikasi yang cukup karena dapat dipalsukan. Implementasi nyata wajib mengikat perangkat melalui enrollment/credential perangkat dan heartbeat terautentikasi.
@@ -71,7 +71,7 @@ Keputusan proses:
 
 - [x] Demo berada di `demo/index.html`; URL publik yang dituju: https://wiladulh.github.io/M_GROUP/demo/
 - [x] Label DEMO MODE dan batasan simulasi browser.
-- [x] Member ID otomatis pada demo dengan format `NTR-00001`; tidak ada input Member ID manual.
+- [x] Member ID otomatis pada demo dengan format `UID-00001`; tidak ada input Member ID manual.
 - [x] Form member: nama, NIK, dropdown cashier, dan tombol Scan.
 - [x] Alur pesan simulasi cashier: “Silakan scan kartu”, lalu “Silakan masukkan PIN transaksi”.
 - [x] Tombol + top-up di dekat saldo member; ledger kredit ditambahkan dalam simulasi demo.
@@ -94,7 +94,7 @@ Perbaikan demo UI yang ditambahkan:
 - Panel rekonsiliasi demo memisahkan transaksi berhasil, menunggu, gagal, dan refund. Panel ini hanya ringkasan simulasi, bukan rekonsiliasi terhadap provider atau ledger produksi.
 - Tabel Member Registry juga menampilkan NIK dan pencarian mencakup Member ID, nama, serta NIK.
 - Alur top-up demo meminta nominal, referensi unik, keterangan/sumber setoran, dan konfirmasi sebelum membuat kredit ledger serta audit event. Data hanya hidup selama halaman terbuka.
-- Bagian Audit & Backup memuat matriks contoh peran Admin, Teller, dan Auditor. Ini dokumentasi UX saja; produksi harus menegakkan RBAC pada server/API.
+- Bagian Audit & Backup hanya dapat diakses Admin super-admin. Member tidak memiliki akun WebUI.
 - Label perangkat pada WebUI memakai istilah fungsional seperti Terminal Kasir dan Pengendali Vending; identitas perangkat menggunakan nama netral seperti `CASHIER-01`. Tidak menampilkan nama keluarga chipset/controller pada UI.
 - Halaman Perangkat & Koneksi menunjukkan kemampuan operasional, status konektivitas, dan kebijakan offline-first tanpa mengungkap platform hardware yang digunakan.
 
@@ -108,7 +108,7 @@ Prinsip wajib:
 ## 9. Penyederhanaan Member Identity dan Financial Core (revisi 2026-10-09)
 
 ### Member & Identity
-- Satu identitas anggota digunakan di seluruh UI: `Member ID` format `NTR-00001`, dst.
+- Satu identitas anggota digunakan di seluruh UI: `Member UID` format `UID-00001`, dst.
 - Tidak ada Account ID terpisah di antarmuka. Untuk model data saat ini, identitas rekening simpanan utama menggunakan Member ID yang sama; setiap referensi ledger/transaksi mengarah ke Member ID.
 - Kolom tabel Member Registry: Member ID, Nama, NIK, Nomor HP, Credential NFC, Status.
 - Form pendaftaran menampilkan Member ID otomatis di urutan paling atas (read-only), lalu Nama lengkap, NIK, Nomor HP, pemilihan terminal kasir, dan proses Scan NFC/PIN.
@@ -164,7 +164,7 @@ Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diu
 
 - **Vending & Inventory:** riwayat transaksi dan detail dispensing harus berada di halaman Vending & Inventory. Seluruh ringkasan, riwayat, katalog, dan event dispensing wajib mengikuti vending machine yang sedang dipilih pada dropdown; pergantian pilihan harus memperbarui seluruh data terkait secara konsisten.
 - Detail transaksi vending minimal mencakup waktu, ID transaksi, produk/Product ID, jumlah, harga satuan, total, metode pembayaran, status pembayaran, status dispensing, referensi pembayaran, dan status/refund jika terjadi kegagalan.
-- **Cashier:** sediakan menu/tab terpisah dari Vending & Inventory. Riwayat cashier minimal mencakup waktu, ID transaksi, perangkat, jenis penerimaan/pengeluaran, nominal, metode, akun/tujuan, referensi, operator bila relevan, status, dan catatan.
+- **Cashier:** sediakan menu/tab terpisah dari Vending & Inventory. Riwayat cashier minimal mencakup waktu, ID transaksi, perangkat, jenis transaksi, nominal, metode, Member, akun/tujuan, referensi, status, dan catatan.
 - Ringkasan penerimaan, pengeluaran, dan selisih bersih harus dihitung dari transaksi final yang sah; transaksi menunggu, gagal, dan refund tidak boleh keliru dihitung sebagai penerimaan final. Data demo hanya ilustrasi, sedangkan angka produksi wajib bersumber dari server/ledger.
 - Sediakan filter periode, jenis/status transaksi, serta akses Lihat detail. Kegagalan dispensing, status pembayaran, dan refund harus dapat ditelusuri dengan ID/korelasi transaksi yang sama.
 
@@ -185,3 +185,12 @@ Kontrak ini tidak berarti bahwa gerakan servo atau sensor produk fisik telah diu
 - Kredensial awal dibaca dari konfigurasi terlindungi, lalu disalin ke tabel `webui_admin_accounts` saat login pertama. Perubahan username/password disimpan di SQLite; password selalu berupa hash PBKDF2-SHA256. Gunakan `m-group hash-password` untuk membuat hash awal; jangan memasukkan password atau hash ke repository.
 - Migrasi `021_webui_sessions.sql` menambahkan tabel sesi dan catatan percobaan login. Installer/upgrade menyiapkan konfigurasi login jika belum tersedia.
 - Status implementasi ini tetap harus divalidasi oleh CI dan uji upgrade di lingkungan uji sebelum branch siap digabung.
+
+
+## 10. Keputusan final aktor dan fitur tertunda (revisi 2026-10-31)
+
+- Hanya ada dua aktor manusia: Admin (satu super-admin sekaligus administrator WebUI) dan Member (client transaksi dengan UID otomatis berurutan dari server).
+- Tidak ada akun Operator, Teller, atau Auditor; tidak ada PIN operator maupun pengikatan operator ke Cashier.
+- Perangkat Cashier dan Vending memakai autentikasi Device Key, bukan akun manusia.
+- Pertamini dan pinjaman tidak diaktifkan dan tidak tampil pada navigasi atau runtime v2.
+- Member UID tidak dapat diketik atau diubah Admin; UID berikutnya ditentukan server berdasarkan urutan pendaftaran.
