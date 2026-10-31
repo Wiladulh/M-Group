@@ -84,7 +84,7 @@ Request:
 
 ## Balance cache synchronization status
 
-The current v2 Cashier firmware does not yet perform a mass member-balance snapshot on startup, Wi-Fi reconnect, or a periodic schedule. The v2 backend exposes only an individual card lookup. The database stores card UIDs as peppered hashes, so a bulk sync cannot return a UID-to-member map without a separately reviewed device-cache design (for example, a server-issued opaque card reference that can be matched locally, with explicit protection and revocation/freshness semantics). Do not export raw PINs, PIN verifiers, or unprotected card identifiers as a shortcut. Until this contract is implemented and tested, treat this acceptance item as NOT IMPLEMENTED.
+The current v2 Cashier firmware now attempts an individual member-balance lookup after each confirmed payment/top-up and displays the latest balance when that lookup succeeds. The refresh is best-effort and never changes a confirmed transaction result. It does not yet perform a mass member-balance snapshot on startup, Wi-Fi reconnect, or a periodic schedule. The v2 backend exposes only an individual card lookup. The database stores card UIDs as peppered hashes, so a bulk sync cannot return a UID-to-member map without a separately reviewed device-cache design (for example, a server-issued opaque card reference that can be matched locally, with explicit protection and revocation/freshness semantics). Do not export raw PINs, PIN verifiers, or unprotected card identifiers as a shortcut. Until this contract is implemented and tested, treat this acceptance item as NOT IMPLEMENTED.
 
 ## Required tests
 
