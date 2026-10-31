@@ -1562,7 +1562,6 @@ def list_audit(connection: DB, limit: int = 100, action: str = '', entity_type: 
 WEBUI_DIR=Path(__file__).resolve().parents[2] / 'webui'
 if WEBUI_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(WEBUI_DIR), html=True), name="mgroup-v2-webui")
-)
 
 class NfcRegistrationComplete(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
