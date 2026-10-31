@@ -138,7 +138,8 @@ class CashierPaymentRequest(BaseModel):
 class CashierTopUpRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
+    member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
+    amount_minor: int = Field(gt=0, le=100_000_000)
 
 class CardEnroll(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
