@@ -17,7 +17,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import settings
 from .db import connect, initialize, transaction
@@ -125,6 +125,7 @@ class MerchantAccountCreate(BaseModel):
 
 
 class CashierDeviceConfigure(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     settlement_account_id: str = Field(min_length=1, max_length=128)
 
 
@@ -136,6 +137,7 @@ class CashierPaymentRequest(BaseModel):
 
 
 class CashierTopUpRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
     member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
