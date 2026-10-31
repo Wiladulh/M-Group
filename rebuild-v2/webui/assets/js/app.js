@@ -160,7 +160,7 @@
       const poll=async()=>{
         try {
           const {data:s}=await request("/admin/nfc-registration/"+encodeURIComponent(d.session_id));
-          const messages={scan_pending:"Menunggu Cashier memulai scan.",waiting_nfc:"Silakan tempelkan kartu NFC.",pin_pending:"Kartu terbaca. Silakan masukkan PIN anggota pada terminal.",processing:"Mendaftarkan kartu dan PIN.",completed:"Registrasi NFC berhasil.",failed:"Registrasi NFC gagal.",expired:"Sesi registrasi kedaluwarsa."};
+          const messages={scan_pending:"Menunggu Cashier memulai scan.",waiting_nfc:"Silakan tempelkan kartu NFC.",processing:"Mendaftarkan kartu.",completed:"Registrasi NFC berhasil.",failed:"Registrasi NFC gagal.",expired:"Sesi registrasi kedaluwarsa."};
           show("nfcRegistrationResult",(messages[s.status]||s.status)+" · "+d.session_id);
           if(["completed","failed","expired"].includes(s.status)){await loadMembers();return;}
           state.nfcTimer=setTimeout(poll,1800);
@@ -168,14 +168,6 @@
       };
       await poll();
     } catch(e) { show("nfcRegistrationResult",errorText(e),true); }
-  }
-  async function resetMemberPin(memberId) {
-    const pin=prompt("PIN anggota baru (6–12 digit):"); if(pin===null)return;
-    const reason=prompt("Alasan reset PIN (minimal 5 karakter):"); if(!reason)return;
-    try {
-      await request("/admin/members/"+encodeURIComponent(memberId)+"/reset-pin",{method:"POST",body:{pin,reason}});
-      show("memberAuthResult","PIN anggota berhasil diperbarui.");
-    } catch(e) { show("memberAuthResult",errorText(e),true); }
   }
   async function loadAccounts() {
     try {
@@ -520,7 +512,6 @@
     const id=b.dataset.memberId, member=state.members.find(m=>m.member_id===id);
     if(b.dataset.memberAction==="edit"&&member){fillMemberForm(member);$("memberName").focus();show("memberAuthResult","Mengedit anggota "+id+". Simpan Perubahan untuk memperbarui data.");}
     if(b.dataset.memberAction==="nfc"){ $("memberId").value=id; await loadCashierChoices(); $("nfcReplaceExisting").checked=Number(member?.active_cards||0)>0; $("nfcCashier").focus(); show("nfcRegistrationResult","Pilih Cashier aktif lalu mulai registrasi NFC untuk "+(member?.display_name||id)+"."); }
-    if(b.dataset.memberAction==="pin")resetMemberPin(id);
     if(b.dataset.memberAction==="cards") {
       try {
         const {data:d}=await request("/admin/members/"+encodeURIComponent(id)+"/cards");
