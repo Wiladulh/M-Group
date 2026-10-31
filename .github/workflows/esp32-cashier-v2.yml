@@ -26,16 +26,16 @@ jobs:
       - name: Build Cashier v2
         working-directory: rebuild-v2/firmware
         run: pio run -e cashier
-      - name: Build standalone OLED hardware test
+      - name: Build standalone Cashier hardware test
         working-directory: rebuild-v2/firmware
-        run: pio run -e cashier_oled_test
+        run: pio run -e cashier_hardware_test
       - name: Upload Cashier v2 firmware
         uses: actions/upload-artifact@v4
         with:
           name: m-group-cashier-v2-firmware
           path: rebuild-v2/firmware/.pio/build/cashier/firmware.bin
-      - name: Upload OLED hardware test firmware
+      - name: Upload Cashier hardware test firmware
         uses: actions/upload-artifact@v4
         with:
-          name: m-group-cashier-oled-hardware-test
-          path: rebuild-v2/firmware/.pio/build/cashier_oled_test/firmware.bin
+          name: m-group-cashier-hardware-test
+          path: rebuild-v2/firmware/.pio/build/cashier_hardware_test/firmware.bin
