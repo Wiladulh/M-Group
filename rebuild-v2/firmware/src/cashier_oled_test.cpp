@@ -6,7 +6,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// Standalone hardware diagnostic only. No Wi-Fi, server, member, or payment logic.
+// Standalone Cashier hardware diagnostic: ESP32 + SSD1306 OLED + RC522 + 4x4 keypad. No PN532, LCD, Wi-Fi, server, member, or payment logic.
 namespace {
 constexpr uint8_t OLED_SDA = 21;
 constexpr uint8_t OLED_SCL = 22;
@@ -94,7 +94,7 @@ void setup() {
   if (oledReady) {
     display.clearDisplay();
     display.display();
-    drawScreen("M-GROUP HARDWARE", "OLED SSD1306 OK", "Starting RC522...");
+    drawScreen("CASHIER HARDWARE", "OLED SSD1306 OK", "Starting RC522...");
   } else {
     Serial.println("ERROR: SSD1306 not found at I2C 0x3C");
   }
@@ -108,7 +108,7 @@ void setup() {
                 version, rfidReady ? "OK" : "NOT FOUND");
 
   if (oledReady) {
-    drawScreen("M-GROUP CASHIER", "OLED: OK", rfidReady ? "RC522: OK" : "RC522: ERROR",
+    drawScreen("CASHIER HARDWARE", "OLED: OK", rfidReady ? "RC522: OK" : "RC522: ERROR",
                "Tekan tombol keypad");
   }
   Serial.println("Hardware test ready. Keys: 0-9, *=backspace, #=confirm, A-D=control.");
