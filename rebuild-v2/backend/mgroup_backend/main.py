@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     bootstrap=connect(settings.database_path)
     try:
         with transaction(bootstrap):
-            if not bootstrap.execute("SELECT 1 FROM admin_users LIMIT 1").fetchone():
+            if not bootstrap.execute("SELECT 1 FROM admin_users WHERE status='active' LIMIT 1").fetchone():
                 username=settings.admin_username.strip().lower()
                 if not re.fullmatch(r'[a-z0-9_.-]{3,64}',username) or len(settings.admin_password)<12 or len(settings.admin_password)>128:
                     raise RuntimeError('Set a valid MGROUP_ADMIN_USERNAME (3-64 letters/numbers/._-) and MGROUP_ADMIN_PASSWORD (12-128 characters) during first server installation')
@@ -281,7 +281,7 @@ def admin_login(payload: AdminLogin, connection: DB, request: Request, response:
         if attempt and attempt['locked_until'] and connection.execute("SELECT julianday(?)>julianday('now')",(attempt['locked_until'],)).fetchone()[0]:
             error_status=429
         else:
-            user=connection.execute("SELECT admin_id,username,password_hash,role,status FROM admin_users WHERE username=?",(username,)).fetchone()
+            user=connection.execute("SELECT admin_id,username,password_hash,status FROM admin_users WHERE username=?",(username,)).fetchone()
             valid=bool(user and user['status']=='active' and verify_pin(payload.password,user['password_hash']))
             if not valid:
                 failures=(attempt['failed_attempts'] if attempt else 0)+1
