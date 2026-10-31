@@ -21,8 +21,8 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 
 ## Cashier workflow
 
-- A: payment, then enter amount, tap member card, enter member PIN.
-- B: top-up, then enter amount, tap member card, and enter Member PIN.
+- A: payment, enter amount, then tap the registered Member card. No PIN or top-up menu exists on Cashier.
+- Top-up is performed only by Admin from the server WebUI.
 - * removes the last digit; # confirms the current amount/PIN.
 - NFC enrollment sessions created by the admin WebUI are polled from /api/v2/cashier/nfc-registration. The selected cashier advances the server-side session and submits card UID plus new PIN to the completion endpoint.
 - Payment/top-up request_id and amount are persisted before submission. Raw card UID and PIN are never written to NVS or Serial. If a response is lost, the user must tap the card and re-enter the PIN to retry the exact request ID.
