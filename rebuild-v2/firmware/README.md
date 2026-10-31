@@ -6,8 +6,20 @@ This directory is the v2 firmware implementation. It targets only the /api/v2 co
 
 - pio run -e cashier: ESP32 DevKit, LCD 16x2 I2C, 4x4 keypad, PN532 I2C preferred with RC522 SPI fallback.
 - pio run -e vending: ESP32-S3, SSD1306 OLED, UP/DOWN/SELECT buttons, PN532 I2C preferred with RC522 SPI fallback, five servo outputs, one shared IR break-beam sensor.
+- pio run -e cashier_oled_test: standalone ESP32 bench diagnostic for 0.96-inch SSD1306 I2C OLED (0x3C), 4x4 matrix keypad, and RC522 SPI. This target does not include the server runtime and cannot perform member, payment, or top-up operations.
 
 This source has NOT been compiled or hardware-tested yet. Do not flash production hardware until the requested full test phase passes and each pinout is confirmed against the actual board revision.
+
+## Standalone Cashier OLED hardware test
+
+Build from this directory with `pio run -e cashier_oled_test`. Flash only the resulting `cashier_oled_test` environment to a bench ESP32. Open Serial Monitor at 115200 baud. The sketch checks OLED initialization, reads keypad keys (digits, `*`, `#`, and A-D), reports RC522 VersionReg, and displays a scanned card UID. It intentionally has no Wi-Fi, Device Key, server API, PIN verification, or financial transaction code. A successful compile is not proof of physical wiring or NFC read range.
+
+### Cashier OLED test pin map
+
+- OLED SSD1306 I2C 0.96 inch: VCC 3.3V, GND, SDA GPIO 21, SCL GPIO 22, address 0x3C.
+- Keypad 4x4: rows GPIO 32, 33, 25, 26; columns GPIO 13, 14, 16, 17.
+- RC522: 3.3V, GND, SCK GPIO 18, MISO GPIO 19, MOSI GPIO 23, SDA/SS GPIO 27, RST GPIO 4.
+- All grounds must be common. Never power RC522 from 5V or feed 5V logic into ESP32 GPIO. Check the OLED module voltage specification before connecting it.
 
 ## First boot and local WebUI
 
