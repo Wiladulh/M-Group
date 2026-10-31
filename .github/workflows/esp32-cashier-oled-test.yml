@@ -1,4 +1,4 @@
-name: ESP32 Cashier OLED Hardware Test Build
+name: ESP32 Cashier Hardware Test Build
 
 on:
   workflow_dispatch:
@@ -25,11 +25,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --upgrade platformio
-      - name: Build standalone hardware test firmware
+      - name: Build standalone Cashier hardware test firmware
         working-directory: rebuild-v2/firmware
-        run: pio run -e cashier_oled_test
+        run: pio run -e cashier_hardware_test
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: m-group-cashier-oled-hardware-test
-          path: rebuild-v2/firmware/.pio/build/cashier_oled_test/firmware.bin
+          name: m-group-cashier-hardware-test
+          path: rebuild-v2/firmware/.pio/build/cashier_hardware_test/firmware.bin
