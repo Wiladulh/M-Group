@@ -7,7 +7,7 @@ This directory is the v2 firmware implementation. It targets only the /api/v2 co
 - pio run -e cashier: ESP32 DevKit, 0.96-inch SSD1306 OLED I2C, 4x4 keypad, and RC522 SPI only.
 - pio run -e vending: ESP32-S3, SSD1306 OLED, UP/DOWN/SELECT buttons, PN532 I2C preferred with RC522 SPI fallback, five servo outputs, one shared IR break-beam sensor.
 
-This source has NOT been compiled or hardware-tested yet. Do not flash production hardware until the requested full test phase passes and each pinout is confirmed against the actual board revision.
+Firmware compilation is a required CI gate. Compilation does not replace physical acceptance testing; confirm the pinout against the actual board revision before flashing production hardware.
 
 ## First boot and local WebUI
 
@@ -44,6 +44,10 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 - RC522 SPI only: SCK 18, MISO 19, MOSI 23, SS 27, RST 4.
 - 4x4 keypad: rows 32, 33, 25, 26; columns 13, 14, 16, 17.
 
+### Cashier flash layout
+
+The Cashier target uses a dedicated 4 MiB single-factory-app partition table at `partitions/mgroup_cashier_4mb.csv`. The application partition is 0x3F0000 bytes and NVS is 0x5000 bytes. This target does not reserve a second OTA application slot; do not flash it to boards with less than 4 MiB flash.
+
 ### Vending ESP32-S3
 - OLED + PN532 I2C: SDA 8, SCL 9; PN532 IRQ 7, reset 10.
 - UP/DOWN/SELECT: GPIO 4/5/6 to GND using INPUT_PULLUP.
@@ -58,7 +62,7 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 - PIN and card UID are held in RAM only while completing a user operation.
 - Stable request IDs survive retries/reboots; request IDs are not regenerated while an operation is unresolved.
 - Physical dispensing is never repeated automatically after an ambiguous reboot.
-- No firmware build or hardware test has been run as part of the implementation phase.
+- Firmware compilation is verified by the v2 CI build; physical NFC, OLED, keypad, and power-recovery acceptance still requires the actual Cashier hardware.
 
 ## Product image synchronization and vending flash layout
 
