@@ -101,7 +101,7 @@
       {key:"phone",label:"No. HP"},{key:"balance_minor",label:"Saldo",render:r=>esc(money(r.balance_minor))},
       {key:"active_cards",label:"Kartu aktif",render:r=>esc(r.active_cards??"—")},
       {key:"status",label:"Status",render:r=>statusPill(r.status)},
-      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="pin" data-member-id="'+esc(r.member_id)+'">Reset PIN</button> <button type="button" data-member-action="cards" data-member-id="'+esc(r.member_id)+'">Kartu</button>'}
+      {key:"actions",label:"Aksi",render:r=>'<button type="button" data-member-action="edit" data-member-id="'+esc(r.member_id)+'">Edit</button> <button type="button" data-member-action="nfc" data-member-id="'+esc(r.member_id)+'">Daftar/Ganti NFC</button> <button type="button" data-member-action="cards" data-member-id="'+esc(r.member_id)+'">Kartu</button>'}
     ],"Belum ada anggota.");
   }
   function clearMemberForm() {
