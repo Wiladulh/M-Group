@@ -1,0 +1,35 @@
+name: ESP32 Cashier OLED Hardware Test Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "rebuild-v2/firmware/src/cashier_oled_test.cpp"
+      - "rebuild-v2/firmware/platformio.ini"
+      - ".github/workflows/esp32-cashier-oled-test.yml"
+  push:
+    paths:
+      - "rebuild-v2/firmware/src/cashier_oled_test.cpp"
+      - "rebuild-v2/firmware/platformio.ini"
+      - ".github/workflows/esp32-cashier-oled-test.yml"
+
+jobs:
+  build-cashier-oled-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade platformio
+      - name: Build standalone hardware test firmware
+        working-directory: rebuild-v2/firmware
+        run: pio run -e cashier_oled_test
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: m-group-cashier-oled-hardware-test
+          path: rebuild-v2/firmware/.pio/build/cashier_oled_test/firmware.bin
