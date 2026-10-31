@@ -7,7 +7,7 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 export MGROUP_ADMIN_USERNAME='admin'
-export MGROUP_ADMIN_PASSWORD='replace-with-a-unique-password-of-at-least-12-characters'
+export MGROUP_ADMIN_PASSWORD='replace-with-a-unique-password-of-12-to-128-characters'
 export MGROUP_DEVICE_KEY_PEPPER='set-a-separate-random-secret'
 uvicorn mgroup_backend.main:app --host 127.0.0.1 --port 8080
 ```
@@ -19,4 +19,4 @@ Implemented server surface currently includes health/readiness, username/passwor
 
 ## Administrator login
 
-On a fresh installation, set `MGROUP_ADMIN_USERNAME` and `MGROUP_ADMIN_PASSWORD` before the first server start. The server creates the initial super-admin account only when the admin table is empty; subsequent password changes are made inside WebUI Settings. Admin sessions are random server-side sessions delivered only in an HttpOnly, SameSite=Strict cookie, never a JavaScript-readable bearer token. The browser cookie is a session cookie and the server session expires after 12 hours. All state-changing admin requests validate the request Origin when supplied. Keep `MGROUP_DEVICE_KEY_PEPPER` stable and secret because it hashes server-side session identifiers.
+On a fresh installation, set `MGROUP_ADMIN_USERNAME` and `MGROUP_ADMIN_PASSWORD` before the first server start. The server creates the initial super-admin account only when the admin table is empty; subsequent password changes are made inside WebUI Settings. Admin sessions are random server-side sessions delivered only in an HttpOnly, SameSite=Strict cookie, never a JavaScript-readable bearer token. The browser cookie is a session cookie and the server session expires after 12 hours. All state-changing admin requests and login validate the request Origin when supplied. When deployed behind TLS termination, the reverse proxy must preserve the public `Host` header and overwrite `X-Forwarded-Proto` with `https` so the session cookie is marked Secure. Keep `MGROUP_DEVICE_KEY_PEPPER` stable and secret because it hashes server-side session identifiers. No Admin API Token or Authorization Bearer fallback is accepted by the v2 admin API.
