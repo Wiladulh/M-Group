@@ -86,7 +86,6 @@ class MemberCreate(BaseModel):
     citizenship: str | None = Field(default='WNI', max_length=32)
     registration_date: str | None = Field(default=None, max_length=10)
     status: str = Field(default='active', pattern='^(active|suspended|closed)$')
-    pin: str | None = Field(default=None, min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 class MemberUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -109,10 +108,6 @@ class MemberUpdate(BaseModel):
     citizenship: str | None = Field(default=None, max_length=32)
     registration_date: str | None = Field(default=None, max_length=10)
     status: str | None = Field(default=None, pattern='^(active|suspended|closed)$')
-
-class MemberPinReset(BaseModel):
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
-    reason: str = Field(min_length=5, max_length=200)
 
 class TopUpRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
@@ -575,14 +570,14 @@ def create_member(payload: MemberCreate, connection: DB):
             profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin','status'}, exclude_none=True)
             connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status,pin_hash) VALUES(?,?,?,?,?,?,?,?)',
                 (member_id, display_name, payload.nik, payload.phone, payload.email,
-                 json.dumps(profile, separators=(',', ':')),payload.status,pin_hash(payload.pin) if payload.pin else None))
+                 json.dumps(profile, separators=(',', ':')),payload.status,None))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
             audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'MEMBER_CREATE_CONFLICT'}) from exc
     return {'member_id': member_id, 'display_name': display_name, 'account_id': account_id,
             'nik': payload.nik, 'phone': payload.phone, 'email': payload.email,
-            'balance_minor': 0, 'status': payload.status, 'pin_configured': bool(payload.pin)}
+            'balance_minor': 0, 'status': payload.status, 'card_registration_required': True}
 
 @app.get('/api/v2/members', dependencies=[Depends(require_admin_session)])
 def list_members(connection: DB):
@@ -614,17 +609,6 @@ def update_member(member_id: str, payload: MemberUpdate, connection: DB):
         connection.execute(f"UPDATE members SET {sets},updated_at=CURRENT_TIMESTAMP WHERE member_id=?",values)
         audit(connection,'member.update','member',member_id,detail={'fields':sorted(payload.model_fields_set)})
     return {'member_id':member_id,'status':'updated'}
-
-@app.post('/api/v2/admin/members/{member_id}/reset-pin', dependencies=[Depends(require_admin_session)])
-def reset_member_pin(member_id: str, payload: MemberPinReset, connection: DB):
-    with transaction(connection):
-        row=connection.execute("SELECT status FROM members WHERE member_id=?",(member_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
-        connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
-                           (pin_hash(payload.pin),member_id))
-        audit(connection,'member.pin.reset','member',member_id,detail={'reason':payload.reason})
-    return {'member_id':member_id,'pin_configured':True}
 
 @app.get('/api/v2/admin/members/{member_id}/cards', dependencies=[Depends(require_admin_session)])
 def list_member_cards(member_id: str, connection: DB):
@@ -2049,17 +2033,6 @@ def update_member(member_id: str, payload: MemberUpdate, connection: DB):
         connection.execute(f"UPDATE members SET {sets},updated_at=CURRENT_TIMESTAMP WHERE member_id=?",values)
         audit(connection,'member.update','member',member_id,detail={'fields':sorted(payload.model_fields_set)})
     return {'member_id':member_id,'status':'updated'}
-
-@app.post('/api/v2/admin/members/{member_id}/reset-pin', dependencies=[Depends(require_admin_session)])
-def reset_member_pin(member_id: str, payload: MemberPinReset, connection: DB):
-    with transaction(connection):
-        row=connection.execute("SELECT status FROM members WHERE member_id=?",(member_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404,detail={'code':'MEMBER_NOT_FOUND'})
-        connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
-                           (pin_hash(payload.pin),member_id))
-        audit(connection,'member.pin.reset','member',member_id,detail={'reason':payload.reason})
-    return {'member_id':member_id,'pin_configured':True}
 
 @app.get('/api/v2/admin/members/{member_id}/cards', dependencies=[Depends(require_admin_session)])
 def list_member_cards(member_id: str, connection: DB):
