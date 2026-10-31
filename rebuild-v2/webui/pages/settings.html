@@ -1,21 +1,23 @@
 <div id="tab-settings" class="tab-pane">
   <section class="section">
-    <h2>Konfigurasi Administrator</h2>
-    <p class="hint">Clean-room v2 saat ini menggunakan satu Admin API Token dari environment server. Tidak ada akun username/password atau perubahan kredensial melalui WebUI pada implementasi ini; jangan tampilkan token kembali setelah login.</p>
-    <div class="grid">
-      <div class="card"><div class="label">Metode autentikasi</div><div class="value">Bearer token</div></div>
-      <div class="card"><div class="label">Penyimpanan browser</div><div class="value">Session-only</div></div>
-      <div class="card"><div class="label">Pengelolaan token</div><div class="value">Server secret / deployment</div></div>
-    </div>
-    <div id="accountSettingsResult" class="result" role="status">Token dikelola melalui secret MGROUP_ADMIN_TOKEN di lingkungan server. Rotasi token memerlukan perubahan secret dan restart terencana.</div>
-    <button type="button" id="settingsLogout">Keluar dari sesi browser</button>
+    <h2>Akun Administrator</h2>
+    <p class="hint">Ganti password dengan memasukkan password saat ini dan password baru dua kali. Password baru minimal 12 karakter.</p>
+    <form id="accountSettings" class="grid">
+      <label>Password lama<input id="currentAdminPassword" type="password" autocomplete="current-password" required></label>
+      <label>Password baru<input id="newAdminPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+      <label>Ulangi password baru<input id="confirmAdminPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+      <div><button type="submit">Simpan Password Baru</button></div>
+    </form>
+    <div id="accountSettingsResult" class="result" role="status"></div>
+    <button type="button" id="settingsLogout">Keluar dari sesi WebUI</button>
   </section>
   <section class="section">
-    <h2>Gerbang keamanan sebelum produksi</h2>
+    <h2>Keamanan Server</h2>
     <ul>
+      <li>Login admin menggunakan username dan password; sesi disimpan dalam cookie HttpOnly dan tidak mengekspos token ke JavaScript.</li>
       <li>Gunakan HTTPS/reverse proxy dan batasi akses jaringan ke dashboard.</li>
-      <li>Simpan MGROUP_ADMIN_TOKEN dan MGROUP_DEVICE_KEY_PEPPER di secret manager; jangan masukkan ke repository.</li>
-      <li>Rotasi device key melalui halaman Perangkat dan simpan key baru pada perangkat terkait.</li>
+      <li>Simpan MGROUP_DEVICE_KEY_PEPPER sebagai secret server; jangan masukkan ke repository.</li>
+      <li>Rotasi Device Key melalui halaman Perangkat dan simpan key baru pada perangkat terkait.</li>
       <li>Jalankan uji restore backup dan rekonsiliasi ledger sebelum cutover.</li>
       <li>Fitur Pertamini tetap nonaktif sampai spesifikasi hardware dan keselamatannya disetujui.</li>
     </ul>
