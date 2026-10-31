@@ -29,7 +29,12 @@ case "${1:-}" in
 esac
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)." >&2; exit 1; }
-command -v systemctl >/dev/null 2>&1 || { echo "systemd is required; use --no-service only for staging." >&2; [ "$NO_SERVICE" -eq 1 ] || exit 1; }
+if [ "$NO_SERVICE" -eq 0 ]; then
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] || {
+    echo "An active systemd system is required; use --no-service only for staging." >&2
+    exit 1
+  }
+fi
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 V2_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 [ -d "$V2_DIR/backend/mgroup_backend" ] || { echo "Cannot find rebuild-v2/backend/mgroup_backend." >&2; exit 1; }
@@ -55,6 +60,7 @@ PORT=${MGROUP_V2_PORT:-8080}
 case "$PORT" in ''|*[!0-9]*) echo "MGROUP_V2_PORT must be a TCP port number." >&2; exit 2 ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "MGROUP_V2_PORT must be 1..65535." >&2; exit 2; }
 case "$HOST" in *[!A-Za-z0-9.:_-]*) echo "Invalid MGROUP_V2_HOST." >&2; exit 2 ;; esac
+case "$PREFIX$DATA$CONFIG" in *[!A-Za-z0-9._/-]*) echo "Install, data and config paths may contain only letters, numbers, dot, underscore, slash and hyphen." >&2; exit 2 ;; esac
 
 SERVICE_USER=m-group-v2
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
@@ -66,7 +72,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   fi
 fi
 
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)-$
 RELEASE="$PREFIX/releases/$STAMP"
 mkdir -p "$RELEASE/backend" "$RELEASE/webui" "$PREFIX/releases" "$DATA" "$CONFIG"
 cp -R "$V2_DIR/backend/." "$RELEASE/backend/"
