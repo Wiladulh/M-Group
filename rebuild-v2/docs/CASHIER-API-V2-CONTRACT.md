@@ -1,6 +1,6 @@
 # Cashier API v2 — contract and implementation gate
 
-Status: read-only member-balance lookup, authenticated vending product catalog, cashier payment, and cashier top-up routes are now implemented in the v2 backend. The cashier routes bind operator and settlement configuration to the authenticated device, validate member PINs with persisted lockout, and use atomic ledger transactions. The added cashier regression tests and full validation matrix still need to be run after the rebuild work is complete.
+Status: read-only member-balance lookup, authenticated vending product catalog, cashier payment, and cashier top-up routes are now implemented in the v2 backend. The cashier routes bind only the settlement account to the authenticated device, validate member PINs with persisted lockout, and use atomic ledger transactions. The added cashier regression tests and full validation matrix still need to be run after the rebuild work is complete.
 
 ## Shared rules
 
@@ -42,7 +42,7 @@ Request:
 
 Response:
 ```json
-{"member_id":"NTR-00001","display_name":"Member","balance_minor":25000,"currency":"IDR"}
+{"member_id":"UID-00001","display_name":"Member","balance_minor":25000,"currency":"IDR"}
 ```
 
 - Valid only for an active, authenticated cashier or vending device and active member/card/account.
@@ -75,32 +75,32 @@ Implementation status: implemented in `rebuild-v2/backend/mgroup_backend/main.py
 
 Request:
 ```json
-{"request_id":"cashier-topup-0001","card_uid":"04A1B2C3","operator_pin":"••••","member_pin":"123456","amount_minor":10000}
+{"request_id":"cashier-topup-0001","card_uid":"04A1B2C3","member_pin":"123456","amount_minor":10000}
 ```
 
-- Require an active cashier device and an enrolled operator identity/PIN bound to that device; do not accept a caller-chosen operator identity.
-- Verify both operator PIN and member PIN, with throttling and audit of the outcome but never the secret values.
+- Require an active, authenticated Cashier device.
+- Verify the Member PIN with persisted throttling. No operator identity or PIN exists.
 - Atomically credit the member account and the backing system account, create balanced ledger entries, transaction, and audit event.
 - Replays return the original transaction. Reusing the request ID with a changed amount/card/device returns a conflict.
-- The API implementation now uses the existing server-side operator-to-device binding and settlement-account assignment. Remaining release work is to connect the firmware/UI, validate operator reset/revocation procedures, and run the final integration suite.
+- The API uses only the server-side settlement-account assignment. Remaining release work is to connect the firmware/UI and run the final integration suite.
 
 ## Implementation controls and remaining gaps
 
-1. Cashier device-to-operator binding and merchant settlement assignment are stored server-side; admin endpoints provision merchant settlement accounts and configure the cashier binding.
-2. Operator PINs and member PINs use salted PBKDF2 verifiers. Persisted failed-attempt counters apply a five-minute lock after five failures.
+1. Cashier device-to-settlement-account binding is stored server-side; admin endpoints provision merchant settlement accounts and configure the cashier binding.
+2. Member PINs use salted PBKDF2 verifiers. Persisted failed-attempt counters apply a five-minute lock after five failures.
 3. Payment and top-up transactions write transaction rows, balanced ledger entries, balance changes, and audit events atomically; request IDs are scoped globally and conflicting payloads return `409`.
 4. Card UIDs are pepper-hashed before lookup and are not stored in transaction metadata or audit detail. PIN values are never written to logs or transaction metadata.
-5. Remaining: add operator disable/reset lifecycle, connect v2 firmware and WebUI, and complete clean-install/upgrade and end-to-end validation before release.
+5. Remaining: connect v2 firmware and WebUI, and complete clean-install/upgrade and end-to-end validation before release.
 
 ## Required tests
 
-- Wrong device type, missing/invalid/revoked device key, inactive member/card/account, invalid PIN, lockout, and expired operator authorization.
+- Wrong device type, missing/invalid/revoked device key, inactive member/card/account, invalid PIN, lockout, and invalid member PIN lockout.
 - Successful payment has exactly one member debit and one merchant credit; repeated request has no additional ledger entries.
 - Successful top-up has exactly one member credit and one system-account debit; repeated request has no additional entries.
 - Request ID reused with a changed amount, card, device, or operation is rejected.
 - Concurrent duplicate requests create one transaction and one financial mutation.
 - Balance lookup is read-only and does not expose raw card UID, PIN, or card enrollment status.
-- Audit events identify the authenticated device and server-resolved operator/settlement account without recording secrets.
+- Audit events identify the authenticated device and server-resolved settlement account without recording secrets.
 
 ## Release gate
 
