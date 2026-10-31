@@ -57,6 +57,17 @@ class WebUiContractTests(unittest.TestCase):
         self.assertIn("/api/v2/admin/backup", self.backend)
         self.assertIn("/api/v2/admin/backup/restore", self.backend)
 
+
+    def test_only_admin_and_member_actor_model_is_exposed(self):
+        self.assertNotIn("operator", self.api + self.app + self.html + self.settings)
+        self.assertNotIn("auditor", self.backend)
+        self.assertNotIn("/admin/users", self.backend)
+        self.assertNotIn("pertamini", self.html.lower())
+        self.assertNotIn("pinjaman", self.html.lower() + self.settings.lower())
+        self.assertNotIn("loans", self.app.lower())
+        self.assertIn("UID-", self.backend)
+        self.assertNotIn("NTR-", self.backend)
+
     def test_webui_styles_include_mobile_breakpoints(self):
         self.assertRegex(self.css, r"@media\s*\(max-width\s*:")
 
