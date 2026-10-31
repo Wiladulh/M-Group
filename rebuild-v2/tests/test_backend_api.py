@@ -580,8 +580,7 @@ class ServerApiTests(unittest.TestCase):
         configured = self.client.put(
             f"/api/v2/admin/cashier-devices/{cashier.json()['registry_id']}/configuration",
             headers=self.admin_headers(),
-            json={'operator_id': 'shared-card-operator', 'operator_name': 'Operator',
-                  'operator_pin': '654321', 'settlement_account_id': merchant.json()['account_id']})
+            json={'settlement_account_id': merchant.json()['account_id']})
         self.assertEqual(configured.status_code, 200, configured.text)
 
         cashier_balance = self.client.post('/api/v2/devices/member-balance',
