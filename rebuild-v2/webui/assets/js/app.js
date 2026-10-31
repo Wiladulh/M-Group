@@ -378,12 +378,8 @@
     try {
       const id=$("cashierConfigDevice").value;
       if(!id)throw new Error("Pilih terminal Cashier.");
-      const {data:d}=await request("/admin/cashier-devices/"+encodeURIComponent(id)+"/configuration",{method:"PUT",body:{
-        operator_id:$("cashierOperatorId").value.trim(),operator_name:$("cashierOperatorName").value.trim(),
-        operator_pin:$("cashierOperatorPin").value,settlement_account_id:$("cashierSettlementAccount").value
-      }});
-      $("cashierOperatorPin").value="";
-      show("cashierConfigResult","Konfigurasi tersimpan untuk operator "+d.operator_name+".");
+      const {data:d}=await request("/admin/cashier-devices/"+encodeURIComponent(id)+"/configuration",{method:"PUT",body:{settlement_account_id:$("cashierSettlementAccount").value}});
+      show("cashierConfigResult","Rekening settlement tersimpan untuk terminal Cashier.");
     } catch(e) { show("cashierConfigResult",errorText(e),true); }
   }
   async function createMerchantAccount() {
