@@ -17,7 +17,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         os.environ['MGROUP_DB_PATH'] = str(Path(cls.temp_dir.name) / 'financial-idempotency.sqlite3')
-        os.environ['MGROUP_ADMIN_TOKEN'] = 'test-admin-token-long-enough'
+        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'\n        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
         os.environ['MGROUP_DEVICE_KEY_PEPPER'] = 'test-only-pepper'
         from mgroup_backend import config
         importlib.reload(config)
@@ -26,12 +26,16 @@ class FinancialIdempotencyTests(unittest.TestCase):
         cls.main = main
         cls.client = TestClient(main.app)
         cls.client.__enter__()
+        login = cls.client.post('/api/v2/admin/auth/login',
+            json={'username': 'admin', 'password': 'Test-Admin-Password-123'})
+        if login.status_code != 200:
+            raise AssertionError(f'Admin session bootstrap failed: {login.status_code} {login.text}')
 
     @classmethod
     def tearDownClass(cls):
         cls.client.__exit__(None, None, None)
         cls.temp_dir.cleanup()
-        for key in ('MGROUP_DB_PATH', 'MGROUP_ADMIN_TOKEN', 'MGROUP_DEVICE_KEY_PEPPER'):
+        for key in ('MGROUP_DB_PATH', 'MGROUP_ADMIN_USERNAME', 'MGROUP_ADMIN_PASSWORD', 'MGROUP_DEVICE_KEY_PEPPER'):
             os.environ.pop(key, None)
 
     def admin_headers(self):
