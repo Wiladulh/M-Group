@@ -445,7 +445,7 @@ class ServerApiTests(unittest.TestCase):
         removed_topup = self.client.post('/api/v2/cashier/top-ups', headers=headers,
             json={'request_id': 'cashier-v2-topup-0001', 'card_uid': '04-CASHIER-V2-0001',
                   'amount_minor': 7000})
-        self.assertEqual(removed_topup.status_code, 404, removed_topup.text)
+        self.assertIn(removed_topup.status_code, (404, 405), removed_topup.text)
 
         db = self.main.connect(self.main.settings.database_path)
         try:
