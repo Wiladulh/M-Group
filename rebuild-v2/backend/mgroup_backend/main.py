@@ -1567,7 +1567,6 @@ if WEBUI_DIR.is_dir():
 class NfcRegistrationComplete(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 
 class MemberBalanceLookup(BaseModel):
@@ -1583,9 +1582,9 @@ class DeviceProvision(BaseModel):
 
 
 class PurchaseRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     product_id: int = Field(ge=1, le=5)
     payment_method: str = Field(default='nfc', pattern='^(nfc|qris)$')
     expected_amount_minor: int | None = Field(default=None, gt=0, le=100_000_000)
