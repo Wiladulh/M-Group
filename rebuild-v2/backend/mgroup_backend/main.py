@@ -939,7 +939,7 @@ def nfc_registration_status(session_id: str, connection: DB):
             JOIN device_registry d ON d.registry_id=s.registry_id WHERE s.session_id=?""",(session_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404,detail={'code':'NFC_SESSION_NOT_FOUND'})
-        if row['status'] in ('scan_pending','waiting_nfc','pin_pending','processing') and row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+        if row['status'] in ('scan_pending','waiting_nfc','processing') and row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
             connection.execute("UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED' WHERE session_id=?",(session_id,))
             row=connection.execute("""SELECT s.session_id,s.member_id,s.registry_id,s.status,s.created_at,s.expires_at,
                 s.completed_at,s.error_code,m.display_name,d.hardware_id,d.display_name AS cashier_name
@@ -1025,8 +1025,6 @@ def cashier_nfc_registration_complete(payload: NfcRegistrationComplete, connecti
                 connection.execute("UPDATE member_cards SET status='revoked' WHERE member_id=? AND status='active'",(session['member_id'],))
             connection.execute("INSERT INTO member_cards(card_id,member_id,card_uid_hash,status) VALUES(?,?,?,'active')",
                                (new_id('card'),session['member_id'],digest))
-            connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
-                               (pin_hash(payload.pin),session['member_id']))
             connection.execute("""UPDATE nfc_registration_sessions SET status='completed',card_uid_hash=?,card_uid_hint=?,
                 completed_at=CURRENT_TIMESTAMP,error_code=NULL WHERE session_id=?""",
                 (digest,payload.card_uid.strip()[-4:],payload.session_id))
@@ -1994,14 +1992,14 @@ def create_member(payload: MemberCreate, connection: DB):
             profile = payload.model_dump(exclude={'display_name','nik','phone','email','pin','status'}, exclude_none=True)
             connection.execute('INSERT INTO members(member_id,display_name,nik,phone,email,profile_json,status,pin_hash) VALUES(?,?,?,?,?,?,?,?)',
                 (member_id, display_name, payload.nik, payload.phone, payload.email,
-                 json.dumps(profile, separators=(',', ':')),payload.status,pin_hash(payload.pin) if payload.pin else None))
+                 json.dumps(profile, separators=(',', ':')),payload.status,None))
             connection.execute("INSERT INTO accounts(account_id,member_id,account_type) VALUES(?,?,'member')", (account_id, member_id))
             audit(connection, 'member.create', 'member', member_id, detail={'nik_present': bool(payload.nik)})
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'MEMBER_CREATE_CONFLICT'}) from exc
     return {'member_id': member_id, 'display_name': display_name, 'account_id': account_id,
             'nik': payload.nik, 'phone': payload.phone, 'email': payload.email,
-            'balance_minor': 0, 'status': payload.status, 'pin_configured': bool(payload.pin)}
+            'balance_minor': 0, 'status': payload.status, 'card_registration_required': True}
 
 @app.get('/api/v2/members', dependencies=[Depends(require_admin_session)])
 def list_members(connection: DB):
@@ -2363,7 +2361,7 @@ def nfc_registration_status(session_id: str, connection: DB):
             JOIN device_registry d ON d.registry_id=s.registry_id WHERE s.session_id=?""",(session_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404,detail={'code':'NFC_SESSION_NOT_FOUND'})
-        if row['status'] in ('scan_pending','waiting_nfc','pin_pending','processing') and row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+        if row['status'] in ('scan_pending','waiting_nfc','processing') and row['expires_at']<=connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
             connection.execute("UPDATE nfc_registration_sessions SET status='expired',error_code='SESSION_EXPIRED' WHERE session_id=?",(session_id,))
             row=connection.execute("""SELECT s.session_id,s.member_id,s.registry_id,s.status,s.created_at,s.expires_at,
                 s.completed_at,s.error_code,m.display_name,d.hardware_id,d.display_name AS cashier_name
@@ -2449,8 +2447,6 @@ def cashier_nfc_registration_complete(payload: NfcRegistrationComplete, connecti
                 connection.execute("UPDATE member_cards SET status='revoked' WHERE member_id=? AND status='active'",(session['member_id'],))
             connection.execute("INSERT INTO member_cards(card_id,member_id,card_uid_hash,status) VALUES(?,?,?,'active')",
                                (new_id('card'),session['member_id'],digest))
-            connection.execute("UPDATE members SET pin_hash=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=?",
-                               (pin_hash(payload.pin),session['member_id']))
             connection.execute("""UPDATE nfc_registration_sessions SET status='completed',card_uid_hash=?,card_uid_hint=?,
                 completed_at=CURRENT_TIMESTAMP,error_code=NULL WHERE session_id=?""",
                 (digest,payload.card_uid.strip()[-4:],payload.session_id))
