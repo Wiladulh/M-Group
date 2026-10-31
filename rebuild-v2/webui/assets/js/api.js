@@ -1,21 +1,9 @@
-/* M-Group v2 API client. All admin calls use the environment-provisioned bearer token. */
+/* M-Group v2 API client. Admin access uses an HttpOnly server session cookie. */
 (() => {
   "use strict";
-  const tokenKey = "mgroup-v2-admin-token";
   const basePath = "/api/v2";
-  function getToken() {
-    try { return sessionStorage.getItem(tokenKey) || ""; } catch (_) { return ""; }
-  }
-  function setToken(token) {
-    try {
-      if (token) sessionStorage.setItem(tokenKey, token);
-      else sessionStorage.removeItem(tokenKey);
-    } catch (_) {}
-  }
   async function request(path, options = {}) {
     const headers = new Headers(options.headers || {});
-    const token = options.token || getToken();
-    if (token) headers.set("Authorization", "Bearer " + token);
     let body = options.body;
     if (body !== undefined && body !== null && !(body instanceof FormData) && typeof body !== "string") {
       headers.set("Content-Type", "application/json");
@@ -38,26 +26,21 @@
       const error = new Error(String(detail || ("HTTP_" + response.status)));
       error.status = response.status;
       error.data = data;
+      if (response.status === 401 && !path.endsWith("/auth/login")) {
+        window.dispatchEvent(new Event("mgroup:unauthorized"));
+      }
       throw error;
     }
     return { response, data };
   }
-  async function verifyToken(token) {
-    setToken(token);
-    try {
-      await request("/admin/audit?limit=1");
-      return true;
-    } catch (error) {
-      setToken("");
-      throw error;
-    }
+  async function login(username, password) {
+    return request("/admin/auth/login", { method: "POST", body: { username, password } });
   }
-  window.MGroupApiV2 = Object.freeze({
-    basePath,
-    request,
-    getToken,
-    setToken,
-    clearToken: () => setToken(""),
-    verifyToken
-  });
+  async function currentSession() {
+    return request("/admin/auth/me");
+  }
+  async function logout() {
+    return request("/admin/auth/logout", { method: "POST" });
+  }
+  window.MGroupApiV2 = Object.freeze({ basePath, request, login, currentSession, logout });
 })();
