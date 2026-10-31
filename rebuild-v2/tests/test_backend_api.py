@@ -19,7 +19,7 @@ class ServerApiTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         os.environ['MGROUP_DB_PATH'] = str(Path(cls.temp_dir.name) / 'server-test.sqlite3')
-        os.environ['MGROUP_ADMIN_TOKEN'] = 'test-admin-token-long-enough'
+        os.environ['MGROUP_ADMIN_USERNAME'] = 'admin'\n        os.environ['MGROUP_ADMIN_PASSWORD'] = 'Test-Admin-Password-123'
         os.environ['MGROUP_DEVICE_KEY_PEPPER'] = 'test-only-pepper'
         from mgroup_backend import config
         importlib.reload(config)
@@ -28,12 +28,16 @@ class ServerApiTests(unittest.TestCase):
         cls.main = main
         cls.client = TestClient(main.app)
         cls.client.__enter__()
+        login = cls.client.post('/api/v2/admin/auth/login',
+            json={'username': 'admin', 'password': 'Test-Admin-Password-123'})
+        if login.status_code != 200:
+            raise AssertionError(f'Admin session bootstrap failed: {login.status_code} {login.text}')
 
     @classmethod
     def tearDownClass(cls):
         cls.client.__exit__(None, None, None)
         cls.temp_dir.cleanup()
-        for key in ('MGROUP_DB_PATH', 'MGROUP_ADMIN_TOKEN', 'MGROUP_DEVICE_KEY_PEPPER'):
+        for key in ('MGROUP_DB_PATH', 'MGROUP_ADMIN_USERNAME', 'MGROUP_ADMIN_PASSWORD', 'MGROUP_DEVICE_KEY_PEPPER'):
             os.environ.pop(key, None)
 
     def activate_device(self, provisioned, hardware_id):
@@ -52,28 +56,39 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['database'], 'ok')
 
-    def test_admin_routes_require_token(self):
-        response = self.client.post('/api/v2/members', json={'display_name': 'Ayu'})
-        self.assertEqual(response.status_code, 401)
+    def test_admin_routes_require_session_cookie(self):
+        with TestClient(self.main.app) as anonymous:
+            response = anonymous.post('/api/v2/members', json={'display_name': 'Ayu'})
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(anonymous.post('/api/v2/members',
+                headers={'Authorization': 'Bearer test-admin-token-long-enough'},
+                json={'display_name': 'Bearer Must Not Authenticate'}).status_code, 401)
+            login = anonymous.post('/api/v2/admin/auth/login',
+                json={'username': 'admin', 'password': 'Test-Admin-Password-123'})
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertNotIn('access_token', login.json())
+            self.assertIn('httponly', login.headers.get('set-cookie', '').lower())
+            self.assertEqual(anonymous.post('/api/v2/members',
+                json={'display_name': 'Ayu'}).status_code, 201)
 
-    def test_admin_read_and_write_routes_reject_missing_or_invalid_tokens(self):
-        protected_reads = (
-            '/api/v2/members',
-            '/api/v2/vending/devices',
-            '/api/v2/admin/audit',
-            '/api/v2/admin/finance/reconciliation',
-        )
-        for path in protected_reads:
-            with self.subTest(path=path):
-                self.assertEqual(self.client.get(path).status_code, 401)
-                self.assertEqual(self.client.get(path, headers={'Authorization': 'Bearer wrong-token'}).status_code, 401)
-
-        denied = self.client.post('/api/v2/admin/devices',
-            json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'})
-        self.assertEqual(denied.status_code, 401, denied.text)
-        self.assertEqual(self.client.post('/api/v2/admin/devices',
-            headers={'Authorization': 'Bearer wrong-token'},
-            json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'}).status_code, 401)
+    def test_admin_read_and_write_routes_reject_missing_or_invalid_sessions(self):
+        with TestClient(self.main.app) as anonymous:
+            protected_reads = (
+                '/api/v2/members',
+                '/api/v2/vending/devices',
+                '/api/v2/admin/audit',
+                '/api/v2/admin/finance/reconciliation',
+            )
+            for path in protected_reads:
+                with self.subTest(path=path):
+                    self.assertEqual(anonymous.get(path).status_code, 401)
+                    self.assertEqual(anonymous.get(path, headers={'Authorization': 'Bearer wrong-token'}).status_code, 401)
+            denied = anonymous.post('/api/v2/admin/devices',
+                json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'})
+            self.assertEqual(denied.status_code, 401, denied.text)
+            self.assertEqual(anonymous.post('/api/v2/admin/devices',
+                headers={'Authorization': 'Bearer wrong-token'},
+                json={'hardware_id': 'unauthorized-device', 'device_type': 'vending', 'display_name': 'Unauthorized'}).status_code, 401)
 
     def test_device_provisioning_and_authentication(self):
         response = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
