@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI):
         with transaction(bootstrap):
             if not bootstrap.execute("SELECT 1 FROM admin_users LIMIT 1").fetchone():
                 username=settings.admin_username.strip().lower()
-                if not re.fullmatch(r'[a-z0-9_.-]{3,64}',username) or len(settings.admin_password)<12:
-                    raise RuntimeError('Set a valid MGROUP_ADMIN_USERNAME (3-64 letters/numbers/._-) and MGROUP_ADMIN_PASSWORD (at least 12 characters) during first server installation')
+                if not re.fullmatch(r'[a-z0-9_.-]{3,64}',username) or len(settings.admin_password)<12 or len(settings.admin_password)>128:
+                    raise RuntimeError('Set a valid MGROUP_ADMIN_USERNAME (3-64 letters/numbers/._-) and MGROUP_ADMIN_PASSWORD (12-128 characters) during first server installation')
                 bootstrap.execute("INSERT INTO admin_users(admin_id,username,password_hash,role,status) VALUES(?,?,?,'super_admin','active')",
                                   (new_id('adm'),username,pin_hash(settings.admin_password)))
     finally:
