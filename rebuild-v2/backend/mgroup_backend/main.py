@@ -1818,12 +1818,6 @@ async def restore_backup(connection: DB, file: UploadFile = File(...)):
     return {'status':'restored','integrity_check':'ok','foreign_key_errors':0,'backup_sha256':manifest['sha256'],
             'warning':'Database replaced atomically after all existing shared-lock connections completed.'}
 
-# Serve the canonical v2 WebUI from the same origin as the API so HttpOnly
-# admin session cookies and same-origin API requests work without a second server.
-WEBUI_DIR=Path(__file__).resolve().parents[2] / 'webui'
-if WEBUI_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(WEBUI_DIR), html=True), name="mgroup-v2-webui")
-
 
 @app.get('/api/v2/admin/audit', dependencies=[Depends(require_admin_session)])
 def list_audit(connection: DB, limit: int = 100, action: str = '', entity_type: str = '',
@@ -1844,3 +1838,10 @@ def list_audit(connection: DB, limit: int = 100, action: str = '', entity_type: 
         except (TypeError,ValueError):item['detail']={}
         items.append(item)
     return {'items':items}
+
+# Serve the canonical v2 WebUI from the same origin as the API so HttpOnly
+# admin session cookies and same-origin API requests work without a second server.
+WEBUI_DIR=Path(__file__).resolve().parents[2] / 'webui'
+if WEBUI_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(WEBUI_DIR), html=True), name="mgroup-v2-webui")
+
