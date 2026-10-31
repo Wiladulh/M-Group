@@ -285,6 +285,15 @@ def require_roles(*allowed_roles):
 
 @app.post('/api/v2/admin/auth/login')
 def admin_login(payload: AdminLogin, connection: DB, request: Request, response: Response):
+    origin=request.headers.get("origin")
+    if origin:
+        from urllib.parse import urlsplit
+        parsed=urlsplit(origin)
+        expected_host=request.headers.get("host","")
+        forwarded_proto=request.headers.get("x-forwarded-proto","").split(",")[0].strip()
+        expected_scheme=forwarded_proto or request.url.scheme
+        if parsed.netloc.lower()!=expected_host.lower() or parsed.scheme.lower()!=expected_scheme.lower():
+            raise HTTPException(status_code=403,detail={'code':'CROSS_ORIGIN_REQUEST_REJECTED'})
     username=payload.username.strip().lower()
     error_status=0;token=None;user_result=None
     with transaction(connection):
