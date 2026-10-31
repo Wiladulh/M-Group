@@ -49,6 +49,18 @@ String responseCode(const String& body) {
   }
   return "";
 }
+bool refreshMemberBalance(const String& cardUid,long& balance) {
+  if(cardUid.isEmpty()||!mgroup.wifiConnected())return false;
+  JsonDocument lookup;lookup["card_uid"]=cardUid;
+  String body;serializeJson(lookup,body);
+  String response;int status=-1;
+  if(!mgroup.apiPost("/api/v2/devices/member-balance",body,response,status))return false;
+  JsonDocument result;
+  if(deserializeJson(result,response)!=DeserializationError::Ok||!result["balance_minor"].is<long>())return false;
+  balance=result["balance_minor"].as<long>();
+  return true;
+}
+
 void finishRequest(const String& path,const String& body) {
   String response;int status=-1;bool ok=mgroup.apiPost(path,body,response,status);
   pinDigits="";operatorPin="";
@@ -56,8 +68,15 @@ void finishRequest(const String& path,const String& body) {
     JsonDocument doc;deserializeJson(doc,response);
     String tx=doc["transaction_id"]|String("");
     String state=doc["status"]|String("succeeded");
+    // Always attempt a fresh server read after a committed payment/top-up.
+    // A failed read never changes the already-confirmed transaction result.
+    long latestBalance=-1;
+    bool balanceFresh=refreshMemberBalance(pendingCardUid,latestBalance);
     clearPending();mode=HOME;pendingCardUid="";
     lines(state=="succeeded"?"TRANSAKSI OK":"TRANSAKSI",tx.length()?tx.substring(0,16):state);
+    delay(1000);
+    if(balanceFresh)lines("SALDO TERBARU","Rp "+String(latestBalance));
+    else lines("TRANSAKSI OK","Saldo sync pending");
     delay(1400);lines("A=Bayar B=Topup","Tempel kartu saat diminta");
     return;
   }
