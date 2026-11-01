@@ -87,6 +87,18 @@ class WebUiContractTests(unittest.TestCase):
         self.assertNotIn("TOPUP", self.cashier_firmware.upper())
         self.assertNotIn("TOPUP", self.firmware.upper())
 
+    def test_financial_ui_is_topup_only_and_requires_confirmation(self):
+        financial = (WEBUI / "pages" / "financial.html").read_text(encoding="utf-8")
+        self.assertIn("Top Up Saldo Member", financial)
+        self.assertIn("Keterangan penerimaan uang tunai", financial)
+        self.assertIn('id="financialRequestId"', financial)
+        self.assertNotIn("Penarikan", financial)
+        self.assertNotIn('id="direction"', financial)
+        self.assertIn("window.confirm(confirmation)", self.app)
+        self.assertIn('request("/finance/top-ups"', self.app)
+        self.assertNotIn("/finance/withdrawals", self.app)
+        self.assertNotIn("/api/v2/finance/withdrawals", self.backend)
+
     def test_webui_styles_include_mobile_breakpoints(self):
         self.assertRegex(self.css, r"@media\s*\(max-width\s*:")
 
