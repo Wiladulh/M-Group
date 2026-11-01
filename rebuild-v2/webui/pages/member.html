@@ -6,6 +6,8 @@
       <label>Member ID<input id="memberId" placeholder="dibuat otomatis oleh server" readonly></label>
       <label>NIK<input id="memberNik" inputmode="numeric" minlength="16" maxlength="16" pattern="[0-9]{16}" required></label>
       <label>Nama Lengkap<input id="memberName" required></label>
+      <label>PIN Transaksi Member (opsional, 6–12 digit)<input id="memberPin" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="[0-9]{6,12}" autocomplete="new-password"></label>
+      <p class="hint" style="grid-column:1/-1">PIN boleh ditetapkan sekarang atau nanti saat penautan kartu NFC melalui Cashier. PIN tidak ditampilkan kembali setelah disimpan.</p>
       <label>Tempat Lahir<input id="memberBirthPlace"></label>
       <label>Tanggal Lahir<input id="memberBirthDate" type="date"></label>
       <label>Jenis Kelamin<select id="memberSex"><option value="">Pilih</option><option>Laki-laki</option><option>Perempuan</option></select></label>
