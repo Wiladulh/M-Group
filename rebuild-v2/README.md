@@ -40,7 +40,7 @@ The v2 source includes the Server WebUI username/password login with HttpOnly se
 
 Regression coverage includes Admin session controls, Member/NFC/PIN flows, Cashier and Vending payments, top-up idempotency, ledger reconciliation, image delivery, WebUI contracts, and card replacement. Additional tests now explicitly guard Member PIN preservation on NFC card replacement and the Admin-only top-up boundary.
 
-**Validation is not yet release approval:** the latest source changes have not been confirmed by a completed CI run in this session. Both PlatformIO targets must compile, the full v2 Python test suite must pass, and WebUI/browser, installation, backup/restore, and physical-device acceptance must be recorded. Do not merge to `main` or deploy until those gates pass and the owner approves.
+**Validation is not release approval:** the previously locked baseline had a CI run recorded as 49/49 Python tests passing, with Cashier ESP32 and Vending ESP32-S3 firmware compilation passing. Those results apply only to that baseline commit, not to later changes. Every new rebuild-v2 change must pass its own CI run, including the browser suite, before it can be considered PASS. Operational installation/restore rehearsal and physical-device acceptance remain separate release gates. Do not merge to `main` or deploy until all gates pass and the owner approves.
 
 ## Simplified actors and deferred features
 
