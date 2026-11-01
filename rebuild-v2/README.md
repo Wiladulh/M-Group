@@ -45,3 +45,13 @@ Regression coverage includes Admin session controls, Member/NFC/PIN flows, Cashi
 ## Simplified actors and deferred features
 
 Only two actor categories are supported: one Admin super-admin account for WebUI management, and Members as transaction clients with sequential server-generated `UID-00001` identifiers. Operator and auditor roles, operator PINs, and operator-to-cashier bindings are removed. Pertamini and loan features are deferred and excluded from active navigation and runtime scope.
+
+
+## Validation status — finance/recovery hardening PR
+
+The CI run for commit `62f5d301a2db674b60a9f8ac5b2be60c5a719d7f` passed:
+- 54 server, schema, and contract tests.
+- Chromium WebUI E2E workflow: login, navigation across all nine WebUI tabs, member creation, top-up confirmation cancellation and approval, receipt-note display, and resulting member balance.
+- Cashier ESP32 and Vending ESP32-S3 firmware compilation.
+
+This is CI evidence for the hardening PR branch, not a claim that the changes are merged into the clean-room baseline. An install-level operational backup/restore rehearsal and physical-device acceptance are still outstanding release gates. The PR remains draft pending review and owner approval.
