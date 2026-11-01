@@ -21,6 +21,7 @@ with sync_playwright() as p:
     page.locator("#memberForm button[type=submit]").click()
     page.get_by_text("Browser E2E Member", exact=False).wait_for()
     page.locator('.tab-btn[data-tab="financial"]').click()
+    page.wait_for_function("() => Array.from(document.querySelector('#account').options).some(o => o.textContent.includes('Browser E2E Member'))")
     member_option = page.locator("#account option").filter(has_text="Browser E2E Member").first
     page.locator("#account").select_option(value=member_option.get_attribute("value"))
     page.locator("#amount").fill("12500")
