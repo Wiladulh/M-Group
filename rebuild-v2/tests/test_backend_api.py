@@ -59,7 +59,7 @@ class ServerApiTests(unittest.TestCase):
             headers=self.admin_headers(),
             json={'request_id': 'withdrawal-disabled-01', 'member_id': 'UID-00001',
                   'amount_minor': 1000})
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 405)
 
     def test_topup_description_is_saved_as_cash_receipt_note(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
