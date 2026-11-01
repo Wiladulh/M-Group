@@ -160,7 +160,7 @@
       const poll=async()=>{
         try {
           const {data:s}=await request("/admin/nfc-registration/"+encodeURIComponent(d.session_id));
-          const messages={scan_pending:"Menunggu Cashier memulai scan.",waiting_nfc:"Silakan tempelkan kartu NFC.",processing:"Mendaftarkan kartu.",completed:"Registrasi NFC berhasil.",failed:"Registrasi NFC gagal.",expired:"Sesi registrasi kedaluwarsa."};
+          const messages={scan_pending:"Menunggu Cashier memulai scan.",waiting_nfc:"Silakan tempelkan kartu NFC.",pin_pending:"Masukkan PIN transaksi Member pada keypad Cashier.",processing:"Mendaftarkan kartu dan PIN transaksi.",completed:"Registrasi NFC dan PIN transaksi berhasil.",failed:"Registrasi NFC gagal.",expired:"Sesi registrasi kedaluwarsa."};
           show("nfcRegistrationResult",(messages[s.status]||s.status)+" · "+d.session_id);
           if(["completed","failed","expired"].includes(s.status)){await loadMembers();return;}
           state.nfcTimer=setTimeout(poll,1800);
@@ -352,7 +352,6 @@
       let rows=await loadTransactions({period:$("cashierPeriod").value,source:"CASHIER",status:$("cashierStatus").value});
       const hardware=$("cashierDevice").value,type=$("cashierType").value;
       if(hardware!=="ALL")rows=rows.filter(r=>r.hardware_id===hardware);
-      if(type==="DEPOSIT")rows=rows.filter(r=>r.transaction_type==="top_up");
       if(type==="PAYMENT")rows=rows.filter(r=>r.transaction_type==="cashier_payment");
       const succeeded=rows.filter(r=>r.status==="succeeded");
       $("cashierMetrics").innerHTML=[
