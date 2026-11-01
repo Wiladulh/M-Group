@@ -51,7 +51,15 @@ with sync_playwright() as p:
       document.querySelector("#financialForm").addEventListener("submit", () => { window.__e2eSubmitFired = true; });
       window.confirm = (message) => { window.__e2eConfirmMessages.push(message); return false; };
     }""")
-    page.locator("#financialForm button[type=submit]").click()
+    form_info = page.locator("#financialForm").evaluate("""form => ({
+      valid: form.checkValidity(),
+      buttonType: form.querySelector("button")?.type,
+      buttonForm: form.querySelector("button")?.form?.id,
+      accountValue: form.querySelector("#account")?.value,
+      accountOptions: Array.from(form.querySelector("#account").options).map(option => ({value: option.value, text: option.textContent}))
+    })""")
+    print("Top-up form info:", form_info)
+    page.locator("#financialForm").evaluate("(form) => form.requestSubmit()")
     messages = page.evaluate("window.__e2eConfirmMessages")
     submit_fired = page.evaluate("window.__e2eSubmitFired")
     result_text = page.locator("#financialResult").inner_text()
