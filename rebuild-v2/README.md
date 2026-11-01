@@ -40,8 +40,18 @@ The v2 source includes the Server WebUI username/password login with HttpOnly se
 
 Regression coverage includes Admin session controls, Member/NFC/PIN flows, Cashier and Vending payments, top-up idempotency, ledger reconciliation, image delivery, WebUI contracts, and card replacement. Additional tests now explicitly guard Member PIN preservation on NFC card replacement and the Admin-only top-up boundary.
 
-**Validation is not yet release approval:** the latest source changes have not been confirmed by a completed CI run in this session. Both PlatformIO targets must compile, the full v2 Python test suite must pass, and WebUI/browser, installation, backup/restore, and physical-device acceptance must be recorded. Do not merge to `main` or deploy until those gates pass and the owner approves.
+**Validation is not release approval:** the previously locked baseline had a CI run recorded as 49/49 Python tests passing, with Cashier ESP32 and Vending ESP32-S3 firmware compilation passing. Those results apply only to that baseline commit, not to later changes. Every new rebuild-v2 change must pass its own CI run, including the browser suite, before it can be considered PASS. Operational installation/restore rehearsal and physical-device acceptance remain separate release gates. Do not merge to `main` or deploy until all gates pass and the owner approves.
 
 ## Simplified actors and deferred features
 
 Only two actor categories are supported: one Admin super-admin account for WebUI management, and Members as transaction clients with sequential server-generated `UID-00001` identifiers. Operator and auditor roles, operator PINs, and operator-to-cashier bindings are removed. Pertamini and loan features are deferred and excluded from active navigation and runtime scope.
+
+
+## Validation status — finance/recovery hardening PR
+
+The CI run for commit `62f5d301a2db674b60a9f8ac5b2be60c5a719d7f` passed:
+- 54 server, schema, and contract tests.
+- Chromium WebUI E2E workflow: login, navigation across all nine WebUI tabs, member creation, top-up confirmation cancellation and approval, receipt-note display, and resulting member balance.
+- Cashier ESP32 and Vending ESP32-S3 firmware compilation.
+
+This is CI evidence for the hardening PR branch, not a claim that the changes are merged into the clean-room baseline. An install-level operational backup/restore rehearsal and physical-device acceptance are still outstanding release gates. The PR remains draft pending review and owner approval.

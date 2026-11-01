@@ -1282,47 +1282,6 @@ def account_ledger(account_id: str, connection: DB, limit: int = 100):
         WHERE l.account_id=? ORDER BY l.created_at DESC LIMIT ?""",(account_id,limit)).fetchall()
     return {'account_id':account_id,'items':[dict(row) for row in rows]}
 
-@app.post('/api/v2/finance/withdrawals', dependencies=[Depends(require_admin_session)])
-def withdraw(payload: TopUpRequest, connection: DB):
-    transaction_id=new_id('txn')
-    try:
-        with transaction(connection):
-            prior=connection.execute("SELECT transaction_id,member_id,amount_minor,transaction_type,status FROM transactions WHERE request_id=?",(payload.request_id,)).fetchone()
-            if prior:
-                if prior['member_id']!=payload.member_id or prior['amount_minor']!=payload.amount_minor or prior['transaction_type']!='withdrawal' or prior['status']!='succeeded':
-                    raise HTTPException(status_code=409,detail={'code':'IDEMPOTENCY_CONFLICT'})
-                return {'transaction_id':prior['transaction_id'],'status':prior['status'],'idempotent_replay':True}
-            account=connection.execute("SELECT account_id,balance_minor,status,currency FROM accounts WHERE member_id=? AND account_type='member'",(payload.member_id,)).fetchone()
-            if not account:
-                raise HTTPException(status_code=404,detail={'code':'MEMBER_ACCOUNT_NOT_FOUND'})
-            if account['status']!='active':
-                raise HTTPException(status_code=409,detail={'code':'ACCOUNT_NOT_ACTIVE'})
-            if account['balance_minor']<payload.amount_minor:
-                raise HTTPException(status_code=409,detail={'code':'INSUFFICIENT_BALANCE'})
-            system_id=ensure_system_account(connection)
-            system=connection.execute("SELECT balance_minor,status,currency FROM accounts WHERE account_id=?",(system_id,)).fetchone()
-            if not system or system['status']!='active' or system['currency']!=account['currency'] or system['balance_minor']<payload.amount_minor:
-                raise HTTPException(status_code=409,detail={'code':'SYSTEM_ACCOUNT_INSUFFICIENT_BALANCE'})
-            connection.execute("""INSERT INTO transactions(transaction_id,request_id,member_id,transaction_type,
-                amount_minor,currency,status,metadata_json,completed_at) VALUES(?,?,?,'withdrawal',?,?,'succeeded',?,CURRENT_TIMESTAMP)""",
-                (transaction_id,payload.request_id,payload.member_id,payload.amount_minor,account['currency'],
-                 json.dumps({'description':payload.description},separators=(',',':'))))
-            debited=connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
-                (payload.amount_minor,account['account_id'],payload.amount_minor))
-            system_debit=connection.execute("UPDATE accounts SET balance_minor=balance_minor-?,updated_at=CURRENT_TIMESTAMP WHERE account_id=? AND status='active' AND balance_minor>=?",
-                (payload.amount_minor,system_id,payload.amount_minor))
-            if debited.rowcount!=1 or system_debit.rowcount!=1:
-                raise HTTPException(status_code=409,detail={'code':'INSUFFICIENT_BALANCE'})
-            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
-                (new_id('led'),transaction_id,account['account_id'],payload.amount_minor))
-            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
-                (new_id('led'),transaction_id,system_id,payload.amount_minor))
-            audit(connection,'finance.withdrawal','transaction',transaction_id,payload.request_id,
-                  {'member_id':payload.member_id,'amount_minor':payload.amount_minor,'description':payload.description})
-    except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409,detail={'code':'IDEMPOTENCY_CONFLICT'}) from exc
-    return {'transaction_id':transaction_id,'status':'succeeded','idempotent_replay':False}
-
 def _transaction_window(period: str, date: str | None, start_date: str | None, end_date: str | None):
     import datetime as dt
     from zoneinfo import ZoneInfo
@@ -1365,7 +1324,7 @@ def admin_transactions(connection: DB, period: str = 'week', date: str | None = 
     source=source.upper(); status=status.lower(); transaction_type=transaction_type.lower()
     if source not in {'ALL','CASHIER','VENDING','TOPUP'}: raise HTTPException(status_code=400,detail={'code':'INVALID_SOURCE'})
     if status not in {'all','pending','succeeded','declined','reversed'}: raise HTTPException(status_code=400,detail={'code':'INVALID_STATUS'})
-    allowed_types={'all','purchase','cashier_payment','top_up','withdrawal','refund','adjustment','transfer'}
+    allowed_types={'all','purchase','cashier_payment','top_up','refund','adjustment','transfer'}
     if transaction_type not in allowed_types: raise HTTPException(status_code=400,detail={'code':'INVALID_TRANSACTION_TYPE'})
     start,end=_transaction_window(period,date,start_date,end_date)
     sql="""SELECT t.transaction_id,t.request_id,t.hardware_id,d.display_name AS device_name,t.member_id,m.display_name AS member_name,

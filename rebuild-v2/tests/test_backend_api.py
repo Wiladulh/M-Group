@@ -52,6 +52,69 @@ class ServerApiTests(unittest.TestCase):
         # The authenticated TestClient carries its HttpOnly session cookie automatically.
         return {}
 
+    def test_withdrawal_endpoint_is_not_exposed(self):
+        paths = {route.path for route in self.main.app.routes}
+        self.assertNotIn('/api/v2/finance/withdrawals', paths)
+        response = self.client.post('/api/v2/finance/withdrawals',
+            headers=self.admin_headers(),
+            json={'request_id': 'withdrawal-disabled-01', 'member_id': 'UID-00001',
+                  'amount_minor': 1000})
+        self.assertEqual(response.status_code, 405)
+
+    def test_topup_description_is_saved_as_cash_receipt_note(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Cash Receipt Note'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        response = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'cash-receipt-note-01', 'member_id': member_id,
+                  'amount_minor': 17500, 'description': 'Setoran tunai loket pagi'})
+        self.assertEqual(response.status_code, 200, response.text)
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            row = db.execute("SELECT metadata_json FROM transactions WHERE request_id=?",
+                ('cash-receipt-note-01',)).fetchone()
+            self.assertEqual(__import__('json').loads(row['metadata_json'])['description'],
+                'Setoran tunai loket pagi')
+        finally:
+            db.close()
+
+    def test_backup_restore_reopens_server_on_restored_ledger_snapshot(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Restore Drill Member'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'restore-drill-topup-01', 'member_id': member_id,
+                  'amount_minor': 25000, 'description': 'Synthetic restore drill cash'})
+        self.assertEqual(topup.status_code, 200, topup.text)
+        backup = self.client.post('/api/v2/admin/backup', headers=self.admin_headers())
+        self.assertEqual(backup.status_code, 200, backup.text)
+        self.assertTrue(backup.content.startswith(b'PK'))
+        later = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Created After Snapshot'})
+        self.assertEqual(later.status_code, 201, later.text)
+        restored = self.client.post('/api/v2/admin/backup/restore',
+            headers=self.admin_headers(),
+            files={'file': ('restore-drill.mgroup.zip', backup.content, 'application/zip')})
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json()['integrity_check'], 'ok')
+        self.assertEqual(self.client.get('/api/v2/ready').status_code, 200)
+        members = self.client.get('/api/v2/members', headers=self.admin_headers())
+        self.assertEqual(members.status_code, 200, members.text)
+        names = {item['display_name'] for item in members.json()['items']}
+        self.assertIn('Restore Drill Member', names)
+        self.assertNotIn('Created After Snapshot', names)
+        restored_member = next(item for item in members.json()['items'] if item['member_id'] == member_id)
+        self.assertEqual(restored_member['balance_minor'], 25000)
+        post_restore = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'restore-drill-post-restore-01', 'member_id': member_id,
+                  'amount_minor': 5000, 'description': 'Post-restore synthetic top-up'})
+        self.assertEqual(post_restore.status_code, 200, post_restore.text)
+        final_members = self.client.get('/api/v2/members', headers=self.admin_headers()).json()['items']
+        final_member = next(item for item in final_members if item['member_id'] == member_id)
+        self.assertEqual(final_member['balance_minor'], 30000)
+
     def test_v2_webui_is_served_by_the_same_origin_as_the_api(self):
         page = self.client.get('/')
         self.assertEqual(page.status_code, 200, page.text)
