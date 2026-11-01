@@ -34,11 +34,17 @@ with sync_playwright() as p:
     page.locator("#account").select_option(value=member_option.get_attribute("value"))
     page.locator("#amount").fill("12500")
     page.locator("#reference").fill("Setoran tunai uji browser")
-    page.once("dialog", lambda dialog: dialog.dismiss())
-    page.locator("#financialForm button[type=submit]").click()
+    assert page.locator("#financialForm").evaluate("(form) => form.checkValidity()"), "Top-up form is invalid"
+    assert page.locator("#account").input_value(), "Member account was not selected"
+    with page.expect_event("dialog") as cancelled_dialog:
+        page.locator("#financialForm button[type=submit]").click()
+    assert "KONFIRMASI TOP-UP SALDO" in cancelled_dialog.value.message
+    cancelled_dialog.value.dismiss()
     page.get_by_text("Top-up dibatalkan", exact=False).wait_for()
-    page.once("dialog", lambda dialog: dialog.accept())
-    page.locator("#financialForm button[type=submit]").click()
+    with page.expect_event("dialog") as accepted_dialog:
+        page.locator("#financialForm button[type=submit]").click()
+    assert "KONFIRMASI TOP-UP SALDO" in accepted_dialog.value.message
+    accepted_dialog.value.accept()
     page.get_by_text("berhasil dicatat", exact=False).wait_for()
     page.get_by_text("Setoran tunai uji browser", exact=False).wait_for()
     member = page.evaluate("""async () => {
