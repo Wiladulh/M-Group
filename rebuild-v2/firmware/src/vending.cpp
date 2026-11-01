@@ -36,7 +36,8 @@ int productCount=0,selected=0,currentDigit=0;
 String imageSyncStatus="Belum disinkronkan";
 String lastCardUid,pendingCardUid,pendingCardReference,pendingRequestId,pendingTransactionId,pendingStage,pendingReason;
 int pendingProduct=0;long pendingAmount=0;bool pendingResult=false;
-enum Flow { SELECT_PRODUCT, WAIT_CARD, MANUAL_REVIEW };
+String pinDigits;int currentPinDigit=0;bool pinSelectLongHandled=false;
+enum Flow { SELECT_PRODUCT, WAIT_CARD, ENTER_PIN, MANUAL_REVIEW };
 Flow flow=SELECT_PRODUCT;
 unsigned long lastCatalogAt=0,lastReportRetryAt=0,lastButtonAt=0,selectPressedAt=0;
 bool previousUp=HIGH,previousDown=HIGH,previousSelect=HIGH;
@@ -51,7 +52,7 @@ void draw(const String& a,const String& b="",const String& c="") {
 void clearPending() {
   Preferences& p=mgroup.prefs();
   for(const char* key:{"purchase_req","purchase_product","purchase_amount","purchase_stage","purchase_txn","purchase_result","purchase_reason","p_cardref"})p.remove(key);
-  pendingRequestId="";pendingProduct=0;pendingAmount=0;pendingStage="";pendingTransactionId="";pendingReason="";pendingResult=false;pendingCardReference="";
+  pendingRequestId="";pendingProduct=0;pendingAmount=0;pendingStage="";pendingTransactionId="";pendingReason="";pendingResult=false;pendingCardReference="";pinDigits="";currentPinDigit=0;
 }
 void persistCreateRequest(int productId,long amount) {
   pendingRequestId=mgroup.nextRequestId("vending-purchase");pendingProduct=productId;pendingAmount=amount;pendingStage="create";
@@ -305,11 +306,13 @@ void beginPurchase() {
   draw(p.name,"Tempel kartu NFC","Harga "+String(p.price));
 }
 void sendPurchase() {
-  JsonDocument doc;doc["request_id"]=pendingRequestId;doc["card_uid"]=pendingCardUid;
+  if(pinDigits.length()<6){draw("PIN MINIMAL 6","Pilih digit","Tahan SELECT OK");flow=ENTER_PIN;return;}
+  JsonDocument doc;doc["request_id"]=pendingRequestId;doc["card_uid"]=pendingCardUid;doc["pin"]=pinDigits;
   doc["product_id"]=pendingProduct;doc["payment_method"]="nfc";doc["expected_amount_minor"]=pendingAmount;
   String body;serializeJson(doc,body);String response;int status=0;
   bool ok=mgroup.apiPost("/api/v2/vending/purchases",body,response,status);
   if(!ok) {
+    pinDigits="";currentPinDigit=0;
     String code=responseCode(response);
     if(code=="INSUFFICIENT_BALANCE"||status<0||status>=500)refreshMemberBalance(pendingCardUid);
     if(status>=400&&status<500&&code!="IDEMPOTENCY_CONFLICT") {
@@ -325,6 +328,7 @@ void sendPurchase() {
   if(deserializeJson(result,response)!=DeserializationError::Ok||!result["transaction_id"].is<const char*>()) {
     flow=WAIT_CARD;pendingCardUid="";draw("RESPONS INVALID","Tap ulang kartu");return;
   }
+  pinDigits="";currentPinDigit=0;
   pendingTransactionId=result["transaction_id"].as<String>();
   String statusText=result["status"]|String("pending");
   saveBalanceFromResponse(response);
@@ -354,6 +358,22 @@ void restorePending() {
 void handleButtons() {
   bool up=digitalRead(BUTTON_UP),down=digitalRead(BUTTON_DOWN),select=digitalRead(BUTTON_SELECT);
   unsigned long now=millis();
+  if(flow==ENTER_PIN) {
+    if(now-lastButtonAt>140) {
+      if(previousUp==HIGH&&up==LOW){currentPinDigit=(currentPinDigit+9)%10;lastButtonAt=now;draw("PIN "+masked(pinDigits),"Digit: "+String(currentPinDigit),"SELECT tambah");}
+      else if(previousDown==HIGH&&down==LOW){currentPinDigit=(currentPinDigit+1)%10;lastButtonAt=now;draw("PIN "+masked(pinDigits),"Digit: "+String(currentPinDigit),"SELECT tambah");}
+      else if(previousSelect==HIGH&&select==LOW){selectPressedAt=now;pinSelectLongHandled=false;lastButtonAt=now;}
+    }
+    if(select==LOW&&selectPressedAt&&!pinSelectLongHandled&&now-selectPressedAt>=1200&&pinDigits.length()>=6) {
+      pinSelectLongHandled=true;sendPurchase();
+    }
+    if(select==HIGH&&previousSelect==LOW&&selectPressedAt) {
+      if(!pinSelectLongHandled&&pinDigits.length()<12){pinDigits+=char('0'+currentPinDigit);currentPinDigit=0;}
+      selectPressedAt=0;pinSelectLongHandled=false;
+      if(flow==ENTER_PIN)draw("PIN "+masked(pinDigits),"Digit: "+String(currentPinDigit),"Tahan SELECT = OK");
+    }
+    previousUp=up;previousDown=down;previousSelect=select;return;
+  }
   if(flow==SELECT_PRODUCT&&now-lastButtonAt>140) {
     if(previousUp==HIGH&&up==LOW&&productCount){selected=(selected+productCount-1)%productCount;lastButtonAt=now;}
     else if(previousDown==HIGH&&down==LOW&&productCount){selected=(selected+1)%productCount;lastButtonAt=now;}
@@ -378,7 +398,8 @@ void pollCard() {
     draw(refreshed?"SALDO TERBARU":"SALDO TERAKHIR","Rp "+String(cached.balanceMinor),"Saldo server tetap cek");
     delay(700);
   }
-  sendPurchase();
+  pinDigits="";currentPinDigit=0;flow=ENTER_PIN;
+  draw("PIN TRANSAKSI","Digit: 0 UP/DOWN","SELECT tambah");
 }
 }
 
