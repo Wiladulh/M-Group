@@ -356,7 +356,6 @@
       let rows=await loadTransactions({period:$("cashierPeriod").value,source:"CASHIER",status:$("cashierStatus").value});
       const hardware=$("cashierDevice").value,type=$("cashierType").value;
       if(hardware!=="ALL")rows=rows.filter(r=>r.hardware_id===hardware);
-      if(type==="DEPOSIT")rows=rows.filter(r=>r.transaction_type==="top_up");
       if(type==="PAYMENT")rows=rows.filter(r=>r.transaction_type==="cashier_payment");
       const succeeded=rows.filter(r=>r.status==="succeeded");
       $("cashierMetrics").innerHTML=[
@@ -376,9 +375,8 @@
       if(!id)throw new Error("Pilih terminal Cashier.");
       const {data:d}=await request("/admin/cashier-devices/"+encodeURIComponent(id)+"/configuration",{method:"PUT",body:{
         operator_id:$("cashierOperatorId").value.trim(),operator_name:$("cashierOperatorName").value.trim(),
-        operator_pin:$("cashierOperatorPin").value,settlement_account_id:$("cashierSettlementAccount").value
+        settlement_account_id:$("cashierSettlementAccount").value
       }});
-      $("cashierOperatorPin").value="";
       show("cashierConfigResult","Konfigurasi tersimpan untuk operator "+d.operator_name+".");
     } catch(e) { show("cashierConfigResult",errorText(e),true); }
   }
