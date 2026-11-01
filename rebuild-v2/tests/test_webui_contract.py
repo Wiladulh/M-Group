@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEBUI = ROOT / "webui"
 BACKEND = ROOT / "backend" / "mgroup_backend" / "main.py"
 FIRMWARE = ROOT / "firmware" / "src" / "vending.cpp"
+CASHIER_FIRMWARE = ROOT / "firmware" / "src" / "cashier.cpp"
 
 
 class WebUiContractTests(unittest.TestCase):
@@ -19,6 +20,7 @@ class WebUiContractTests(unittest.TestCase):
         cls.css = (WEBUI / "assets" / "css" / "app.css").read_text(encoding="utf-8")
         cls.backend = BACKEND.read_text(encoding="utf-8")
         cls.firmware = FIRMWARE.read_text(encoding="utf-8")
+        cls.cashier_firmware = CASHIER_FIRMWARE.read_text(encoding="utf-8")
 
     def test_admin_webui_uses_only_v2_cookie_sessions(self):
         self.assertIn('const basePath = "/api/v2"', self.api)
@@ -66,6 +68,24 @@ class WebUiContractTests(unittest.TestCase):
         self.assertNotIn("pinjaman", self.html.lower() + self.settings.lower())
         self.assertNotIn("loans", self.app.lower())
         self.assertIn("UID-", self.backend)
+
+    def test_member_transaction_pin_is_required_on_cashier_and_vending(self):
+        self.assertIn("pin_hash", self.backend)
+        self.assertIn("verify_pin(pin, member['pin_hash'])", self.backend)
+        self.assertIn("pin_pending", self.app)
+        self.assertIn('body["pin"]=pinDigits', self.cashier_firmware)
+        self.assertIn('doc["pin"]=pinDigits', self.firmware)
+        self.assertIn("/api/v2/cashier/payments", self.cashier_firmware)
+        self.assertIn("/api/v2/vending/purchases", self.firmware)
+        self.assertIn("PIN transaksi", (WEBUI / "pages" / "member.html").read_text(encoding="utf-8"))
+
+    def test_topup_is_admin_webui_only_and_never_device_pin_flow(self):
+        self.assertIn('"/finance/top-ups"', self.app)
+        self.assertIn("@app.post('/api/v2/finance/top-ups', dependencies=[Depends(require_admin_session)])", self.backend)
+        self.assertNotIn("/api/v2/cashier/top-ups", self.backend)
+        self.assertNotIn("/api/v2/vending/top-ups", self.backend)
+        self.assertNotIn("TOPUP", self.cashier_firmware.upper())
+        self.assertNotIn("TOPUP", self.firmware.upper())
 
     def test_webui_styles_include_mobile_breakpoints(self):
         self.assertRegex(self.css, r"@media\s*\(max-width\s*:")
