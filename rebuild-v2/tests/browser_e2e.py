@@ -66,6 +66,8 @@ with sync_playwright() as p:
     print("Top-up submit fired:", submit_fired, "account:", page.locator("#account").input_value(),
           "amount:", page.locator("#amount").input_value(), "result:", result_text, "dialogs:", messages)
     assert messages and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Top-up confirmation step did not run"
+    page.wait_for_function("document.querySelector('#financialResult').textContent.includes('Top-up dibatalkan')")
+    assert page.locator("#financialResult").is_visible()
     assert "Top-up dibatalkan" in page.locator("#financialResult").inner_text()
     page.locator("#account").evaluate("""(select, memberId) => {
       select.value = memberId;
@@ -77,7 +79,8 @@ with sync_playwright() as p:
     page.locator("#financialForm").evaluate("(form) => form.requestSubmit()")
     messages = page.evaluate("window.__e2eConfirmMessages")
     assert len(messages) == 2 and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Confirmed top-up step did not run"
-    page.get_by_text("berhasil dicatat", exact=False).wait_for()
+    page.wait_for_function("document.querySelector('#financialResult').textContent.includes('berhasil dicatat')")
+    assert page.locator("#financialResult").is_visible()
     page.get_by_text("Setoran tunai uji browser", exact=False).wait_for()
     member = page.evaluate("""async () => {
       const r = await fetch('/api/v2/members');
