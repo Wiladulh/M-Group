@@ -36,15 +36,21 @@ with sync_playwright() as p:
     page.locator("#reference").fill("Setoran tunai uji browser")
     assert page.locator("#financialForm").evaluate("(form) => form.checkValidity()"), "Top-up form is invalid"
     assert page.locator("#account").input_value(), "Member account was not selected"
-    with page.expect_event("dialog") as cancelled_dialog:
-        page.locator("#financialForm button[type=submit]").click()
-    assert "KONFIRMASI TOP-UP SALDO" in cancelled_dialog.value.message
-    cancelled_dialog.value.dismiss()
-    page.get_by_text("Top-up dibatalkan", exact=False).wait_for()
-    with page.expect_event("dialog") as accepted_dialog:
-        page.locator("#financialForm button[type=submit]").click()
-    assert "KONFIRMASI TOP-UP SALDO" in accepted_dialog.value.message
-    accepted_dialog.value.accept()
+    dialog_messages = []
+    def dismiss_confirmation(dialog):
+        dialog_messages.append(dialog.message)
+        dialog.dismiss()
+    page.once("dialog", dismiss_confirmation)
+    page.locator("#financialForm button[type=submit]").click()
+    assert dialog_messages and "KONFIRMASI TOP-UP SALDO" in dialog_messages[-1]
+    assert "Top-up dibatalkan" in page.locator("#financialResult").inner_text()
+    dialog_messages.clear()
+    def accept_confirmation(dialog):
+        dialog_messages.append(dialog.message)
+        dialog.accept()
+    page.once("dialog", accept_confirmation)
+    page.locator("#financialForm button[type=submit]").click()
+    assert dialog_messages and "KONFIRMASI TOP-UP SALDO" in dialog_messages[-1]
     page.get_by_text("berhasil dicatat", exact=False).wait_for()
     page.get_by_text("Setoran tunai uji browser", exact=False).wait_for()
     member = page.evaluate("""async () => {
