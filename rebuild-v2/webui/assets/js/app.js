@@ -75,6 +75,7 @@
   function memberPayload() {
     return {
       display_name:$("memberName").value.trim(), nik:$("memberNik").value.trim(),
+      pin:$("memberPin").value.trim()||null,
       phone:$("memberPhone").value.trim()||null,email:$("memberEmail").value.trim()||null,
       address:$("memberAddress").value.trim()||null,birth_place:$("memberBirthPlace").value.trim()||null,
       birth_date:$("memberBirthDate").value||null,sex:$("memberSex").value||null,
@@ -105,11 +106,12 @@
     ],"Belum ada anggota.");
   }
   function clearMemberForm() {
-    $("memberForm").reset(); $("memberId").value="";
+    $("memberForm").reset(); $("memberId").value=""; if($("memberPin"))$("memberPin").value="";
     $("memberCitizenship").value="WNI"; $("memberStatus").value="active";
     const submit=$("memberForm").querySelector('button[type="submit"]');if(submit)submit.textContent="Simpan Member";
   }
   function fillMemberForm(m) {
+    if($("memberPin"))$("memberPin").value="";
     $("memberId").value=m.member_id||"";$("memberName").value=m.display_name||"";$("memberNik").value=m.nik||"";
     $("memberPhone").value=m.phone||"";$("memberEmail").value=m.email||"";$("memberAddress").value=m.address||"";
     $("memberBirthPlace").value=m.birth_place||"";$("memberBirthDate").value=m.birth_date||"";$("memberSex").value=m.sex||"";
@@ -124,10 +126,12 @@
     event.preventDefault();
     try {
       const id=$("memberId").value.trim(), payload=memberPayload();
+      if(id)delete payload.pin;
       if(!payload.display_name||!payload.nik)throw new Error("Nama dan NIK wajib diisi.");
       const path=id?"/admin/members/"+encodeURIComponent(id):"/members";
       const {data:d}=await request(path,{method:id?"PATCH":"POST",body:payload});
       if(!id&&d.member_id)$("memberId").value=d.member_id;
+      if($("memberPin"))$("memberPin").value="";
       show("memberAuthResult","Data anggota tersimpan. ID: "+(d.member_id||id));
       await loadMembers(); await loadAccounts();
     } catch(e) { show("memberAuthResult",errorText(e),true); }
