@@ -18,9 +18,9 @@ Keypad keypad=Keypad(makeKeymap(keyMap),rowPins,colPins,ROWS,COLS);
 Adafruit_SSD1306 display(128,64,&Wire,-1);
 MFRC522 rfid(RFID_SS,RFID_RST);
 bool rc522Ready=false;
-enum Mode { HOME, AMOUNT_PAYMENT, WAIT_CARD_PAYMENT, NFC_WAIT_CARD };
+enum Mode { HOME, AMOUNT_PAYMENT, WAIT_CARD_PAYMENT, ENTER_PIN_PAYMENT, NFC_WAIT_CARD, NFC_ENTER_PIN };
 Mode mode=HOME;
-String inputDigits,pendingCardUid,pendingOp,pendingRequestId,nfcSessionId;
+String inputDigits,pinDigits,pendingCardUid,pendingOp,pendingRequestId,nfcSessionId;
 long pendingAmount=0;
 unsigned long lastNfcPoll=0;
 String lastCardUid;
@@ -81,6 +81,7 @@ void saveBalanceFromTransaction(const String& cardUidValue,const String& respons
 }
 void finishRequest(const String& path,const String& body) {
   String response;int status=-1;bool ok=mgroup.apiPost(path,body,response,status);
+  pinDigits="";
   if(ok) {
     JsonDocument doc;deserializeJson(doc,response);
     String tx=doc["transaction_id"]|String("");
@@ -145,8 +146,9 @@ void pollNfcSession() {
   }
 }
 void submitPayment() {
+  if(pinDigits.length()<6){lines("PIN MINIMAL 6","Masukkan PIN #");return;}
   JsonDocument body;body["request_id"]=pendingRequestId;body["card_uid"]=pendingCardUid;
-  body["amount_minor"]=pendingAmount;
+  body["pin"]=pinDigits;body["amount_minor"]=pendingAmount;
   String json;serializeJson(body,json);
   finishRequest("/api/v2/cashier/payments",json);
 }
@@ -156,10 +158,11 @@ void submitNfcRegistration() {
   if(!mgroup.apiPost("/api/v2/cashier/nfc-registration/progress",body,reply,code)) {
     lines("SERVER OFFLINE","Ulangi sebentar");return;
   }
-  JsonDocument payload;payload["session_id"]=nfcSessionId;payload["card_uid"]=pendingCardUid;
+  if(pinDigits.length()<6){lines("PIN MINIMAL 6","Masukkan PIN #");return;}
+  JsonDocument payload;payload["session_id"]=nfcSessionId;payload["card_uid"]=pendingCardUid;payload["pin"]=pinDigits;
   String json;serializeJson(payload,json);
   bool ok=mgroup.apiPost("/api/v2/cashier/nfc-registration/complete",json,reply,code);
-  pendingCardUid="";
+  pendingCardUid="";pinDigits="";
   if(ok){lines("NFC BERHASIL","Kartu terdaftar");nfcSessionId="";mode=HOME;delay(1600);lines("A=Bayar","Terminal siap");}
   else {lines("REGISTRASI GAGAL",responseCode(reply).substring(0,16));mode=HOME;nfcSessionId="";delay(1500);lines("A=Bayar","Terminal siap");}
 }
@@ -171,12 +174,21 @@ void restorePending() {
 }
 void handleKey(char key) {
   if(!key)return;
-  if(key=='D'&&mode!=WAIT_CARD_PAYMENT&&mode!=NFC_WAIT_CARD) {
+  if(key=='D'&&mode!=WAIT_CARD_PAYMENT&&mode!=ENTER_PIN_PAYMENT&&mode!=NFC_WAIT_CARD&&mode!=NFC_ENTER_PIN) {
     if(mode==AMOUNT_PAYMENT){inputDigits="";mode=HOME;lines("A=Bayar","Terminal siap");}return;
   }
   if(mode==HOME) {
     if(key=='A'){inputDigits="";mode=AMOUNT_PAYMENT;lines("NOMINAL BAYAR","Angka, # OK");}
     return;
+  }
+  if(mode==ENTER_PIN_PAYMENT||mode==NFC_ENTER_PIN) {
+    if(key>='0'&&key<='9'&&pinDigits.length()<12)pinDigits+=key;
+    else if(key=='*'&&pinDigits.length())pinDigits.remove(pinDigits.length()-1);
+    else if(key=='#'&&pinDigits.length()>=6) {
+      if(mode==ENTER_PIN_PAYMENT)submitPayment();else submitNfcRegistration();
+      return;
+    }
+    secondLine(masked(pinDigits));return;
   }
   if(mode==AMOUNT_PAYMENT) {
     if(key>='0'&&key<='9'&&inputDigits.length()<9)inputDigits+=key;
@@ -192,13 +204,13 @@ void handleKey(char key) {
 void pollPendingRegistration() {
   if(mode!=NFC_WAIT_CARD)return;
   String uid=cardUid();if(uid.isEmpty())return;
-  pendingCardUid=uid;
-  JsonDocument progress;progress["session_id"]=nfcSessionId;progress["status"]="processing";
+  pendingCardUid=uid;pinDigits="";mode=NFC_ENTER_PIN;
+  JsonDocument progress;progress["session_id"]=nfcSessionId;progress["status"]="pin_pending";
   String body;serializeJson(progress,body);String response;int status;
   if(!mgroup.apiPost("/api/v2/cashier/nfc-registration/progress",body,response,status)) {
     mode=NFC_WAIT_CARD;pendingCardUid="";lines("SERVER OFFLINE","Coba tap lagi");return;
   }
-  submitNfcRegistration();
+  lines("SET PIN MEMBER","Angka, # OK");
 }
 void pollCardForPayment() {
   if(mode!=WAIT_CARD_PAYMENT)return;
@@ -215,7 +227,7 @@ void pollCardForPayment() {
     lines(refreshed?"SALDO TERBARU":"SALDO TERAKHIR","Rp "+String(cached.balanceMinor));
     delay(650);
   }
-  submitPayment();
+  pinDigits="";mode=ENTER_PIN_PAYMENT;lines("MASUKKAN PIN","Angka, # OK");
 }
 }
 
