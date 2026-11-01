@@ -67,10 +67,14 @@ with sync_playwright() as p:
           "amount:", page.locator("#amount").input_value(), "result:", result_text, "dialogs:", messages)
     assert messages and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Top-up confirmation step did not run"
     assert "Top-up dibatalkan" in page.locator("#financialResult").inner_text()
+    page.locator("#account").evaluate("""(select, memberId) => {
+      select.value = memberId;
+      select.dispatchEvent(new Event("change", {bubbles: true}));
+    }""", selected_member_id)
     page.evaluate("""() => {
       window.confirm = (message) => { window.__e2eConfirmMessages.push(message); return true; };
     }""")
-    page.locator("#financialForm button[type=submit]").click()
+    page.locator("#financialForm").evaluate("(form) => form.requestSubmit()")
     messages = page.evaluate("window.__e2eConfirmMessages")
     assert len(messages) == 2 and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Confirmed top-up step did not run"
     page.get_by_text("berhasil dicatat", exact=False).wait_for()
