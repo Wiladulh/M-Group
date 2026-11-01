@@ -567,7 +567,9 @@
     const field=$(id),eventName=id==="account"?"change":"input";
     field.addEventListener(eventName,()=>{$("financialRequestId").value="";});
   });
-  $("financialForm").addEventListener("submit",submitFinancial);
+  document.addEventListener("submit",event=>{
+    if(event.target?.id==="financialForm")submitFinancial(event);
+  });
   $("account").addEventListener("change",loadLedger);
   $("paymentForm").addEventListener("submit",e=>{e.preventDefault();loadPayments();});
   $("loadVendingMachines").addEventListener("click",loadVendingDevices);
