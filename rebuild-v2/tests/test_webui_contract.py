@@ -94,6 +94,7 @@ class WebUiContractTests(unittest.TestCase):
         self.assertIn('id="financialRequestId"', financial)
         self.assertNotIn("Penarikan", financial)
         self.assertNotIn('id="direction"', financial)
+        self.assertNotIn('id="nfcCashier" required', (WEBUI / "pages" / "member.html").read_text(encoding="utf-8"))
         self.assertIn("window.confirm(confirmation)", self.app)
         self.assertIn('request("/finance/top-ups"', self.app)
         self.assertNotIn("/finance/withdrawals", self.app)
