@@ -18,7 +18,15 @@ with sync_playwright() as p:
     page.locator('.tab-btn[data-tab="member"]').click()
     page.locator("#memberName").fill("Browser E2E Member")
     page.locator("#memberNik").fill("9911223344556677")
-    page.locator("#memberForm button[type=submit]").click()
+    assert page.locator("#memberForm").evaluate("(form) => form.checkValidity()"), "Member form is invalid"
+    with page.expect_response(lambda response: response.url.endswith("/api/v2/members") and response.request.method == "POST") as member_response:
+        page.locator("#memberForm button[type=submit]").click()
+    response = member_response.value
+    print("Member create HTTP status:", response.status)
+    if response.status not in (200, 201):
+        print("Member create response:", response.text())
+        print("Member form result:", page.locator("#memberAuthResult").inner_text())
+        raise AssertionError("Member creation failed through WebUI")
     page.get_by_text("Browser E2E Member", exact=False).wait_for()
     page.locator('.tab-btn[data-tab="financial"]').click()
     page.wait_for_function("() => Array.from(document.querySelector('#account').options).some(o => o.textContent.includes('Browser E2E Member'))")
@@ -32,6 +40,7 @@ with sync_playwright() as p:
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#financialForm button[type=submit]").click()
     page.get_by_text("berhasil dicatat", exact=False).wait_for()
+    page.get_by_text("Setoran tunai uji browser", exact=False).wait_for()
     member = page.evaluate("""async () => {
       const r = await fetch('/api/v2/members');
       const d = await r.json();
