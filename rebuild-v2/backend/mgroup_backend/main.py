@@ -728,41 +728,13 @@ def _cashier_member_with_valid_pin(connection: sqlite3.Connection, device, card_
     return digest, member
 
 
-def _cashier_operator_config(connection: sqlite3.Connection, device, operator_pin: str | None = None):
+def _cashier_operator_config(connection: sqlite3.Connection, device):
     config = connection.execute("""
-        SELECT operator_id,operator_name,operator_pin_hash,settlement_account_id,
-               failed_attempts,locked_until
+        SELECT operator_id,operator_name,settlement_account_id
         FROM cashier_device_config WHERE registry_id=?
     """, (device['registry_id'],)).fetchone()
     if not config:
         raise HTTPException(status_code=409, detail={'code': 'CASHIER_NOT_CONFIGURED'})
-    if operator_pin is None:
-        return config
-    error = None
-    with transaction(connection):
-        current = connection.execute(
-            'SELECT failed_attempts,locked_until,operator_pin_hash FROM cashier_device_config WHERE registry_id=?',
-            (device['registry_id'],)).fetchone()
-        locked = connection.execute(
-            "SELECT CASE WHEN ? IS NOT NULL AND julianday(?) > julianday('now') THEN 1 ELSE 0 END",
-            (current['locked_until'], current['locked_until'])).fetchone()[0]
-        if locked:
-            error = (429, 'CASHIER_OPERATOR_TEMPORARILY_LOCKED')
-        elif not verify_pin(operator_pin, current['operator_pin_hash']):
-            failures = current['failed_attempts'] + 1
-            connection.execute("""
-                UPDATE cashier_device_config
-                SET failed_attempts=?,locked_until=CASE WHEN ?>=5 THEN datetime('now','+5 minutes') ELSE NULL END,
-                    updated_at=CURRENT_TIMESTAMP WHERE registry_id=?
-            """, (failures, failures, device['registry_id']))
-            error = (429, 'CASHIER_OPERATOR_TEMPORARILY_LOCKED') if failures >= 5 else (401, 'INVALID_OPERATOR_PIN')
-        else:
-            connection.execute("""
-                UPDATE cashier_device_config SET failed_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP
-                WHERE registry_id=?
-            """, (device['registry_id'],))
-    if error:
-        raise HTTPException(status_code=error[0], detail={'code': error[1]})
     return config
 
 
