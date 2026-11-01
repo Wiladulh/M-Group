@@ -340,7 +340,7 @@ class ServerApiTests(unittest.TestCase):
         merchant_id = merchant.json()['account_id']
         configured = self.client.put(f'/api/v2/admin/cashier-devices/{registry_id}/configuration',
             headers=self.admin_headers(), json={'operator_id': 'operator-v2-001',
-                'operator_name': 'Operator V2', 'operator_pin': '654321',
+                'operator_name': 'Operator V2',
                 'settlement_account_id': merchant_id})
         self.assertEqual(configured.status_code, 200, configured.text)
 
