@@ -15,7 +15,7 @@ Status: Cashier v2 supports member NFC payment and NFC/PIN enrollment only. Memb
 ## Member transaction PIN
 
 - Every Member must have an individual transaction PIN before using NFC payments.
-- The PIN can be set during Member creation through the authenticated Server API, or during NFC card registration at the Cashier keypad.
+- The PIN can be set optionally in the Server WebUI Member registration form/API, or during NFC card registration at the Cashier keypad.
 - The NFC registration flow is: Admin starts a session; Cashier reads the new card; Member enters a 6–12 digit PIN; server stores only the salted verifier and binds the card.
 - Replacing an NFC card requires a PIN to be set/confirmed in the same enrollment flow. A valid PIN must never be silently cleared.
 - The same Member PIN is required for payments at Cashier and Vending.
