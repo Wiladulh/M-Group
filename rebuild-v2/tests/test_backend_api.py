@@ -295,7 +295,7 @@ class ServerApiTests(unittest.TestCase):
 
     def test_nfc_purchase_is_atomic_and_failed_dispense_refunds_once(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
-            json={'display_name': 'Budi'})
+            json={'display_name': 'Budi', 'pin': '123456'})
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
@@ -313,7 +313,7 @@ class ServerApiTests(unittest.TestCase):
         product = self.client.put(f"/api/v2/vending/devices/{body['registry_id']}/products/1",
             headers=self.admin_headers(), json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         self.assertEqual(product.status_code, 200, product.text)
-        payload = {'request_id': 'purchase-request-0001', 'card_uid': '04-A1-B2-C3', 'product_id': 1}
+        payload = {'request_id': 'purchase-request-0001', 'card_uid': '04-A1-B2-C3', 'pin': '123456', 'product_id': 1}
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
         self.assertEqual(purchase.status_code, 201, purchase.text)
         transaction_id = purchase.json()['transaction_id']
@@ -403,7 +403,7 @@ class ServerApiTests(unittest.TestCase):
 
     def test_v2_cashier_payment_and_topup_are_authenticated_idempotent_and_ledgered(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
-            json={'display_name': 'Cashier Member'})
+            json={'display_name': 'Cashier Member', 'pin': '123456'})
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards',
@@ -430,7 +430,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(configured.status_code, 200, configured.text)
 
         payment_payload = {'request_id': 'cashier-v2-payment-0001', 'card_uid': '04-CASHIER-V2-0001',
-                           'amount_minor': 5000}
+                           'pin': '123456', 'amount_minor': 5000}
         payment = self.client.post('/api/v2/cashier/payments', headers=headers, json=payment_payload)
         self.assertEqual(payment.status_code, 201, payment.text)
         self.assertEqual(payment.json()['balance_after_minor'], 25000)
@@ -469,7 +469,7 @@ class ServerApiTests(unittest.TestCase):
 
     def test_v2_cashier_endpoints_reject_missing_and_wrong_device_credentials(self):
         self.assertEqual(self.client.post('/api/v2/cashier/payments',
-            json={'request_id': 'cashier-no-key-0001', 'card_uid': '04-UNKNOWN',
+            json={'request_id': 'cashier-no-key-0001', 'card_uid': '04-UNKNOWN', 'pin': '123456',
                   'amount_minor': 5000}).status_code, 401)
         vending = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
             json={'hardware_id': 'vending-cashier-endpoint-001', 'device_type': 'vending',
@@ -478,7 +478,7 @@ class ServerApiTests(unittest.TestCase):
         self.activate_device(vending.json(), 'vending-cashier-endpoint-001')
         response = self.client.post('/api/v2/cashier/payments',
             headers={'X-Device-Key': vending.json()['device_key']},
-            json={'request_id': 'cashier-wrong-type-0001', 'card_uid': '04-UNKNOWN',
+            json={'request_id': 'cashier-wrong-type-0001', 'card_uid': '04-UNKNOWN', 'pin': '123456',
                   'amount_minor': 5000})
         self.assertEqual(response.status_code, 403, response.text)
 
@@ -486,7 +486,7 @@ class ServerApiTests(unittest.TestCase):
     def test_same_nfc_card_vending_then_cashier_payment_keeps_one_authoritative_balance(self):
         card_uid = '04-MGROUP-SHARED-CARD-01'
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
-            json={'display_name': 'Shared Card Member'})
+            json={'display_name': 'Shared Card Member', 'pin': '123456'})
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         enrolled = self.client.post(f'/api/v2/members/{member_id}/cards',
@@ -517,7 +517,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(balance_before.json()['balance_minor'], 30000)
 
         purchase = self.client.post('/api/v2/vending/purchases', headers=vending_headers,
-            json={'request_id': 'shared-card-vend-0001', 'card_uid': card_uid,
+            json={'request_id': 'shared-card-vend-0001', 'card_uid': card_uid, 'pin': '123456',
                   'product_id': 1, 'expected_amount_minor': 5000})
         self.assertEqual(purchase.status_code, 201, purchase.text)
         self.assertEqual(purchase.json()['amount_minor'], 5000)
@@ -548,7 +548,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(cashier_balance.status_code, 200, cashier_balance.text)
         self.assertEqual(cashier_balance.json()['balance_minor'], 25000)
         payment_payload = {'request_id': 'shared-card-cash-0001', 'card_uid': card_uid,
-                           'amount_minor': 3000}
+                           'pin': '123456', 'amount_minor': 3000}
         payment = self.client.post('/api/v2/cashier/payments',
             headers=cashier_headers, json=payment_payload)
         self.assertEqual(payment.status_code, 201, payment.text)
