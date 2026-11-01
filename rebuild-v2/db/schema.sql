@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS members (
     phone TEXT,
     email TEXT,
     profile_json TEXT NOT NULL DEFAULT '{}',
+    pin_hash TEXT,
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'suspended', 'closed')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -59,6 +60,15 @@ CREATE TABLE IF NOT EXISTS member_cards (
         CHECK (status IN ('active', 'disabled', 'revoked')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES members(member_id)
+);
+
+CREATE TABLE IF NOT EXISTS member_pin_attempts (
+    card_hash TEXT NOT NULL,
+    hardware_id TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (card_hash, hardware_id)
 );
 
 CREATE TABLE IF NOT EXISTS accounts (
