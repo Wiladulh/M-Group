@@ -1324,7 +1324,7 @@ def admin_transactions(connection: DB, period: str = 'week', date: str | None = 
     source=source.upper(); status=status.lower(); transaction_type=transaction_type.lower()
     if source not in {'ALL','CASHIER','VENDING','TOPUP'}: raise HTTPException(status_code=400,detail={'code':'INVALID_SOURCE'})
     if status not in {'all','pending','succeeded','declined','reversed'}: raise HTTPException(status_code=400,detail={'code':'INVALID_STATUS'})
-    allowed_types={'all','purchase','cashier_payment','top_up','withdrawal','refund','adjustment','transfer'}
+    allowed_types={'all','purchase','cashier_payment','top_up','refund','adjustment','transfer'}
     if transaction_type not in allowed_types: raise HTTPException(status_code=400,detail={'code':'INVALID_TRANSACTION_TYPE'})
     start,end=_transaction_window(period,date,start_date,end_date)
     sql="""SELECT t.transaction_id,t.request_id,t.hardware_id,d.display_name AS device_name,t.member_id,m.display_name AS member_name,
