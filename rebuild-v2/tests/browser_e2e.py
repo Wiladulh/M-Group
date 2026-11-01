@@ -31,7 +31,8 @@ with sync_playwright() as p:
     page.locator('.tab-btn[data-tab="financial"]').click()
     page.wait_for_function("() => Array.from(document.querySelector('#account').options).some(o => o.textContent.includes('Browser E2E Member'))")
     member_option = page.locator("#account option").filter(has_text="Browser E2E Member").first
-    page.locator("#account").select_option(value=member_option.get_attribute("value"))
+    page.wait_for_load_state("networkidle")
+    page.locator("#account").select_option(label="UID-00001 · Browser E2E Member · Rp 0")
     page.locator("#amount").fill("12500")
     page.locator("#reference").fill("Setoran tunai uji browser")
     assert page.locator("#financialForm").evaluate("(form) => form.checkValidity()"), "Top-up form is invalid"
