@@ -121,7 +121,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f"/api/v2/members/{member_id}/cards",
-            headers=self.admin_headers(), json={'card_uid': '04-BALANCE-LOOKUP'})
+            headers=self.admin_headers(), json={'card_uid': '04-BALANCE-LOOKUP', 'pin': '123456'})
         self.assertEqual(card.status_code, 201, card.text)
         topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
             json={'request_id': 'balance-lookup-topup-01', 'member_id': member_id,
@@ -299,7 +299,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
-            json={'card_uid': '04-A1-B2-C3'})
+            json={'card_uid': '04-A1-B2-C3', 'pin': '123456'})
         self.assertEqual(card.status_code, 201, card.text)
         topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
             json={'request_id': 'purchase-test-topup-01', 'member_id': member_id, 'amount_minor': 20000})
@@ -314,6 +314,9 @@ class ServerApiTests(unittest.TestCase):
             headers=self.admin_headers(), json={'name': 'Air Mineral', 'price_minor': 5000, 'stock': 2, 'enabled': True})
         self.assertEqual(product.status_code, 200, product.text)
         payload = {'request_id': 'purchase-request-0001', 'card_uid': '04-A1-B2-C3', 'pin': '123456', 'product_id': 1}
+        invalid_pin = self.client.post('/api/v2/vending/purchases', headers=headers,
+            json={**payload, 'request_id': 'purchase-invalid-pin-01', 'pin': '000000'})
+        self.assertEqual(invalid_pin.status_code, 401, invalid_pin.text)
         purchase = self.client.post('/api/v2/vending/purchases', headers=headers, json=payload)
         self.assertEqual(purchase.status_code, 201, purchase.text)
         transaction_id = purchase.json()['transaction_id']
@@ -396,10 +399,77 @@ class ServerApiTests(unittest.TestCase):
         self.activate_device(device.json(), 'cashier-purchase-denied-001')
         response = self.client.post('/api/v2/vending/purchases',
             headers={'X-Device-Key': device.json()['device_key']},
-            json={'request_id': 'cashier-purchase-0001', 'card_uid': '04-CA-FE-01',
+            json={'request_id': 'cashier-purchase-0001', 'card_uid': '04-CA-FE-01', 'pin': '123456',
                   'product_id': 1})
         self.assertEqual(response.status_code, 403, response.text)
 
+
+    def test_nfc_registration_sets_and_persists_member_transaction_pin(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'NFC PIN Member'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-nfc-pin-001', 'device_type': 'cashier',
+                  'display_name': 'NFC PIN Cashier'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-nfc-pin-001')
+        headers = {'X-Device-Key': cashier.json()['device_key']}
+        started = self.client.post(f'/api/v2/admin/members/{member_id}/nfc-registration',
+            headers=self.admin_headers(), json={'registry_id': cashier.json()['registry_id']})
+        self.assertEqual(started.status_code, 201, started.text)
+        session_id = started.json()['session_id']
+        for state in ('waiting_nfc', 'pin_pending', 'processing'):
+            progress = self.client.post('/api/v2/cashier/nfc-registration/progress',
+                headers=headers, json={'session_id': session_id, 'status': state})
+            self.assertEqual(progress.status_code, 200, progress.text)
+        completed = self.client.post('/api/v2/cashier/nfc-registration/complete',
+            headers=headers, json={'session_id': session_id, 'card_uid': '04-NFC-PIN-001',
+                                   'pin': '123456'})
+        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertTrue(completed.json()['pin_configured'])
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            row = db.execute('SELECT pin_hash FROM members WHERE member_id=?', (member_id,)).fetchone()
+            self.assertIsNotNone(row['pin_hash'])
+            self.assertNotEqual(row['pin_hash'], '123456')
+            self.assertTrue(self.main.verify_pin('123456', row['pin_hash']))
+        finally:
+            db.close()
+
+    def test_member_pin_lockout_prevents_cashier_payment_without_debit(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'PIN Lockout Member', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
+            json={'card_uid': '04-PIN-LOCKOUT-01', 'pin': '123456'})
+        self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
+            json={'request_id': 'pin-lockout-seed-01', 'member_id': member_id, 'amount_minor': 10000})
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-pin-lockout-01', 'device_type': 'cashier',
+                  'display_name': 'PIN Lockout Cashier'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-pin-lockout-01')
+        merchant = self.client.post('/api/v2/admin/merchant-accounts', headers=self.admin_headers(),
+            json={'label': 'PIN Lockout Settlement'})
+        self.assertEqual(merchant.status_code, 201, merchant.text)
+        configured = self.client.put(
+            f'/api/v2/admin/cashier-devices/{cashier.json()["registry_id"]}/configuration',
+            headers=self.admin_headers(), json={'settlement_account_id': merchant.json()['account_id']})
+        self.assertEqual(configured.status_code, 200, configured.text)
+        headers = {'X-Device-Key': cashier.json()['device_key']}
+        for attempt in range(5):
+            response = self.client.post('/api/v2/cashier/payments', headers=headers,
+                json={'request_id': f'pin-lockout-wrong-{attempt:02d}', 'card_uid': '04-PIN-LOCKOUT-01',
+                      'pin': '000000', 'amount_minor': 1000})
+            self.assertEqual(response.status_code, 429 if attempt == 4 else 401, response.text)
+        locked = self.client.post('/api/v2/cashier/payments', headers=headers,
+            json={'request_id': 'pin-lockout-correct-01', 'card_uid': '04-PIN-LOCKOUT-01',
+                  'pin': '123456', 'amount_minor': 1000})
+        self.assertEqual(locked.status_code, 429, locked.text)
+        members = self.client.get('/api/v2/members', headers=self.admin_headers()).json()['items']
+        self.assertEqual(next(x for x in members if x['member_id'] == member_id)['balance_minor'], 10000)
 
     def test_v2_cashier_payment_and_topup_are_authenticated_idempotent_and_ledgered(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
@@ -407,7 +477,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards',
-            headers=self.admin_headers(), json={'card_uid': '04-CASHIER-V2-0001'})
+            headers=self.admin_headers(), json={'card_uid': '04-CASHIER-V2-0001', 'pin': '123456'})
         self.assertEqual(card.status_code, 201, card.text)
         initial_topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
             json={'request_id': 'cashier-v2-seed-0001', 'member_id': member_id, 'amount_minor': 30000})
@@ -490,7 +560,7 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         enrolled = self.client.post(f'/api/v2/members/{member_id}/cards',
-            headers=self.admin_headers(), json={'card_uid': card_uid})
+            headers=self.admin_headers(), json={'card_uid': card_uid, 'pin': '123456'})
         self.assertEqual(enrolled.status_code, 201, enrolled.text)
         seed = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
             json={'request_id': 'shared-card-seed-0001', 'member_id': member_id, 'amount_minor': 30000})
