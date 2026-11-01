@@ -36,21 +36,21 @@ with sync_playwright() as p:
     page.locator("#reference").fill("Setoran tunai uji browser")
     assert page.locator("#financialForm").evaluate("(form) => form.checkValidity()"), "Top-up form is invalid"
     assert page.locator("#account").input_value(), "Member account was not selected"
-    dialog_messages = []
-    def dismiss_confirmation(dialog):
-        dialog_messages.append(dialog.message)
-        dialog.dismiss()
-    page.once("dialog", dismiss_confirmation)
+    assert not errors, "JavaScript errors before top-up: " + "; ".join(errors)
+    page.evaluate("""() => {
+      window.__e2eConfirmMessages = [];
+      window.confirm = (message) => { window.__e2eConfirmMessages.push(message); return false; };
+    }""")
     page.locator("#financialForm button[type=submit]").click()
-    assert dialog_messages and "KONFIRMASI TOP-UP SALDO" in dialog_messages[-1]
+    messages = page.evaluate("window.__e2eConfirmMessages")
+    assert messages and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Top-up confirmation step did not run"
     assert "Top-up dibatalkan" in page.locator("#financialResult").inner_text()
-    dialog_messages.clear()
-    def accept_confirmation(dialog):
-        dialog_messages.append(dialog.message)
-        dialog.accept()
-    page.once("dialog", accept_confirmation)
+    page.evaluate("""() => {
+      window.confirm = (message) => { window.__e2eConfirmMessages.push(message); return true; };
+    }""")
     page.locator("#financialForm button[type=submit]").click()
-    assert dialog_messages and "KONFIRMASI TOP-UP SALDO" in dialog_messages[-1]
+    messages = page.evaluate("window.__e2eConfirmMessages")
+    assert len(messages) == 2 and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Confirmed top-up step did not run"
     page.get_by_text("berhasil dicatat", exact=False).wait_for()
     page.get_by_text("Setoran tunai uji browser", exact=False).wait_for()
     member = page.evaluate("""async () => {
