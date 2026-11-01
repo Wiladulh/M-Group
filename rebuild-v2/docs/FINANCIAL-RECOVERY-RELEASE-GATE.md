@@ -42,7 +42,7 @@ This runbook defines the required operational backup/restore drill. Automated AP
 
 ## Current limitations
 
-The checklist above is a required procedure. It does not claim that backup/restore, secret rotation, disaster recovery, role-based admin access, or production deployment have been implemented or verified. The current backend uses one Admin super-admin account with server-side HttpOnly session cookies, session expiry/revocation, and password change. It does not expose an Admin API Token or bearer-token login.
+The native backup and restore endpoints are implemented and covered by automated database round-trip and post-restore transaction tests. This does not claim that an install-level operational recovery rehearsal has been completed. Secret rotation, disaster recovery beyond database restoration, role-based admin access, and production deployment remain separate release gates. The current backend uses one Admin super-admin account with server-side HttpOnly session cookies, session expiry/revocation, and password change. It does not expose an Admin API Token or bearer-token login.
 
 
 ## Operational drill evidence record
