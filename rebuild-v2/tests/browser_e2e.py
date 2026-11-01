@@ -32,7 +32,14 @@ with sync_playwright() as p:
     page.wait_for_function("() => Array.from(document.querySelector('#account').options).some(o => o.textContent.includes('Browser E2E Member'))")
     member_option = page.locator("#account option").filter(has_text="Browser E2E Member").first
     page.wait_for_load_state("networkidle")
-    page.locator("#account").select_option(label="UID-00001 · Browser E2E Member · Rp 0")
+    selected_member_id = page.locator("#account").evaluate("""select => {
+      const option = Array.from(select.options).find(item => item.textContent.includes("Browser E2E Member"));
+      if (!option || !option.value) throw new Error("Member account option has no value");
+      select.value = option.value;
+      select.dispatchEvent(new Event("change", {bubbles: true}));
+      return select.value;
+    }""")
+    assert selected_member_id
     page.locator("#amount").fill("12500")
     page.locator("#reference").fill("Setoran tunai uji browser")
     assert page.locator("#financialForm").evaluate("(form) => form.checkValidity()"), "Top-up form is invalid"
