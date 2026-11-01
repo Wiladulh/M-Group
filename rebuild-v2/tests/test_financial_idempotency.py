@@ -57,7 +57,7 @@ class FinancialIdempotencyTests(unittest.TestCase):
         self.assertEqual(member.status_code, 201, member.text)
         member_id = member.json()['member_id']
         card = self.client.post(f'/api/v2/members/{member_id}/cards', headers=self.admin_headers(),
-            json={'card_uid': f'04-IDEMPOTENCY-{suffix}'})
+            json={'card_uid': f'04-IDEMPOTENCY-{suffix}', 'pin': '123456'})
         self.assertEqual(card.status_code, 201, card.text)
         topup = self.client.post('/api/v2/finance/top-ups', headers=self.admin_headers(),
             json={'request_id': f'idempotency-topup-{suffix}', 'member_id': member_id,
