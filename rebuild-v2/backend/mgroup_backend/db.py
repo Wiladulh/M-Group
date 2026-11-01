@@ -68,6 +68,7 @@ def initialize(database_path: str) -> None:
             'members': {
                 'nik': 'TEXT',
                 'phone': 'TEXT',
+                'pin_hash': 'TEXT',
                 'email': 'TEXT',
                 'profile_json': "TEXT NOT NULL DEFAULT '{}'",
             },
