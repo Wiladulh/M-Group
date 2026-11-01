@@ -49,6 +49,9 @@ void draw(const String& a,const String& b="",const String& c="") {
   oled.setCursor(0,18);oled.println(b.substring(0,21));
   oled.setCursor(0,36);oled.println(c.substring(0,21));oled.display();
 }
+String masked(const String& value) {
+  String out;for(size_t i=0;i<value.length();i++)out+='*';return out;
+}
 void clearPending() {
   Preferences& p=mgroup.prefs();
   for(const char* key:{"purchase_req","purchase_product","purchase_amount","purchase_stage","purchase_txn","purchase_result","purchase_reason","p_cardref"})p.remove(key);
