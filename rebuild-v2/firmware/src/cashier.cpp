@@ -20,9 +20,10 @@ LiquidCrystal_I2C lcd(0x27,16,2);
 MFRC522 rfid(RFID_SS,RFID_RST);
 Adafruit_PN532 pn532(PN532_IRQ,PN532_RESET);
 bool pn532Ready=false,rc522Ready=false;
-enum Mode { HOME, AMOUNT_PAYMENT, WAIT_CARD_PAYMENT, ENTER_PIN_PAYMENT, NFC_WAIT_CARD, NFC_ENTER_PIN };
+enum Mode { HOME, AMOUNT_PAYMENT, AMOUNT_TOPUP, WAIT_CARD_PAYMENT, ENTER_PIN_PAYMENT,
+            ENTER_OPERATOR_PIN, WAIT_CARD_TOPUP, ENTER_PIN_TOPUP, NFC_WAIT_CARD, NFC_ENTER_PIN };
 Mode mode=HOME;
-String inputDigits,pinDigits,pendingCardUid,pendingOp,pendingRequestId,nfcSessionId;
+String inputDigits,pinDigits,operatorPin,pendingCardUid,pendingOp,pendingRequestId,nfcSessionId;
 long pendingAmount=0;
 unsigned long lastNfcPoll=0;
 String lastCardUid;
@@ -37,8 +38,8 @@ void clearPending() {
   p.remove("pending_op");p.remove("pending_req");p.remove("pending_amount");
   pendingOp="";pendingRequestId="";pendingAmount=0;
 }
-void persistPending(long amount) {
-  pendingOp="payment";pendingAmount=amount;pendingRequestId=mgroup.nextRequestId("cashier-payment");
+void persistPending(const String& op,long amount) {
+  pendingOp=op;pendingAmount=amount;pendingRequestId=mgroup.nextRequestId(op=="topup"?"cashier-topup":"cashier-payment");
   Preferences& p=mgroup.prefs();p.putString("pending_op",pendingOp);p.putString("pending_req",pendingRequestId);p.putLong("pending_amount",pendingAmount);
 }
 String responseCode(const String& body) {
@@ -62,13 +63,13 @@ bool refreshMemberBalance(const String& cardUid,long& balance) {
 
 void finishRequest(const String& path,const String& body) {
   String response;int status=-1;bool ok=mgroup.apiPost(path,body,response,status);
-  pinDigits="";
+  pinDigits="";operatorPin="";
   if(ok) {
     JsonDocument doc;deserializeJson(doc,response);
     String tx=doc["transaction_id"]|String("");
     String state=doc["status"]|String("succeeded");
-    // Refresh the member balance after a confirmed payment; a failed read
-    // never changes the already-confirmed transaction result.
+    // Always attempt a fresh server read after a committed payment/top-up.
+    // A failed read never changes the already-confirmed transaction result.
     long latestBalance=-1;
     bool balanceFresh=refreshMemberBalance(pendingCardUid,latestBalance);
     clearPending();mode=HOME;pendingCardUid="";
@@ -76,20 +77,20 @@ void finishRequest(const String& path,const String& body) {
     delay(1000);
     if(balanceFresh)lines("SALDO TERBARU","Rp "+String(latestBalance));
     else lines("TRANSAKSI OK","Saldo sync pending");
-    delay(1400);lines("A=Bayar","Tempel kartu saat diminta");
+    delay(1400);lines("A=Bayar B=Topup","Tempel kartu saat diminta");
     return;
   }
   String code=responseCode(response);
   if(status>=400&&status<500&&code!="IDEMPOTENCY_CONFLICT") {
     clearPending();mode=HOME;pendingCardUid="";
     lines("DITOLAK",code.length()?code.substring(0,16):"Periksa input");
-    delay(1600);lines("A=Bayar","Tempel kartu saat diminta");
+    delay(1600);lines("A=Bayar B=Topup","Tempel kartu saat diminta");
   } else {
     // Keep the exact request ID and amount. Raw card UID/PIN are deliberately
     // not persisted; retry requires the member to tap again and re-enter PIN.
-    mode=WAIT_CARD_PAYMENT;
+    mode=pendingOp=="topup"?ENTER_OPERATOR_PIN:WAIT_CARD_PAYMENT;
     pendingCardUid="";
-    lines("HASIL BELUM ADA","Tap ulang; PIN ulang");
+    lines(pendingOp=="topup"?"TOPUP TERTUNDA":"HASIL BELUM ADA",pendingOp=="topup"?"Masukkan PIN op":"Tap ulang; PIN ulang");
   }
 }
 String cardUid() {
@@ -141,6 +142,13 @@ void submitPayment() {
   String json;serializeJson(body,json);
   finishRequest("/api/v2/cashier/payments",json);
 }
+void submitTopup() {
+  if(pinDigits.length()<6||operatorPin.length()<6){lines("PIN TIDAK VALID","Coba kembali");return;}
+  JsonDocument body;body["request_id"]=pendingRequestId;body["card_uid"]=pendingCardUid;
+  body["operator_pin"]=operatorPin;body["member_pin"]=pinDigits;body["amount_minor"]=pendingAmount;
+  String json;serializeJson(body,json);
+  finishRequest("/api/v2/cashier/top-ups",json);
+}
 void submitNfcRegistration() {
   if(pinDigits.length()<6){lines("PIN MINIMAL 6","Masukkan PIN #");return;}
   JsonDocument progress;progress["session_id"]=nfcSessionId;progress["status"]="processing";
@@ -152,41 +160,51 @@ void submitNfcRegistration() {
   String json;serializeJson(payload,json);
   bool ok=mgroup.apiPost("/api/v2/cashier/nfc-registration/complete",json,reply,code);
   pinDigits="";pendingCardUid="";
-  if(ok){lines("NFC BERHASIL","Kartu terdaftar");nfcSessionId="";mode=HOME;delay(1600);lines("A=Bayar","Terminal siap");}
-  else {lines("REGISTRASI GAGAL",responseCode(reply).substring(0,16));mode=HOME;nfcSessionId="";delay(1500);lines("A=Bayar","Terminal siap");}
+  if(ok){lines("NFC BERHASIL","Kartu terdaftar");nfcSessionId="";mode=HOME;delay(1600);lines("A=Bayar B=Topup","Terminal siap");}
+  else {lines("REGISTRASI GAGAL",responseCode(reply).substring(0,16));mode=HOME;nfcSessionId="";delay(1500);lines("A=Bayar B=Topup","Terminal siap");}
 }
 void restorePending() {
   Preferences& p=mgroup.prefs();pendingOp=p.getString("pending_op","");pendingRequestId=p.getString("pending_req","");pendingAmount=p.getLong("pending_amount",0);
-  if(pendingOp=="payment"&&!pendingRequestId.isEmpty()&&pendingAmount>0) {
-    mode=WAIT_CARD_PAYMENT;lines("PAYMENT TERTUNDA","Tap kartu lagi");
-  } else {clearPending();mode=HOME;lines("A=Bayar","Terminal siap");}
+  if((pendingOp=="payment"||pendingOp=="topup")&&!pendingRequestId.isEmpty()&&pendingAmount>0) {
+    mode=pendingOp=="topup"?ENTER_OPERATOR_PIN:WAIT_CARD_PAYMENT;
+    if(pendingOp=="topup")lines("TOPUP TERTUNDA","Masukkan PIN op");
+    else lines("PAYMENT TERTUNDA","Tap kartu lagi");
+  } else {clearPending();mode=HOME;lines("A=Bayar B=Topup","Terminal siap");}
 }
 void handleKey(char key) {
   if(!key)return;
-  if(key=='D'&&mode!=WAIT_CARD_PAYMENT&&mode!=NFC_WAIT_CARD&&mode!=NFC_ENTER_PIN&&mode!=ENTER_PIN_PAYMENT) {
-    if(mode==AMOUNT_PAYMENT){inputDigits="";mode=HOME;lines("A=Bayar","Terminal siap");}return;
+  if(key=='D'&&mode!=WAIT_CARD_PAYMENT&&mode!=WAIT_CARD_TOPUP&&mode!=NFC_WAIT_CARD&&mode!=NFC_ENTER_PIN&&mode!=ENTER_PIN_PAYMENT&&mode!=ENTER_PIN_TOPUP) {
+    if(mode==AMOUNT_PAYMENT||mode==AMOUNT_TOPUP){inputDigits="";mode=HOME;lines("A=Bayar B=Topup","Terminal siap");}return;
   }
   if(mode==HOME) {
     if(key=='A'){inputDigits="";mode=AMOUNT_PAYMENT;lines("NOMINAL BAYAR","Angka, # OK");}
+    else if(key=='B'){inputDigits="";mode=AMOUNT_TOPUP;lines("NOMINAL TOPUP","Angka, # OK");}
     return;
   }
-  if(mode==AMOUNT_PAYMENT) {
+  if(mode==AMOUNT_PAYMENT||mode==AMOUNT_TOPUP) {
     if(key>='0'&&key<='9'&&inputDigits.length()<9)inputDigits+=key;
     else if(key=='*'&&inputDigits.length())inputDigits.remove(inputDigits.length()-1);
     else if(key=='#'&&inputDigits.length()&&inputDigits.toInt()>0) {
       long amount=inputDigits.toInt();inputDigits="";
-      if(pendingRequestId.isEmpty())persistPending(amount);
-      mode=WAIT_CARD_PAYMENT;
-      lines("TEMPEL KARTU","Nominal "+String(pendingAmount));
+      if(pendingRequestId.isEmpty())persistPending(mode==AMOUNT_TOPUP?"topup":"payment",amount);
+      mode=pendingOp=="topup"?ENTER_OPERATOR_PIN:WAIT_CARD_PAYMENT;
+      lines(mode==ENTER_OPERATOR_PIN?"PIN OPERATOR":"TEMPEL KARTU",mode==ENTER_OPERATOR_PIN?"Masukkan PIN op":"Nominal "+String(pendingAmount));
     }
     lcd.setCursor(0,1);lcd.print("                ");lcd.setCursor(0,1);lcd.print(inputDigits.length()?inputDigits.substring(inputDigits.length()>16?inputDigits.length()-16:0):"Angka, # OK");
     return;
   }
-  if(mode==ENTER_PIN_PAYMENT||mode==NFC_ENTER_PIN) {
+  if(mode==ENTER_OPERATOR_PIN) {
+    if(key>='0'&&key<='9'&&operatorPin.length()<12)operatorPin+=key;
+    else if(key=='*'&&operatorPin.length())operatorPin.remove(operatorPin.length()-1);
+    else if(key=='#'&&operatorPin.length()>=6){mode=WAIT_CARD_TOPUP;lines("TEMPEL KARTU","PIN op "+masked(operatorPin));}
+    lcd.setCursor(0,1);lcd.print(masked(operatorPin));return;
+  }
+  if(mode==ENTER_PIN_PAYMENT||mode==ENTER_PIN_TOPUP||mode==NFC_ENTER_PIN) {
     if(key>='0'&&key<='9'&&pinDigits.length()<12)pinDigits+=key;
     else if(key=='*'&&pinDigits.length())pinDigits.remove(pinDigits.length()-1);
     else if(key=='#'&&pinDigits.length()>=6) {
       if(mode==ENTER_PIN_PAYMENT)submitPayment();
+      else if(mode==ENTER_PIN_TOPUP)submitTopup();
       else submitNfcRegistration();
       return;
     }
@@ -205,11 +223,11 @@ void pollPendingRegistration() {
   lines("SET PIN MEMBER","Angka, # OK");
 }
 void pollCardForPayment() {
-  if(mode!=WAIT_CARD_PAYMENT)return;
+  if(mode!=WAIT_CARD_PAYMENT&&mode!=WAIT_CARD_TOPUP)return;
   String uid=cardUid();if(uid.isEmpty())return;
   pendingCardUid=uid;pinDigits="";
-  mode=ENTER_PIN_PAYMENT;
-  lines("MASUKKAN PIN","Angka, # OK");
+  mode=mode==WAIT_CARD_PAYMENT?ENTER_PIN_PAYMENT:ENTER_PIN_TOPUP;
+  lines(mode==ENTER_PIN_PAYMENT?"MASUKKAN PIN":"PIN MEMBER","Angka, # OK");
 }
 }
 
@@ -231,7 +249,7 @@ void loop() {
   pollCardForPayment();
   handleKey(keypad.getKey());
   if(mode==HOME&&millis()%4000<30&&mgroup.wifiConnected()) {
-    lines("A=Bayar",mgroup.registryId().isEmpty()?"Menunggu registrasi":"Siap "+mgroup.registryId().substring(0,8));
+    lines("A=Bayar B=Topup",mgroup.registryId().isEmpty()?"Menunggu registrasi":"Siap "+mgroup.registryId().substring(0,8));
   }
   delay(8);
 }
