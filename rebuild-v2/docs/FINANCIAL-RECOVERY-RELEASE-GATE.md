@@ -1,6 +1,6 @@
 # M-Group v2 — Financial Recovery and Release Gate
 
-This runbook is an acceptance checklist, not evidence that a backup or restore has already been tested. Do not use production data for CI tests.
+This runbook defines the required operational backup/restore drill. Automated API round-trip tests are not, by themselves, evidence of a completed install-level recovery rehearsal. Do not use production data for CI tests.
 
 ## Financial invariants
 
@@ -35,11 +35,25 @@ This runbook is an acceptance checklist, not evidence that a backup or restore h
 
 - [ ] Backup restore drill passed and evidence is attached to the release.
 - [ ] Ledger reconciliation test passed on a clean database and a restored database.
-- [ ] Admin token is high entropy, stored only in secret management, and rotated through a documented procedure.
+- [x] Admin authentication uses username/password login and server-side HttpOnly session cookies; bearer-token login is not supported.
 - [ ] Device-key pepper is non-empty, stable across restarts, stored as a secret, and rotation has a migration/re-enrollment plan.
 - [ ] Rollback procedure accounts for database/schema compatibility; application rollback alone is not assumed safe.
 - [ ] Production cutover and any merge to main are explicitly approved by the repository owner.
 
 ## Current limitations
 
-The checklist above is a required procedure. It does not claim that backup/restore, secret rotation, disaster recovery, role-based admin access, or production deployment have been implemented or verified. The current backend uses a single shared admin bearer token; it does not yet provide granular admin roles or session lifecycle management.
+The checklist above is a required procedure. It does not claim that backup/restore, secret rotation, disaster recovery, role-based admin access, or production deployment have been implemented or verified. The current backend uses one Admin super-admin account with server-side HttpOnly session cookies, session expiry/revocation, and password change. It does not expose an Admin API Token or bearer-token login.
+
+
+## Operational drill evidence record
+
+Record the following for each rehearsal before marking the release gate complete:
+
+- Drill date/time (UTC), operator, application commit, schema identifier, and isolated host/environment.
+- Backup archive filename, manifest SHA-256, archive size, and integrity-check result.
+- Restored database path and application startup/readiness result against that restored copy.
+- Verified member balance, transaction and ledger counts, product-image hashes, and foreign-key check.
+- Result of a synthetic top-up and payment after restore; verify the original records remain intact and new ledger entries reconcile.
+- Duration, recovery time, observed data-loss window, exceptions, and pass/fail decision.
+
+The native backup archive contains the SQLite database, including product-image BLOBs. Deployment environment files and secrets are intentionally external and must be restored from the approved secret/configuration store; do not place them in the database archive.
