@@ -37,8 +37,8 @@ void clearPending() {
   p.remove("pending_op");p.remove("pending_req");p.remove("pending_amount");
   pendingOp="";pendingRequestId="";pendingAmount=0;
 }
-void persistPending(const String& op,long amount) {
-  pendingOp=op;pendingAmount=amount;pendingRequestId=mgroup.nextRequestId(op=="topup"?"cashier-topup":"cashier-payment");
+void persistPending(long amount) {
+  pendingOp="payment";pendingAmount=amount;pendingRequestId=mgroup.nextRequestId("cashier-payment");
   Preferences& p=mgroup.prefs();p.putString("pending_op",pendingOp);p.putString("pending_req",pendingRequestId);p.putLong("pending_amount",pendingAmount);
 }
 String responseCode(const String& body) {
@@ -175,7 +175,7 @@ void handleKey(char key) {
     else if(key=='*'&&inputDigits.length())inputDigits.remove(inputDigits.length()-1);
     else if(key=='#'&&inputDigits.length()&&inputDigits.toInt()>0) {
       long amount=inputDigits.toInt();inputDigits="";
-      if(pendingRequestId.isEmpty())persistPending("payment",amount);
+      if(pendingRequestId.isEmpty())persistPending(amount);
       mode=WAIT_CARD_PAYMENT;
       lines("TEMPEL KARTU","Nominal "+String(pendingAmount));
     }
