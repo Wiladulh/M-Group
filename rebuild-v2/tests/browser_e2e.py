@@ -27,7 +27,7 @@ with sync_playwright() as p:
         print("Member create response:", response.text())
         print("Member form result:", page.locator("#memberAuthResult").inner_text())
         raise AssertionError("Member creation failed through WebUI")
-    page.get_by_text("Browser E2E Member", exact=False).wait_for()
+    page.locator("#members").get_by_text("Browser E2E Member", exact=False).wait_for()
     page.locator('.tab-btn[data-tab="financial"]').click()
     page.wait_for_function("() => Array.from(document.querySelector('#account').options).some(o => o.textContent.includes('Browser E2E Member'))")
     member_option = page.locator("#account option").filter(has_text="Browser E2E Member").first
