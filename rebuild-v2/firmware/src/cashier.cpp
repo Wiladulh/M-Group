@@ -134,7 +134,7 @@ void pollNfcSession() {
       mgroup.apiPost("/api/v2/cashier/nfc-registration/progress",body,reply,code);
     }
     mode=NFC_WAIT_CARD;lines("REGISTRASI NFC","Tempel kartu baru");
-  } else if(state=="processing") {
+  } else if(state=="pin_pending"||state=="processing") {
     // UID is never stored across reboot. Fail closed rather than complete with
     // an unknown card identity or ask the server to bind a different card.
     String id=doc["session_id"]|String("");
