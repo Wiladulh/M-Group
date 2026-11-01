@@ -194,7 +194,9 @@
       $("financialLedger").innerHTML=table(d.items||[],[
         {key:"created_at",label:"Waktu"},{key:"transaction_id",label:"ID transaksi"},{key:"request_id",label:"Request"},
         {key:"direction",label:"Arah"},{key:"amount_minor",label:"Nominal",render:r=>esc(money(r.amount_minor))},
-        {key:"transaction_type",label:"Jenis"},{key:"status",label:"Status"}
+        {key:"transaction_type",label:"Jenis"},
+        {key:"metadata_json",label:"Keterangan",render:r=>{try{return esc(JSON.parse(r.metadata_json||"{}").description||"—");}catch{return "—";}}},
+        {key:"status",label:"Status"}
       ]);
     } catch(e) { show("financialResult",errorText(e),true); }
   }
@@ -557,6 +559,10 @@
         show("memberAuthResult","Kartu berhasil dicabut.");await loadMembers();
       } catch(e) {show("memberAuthResult",errorText(e),true);}
     }
+  });
+  ["account","amount","reference"].forEach(id=>{
+    const field=$(id),eventName=id==="account"?"change":"input";
+    field.addEventListener(eventName,()=>{$("financialRequestId").value="";});
   });
   $("financialForm").addEventListener("submit",submitFinancial);
   $("account").addEventListener("change",loadLedger);
