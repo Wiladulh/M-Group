@@ -200,15 +200,44 @@
   }
   async function submitFinancial(event) {
     event.preventDefault();
+    const submitButton=$("financialForm").querySelector('button[type="submit"]');
     try {
-      const memberId=$("account").value, amount=Number($("amount").value), direction=$("direction").value, reference=$("reference").value.trim();
-      if(!memberId||!Number.isSafeInteger(amount)||amount<=0)throw new Error("Pilih anggota dan nominal yang valid.");
-      if(reference.length<8)throw new Error("Referensi wajib minimal 8 karakter untuk idempotensi.");
-      const path=direction==="credit"?"/finance/top-ups":"/finance/withdrawals";
-      const {data:d}=await request(path,{method:"POST",body:{request_id:reference,member_id:memberId,amount_minor:amount,description:reference}});
-      show("financialResult","Transaksi "+d.transaction_id+" berstatus "+d.status+(d.idempotent_replay?" (replay idempoten).":" tersimpan."));
+      const memberId=$("account").value, amount=Number($("amount").value);
+      const description=$("reference").value.trim() || "Top-up saldo";
+      const selected=$("account").selectedOptions[0];
+      if(!memberId||!Number.isSafeInteger(amount)||amount<=0)throw new Error("Pilih member dan nominal top-up yang valid.");
+      if(description.length>200)throw new Error("Keterangan maksimal 200 karakter.");
+      const confirmation=[
+        "KONFIRMASI TOP-UP SALDO",
+        "Member: "+(selected?.textContent||memberId),
+        "Nominal: "+money(amount),
+        "Keterangan penerimaan: "+description,
+        "",
+        "Pastikan uang tunai sudah diterima dari member.",
+        "Lanjutkan penambahan saldo?"
+      ].join("\\n");
+      if(!window.confirm(confirmation)){
+        show("financialResult","Top-up dibatalkan. Saldo member tidak berubah.");
+        return;
+      }
+      if(!$("financialRequestId").value){
+        const generated=window.crypto?.randomUUID?.() || ("topup-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+        $("financialRequestId").value=generated;
+      }
+      submitButton.disabled=true;
+      submitButton.textContent="Memproses...";
+      const {data:d}=await request("/finance/top-ups",{method:"POST",body:{
+        request_id:$("financialRequestId").value,member_id:memberId,amount_minor:amount,description
+      }});
+      $("financialRequestId").value="";
+      show("financialResult","Top-up "+money(amount)+" untuk "+(selected?.textContent||memberId)+" berhasil dicatat. ID transaksi: "+d.transaction_id+(d.idempotent_replay?" (permintaan idempoten).":"."));
+      $("financialForm").reset();
       await loadAccounts();await loadLedger();await loadDashboard();
     } catch(e) { show("financialResult",errorText(e),true); }
+    finally {
+      submitButton.disabled=false;
+      submitButton.textContent="Lanjutkan";
+    }
   }
   async function loadTransactions(opts={}) {
     const params=new URLSearchParams();
