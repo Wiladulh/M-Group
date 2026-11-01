@@ -437,6 +437,56 @@ class ServerApiTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_nfc_card_replacement_preserves_member_transaction_pin(self):
+        member = self.client.post('/api/v2/members', headers=self.admin_headers(),
+            json={'display_name': 'Card Replacement PIN Member', 'pin': '123456'})
+        self.assertEqual(member.status_code, 201, member.text)
+        member_id = member.json()['member_id']
+        old_card = self.client.post(f'/api/v2/members/{member_id}/cards',
+            headers=self.admin_headers(), json={'card_uid': '04-OLD-REPLACEMENT-CARD', 'pin': '123456'})
+        self.assertEqual(old_card.status_code, 201, old_card.text)
+
+        cashier = self.client.post('/api/v2/admin/devices', headers=self.admin_headers(),
+            json={'hardware_id': 'cashier-card-replacement-01', 'device_type': 'cashier',
+                  'display_name': 'Card Replacement Cashier'})
+        self.assertEqual(cashier.status_code, 201, cashier.text)
+        self.activate_device(cashier.json(), 'cashier-card-replacement-01')
+        headers = {'X-Device-Key': cashier.json()['device_key']}
+        started = self.client.post(f'/api/v2/admin/members/{member_id}/nfc-registration',
+            headers=self.admin_headers(),
+            json={'registry_id': cashier.json()['registry_id'], 'replace_existing': True})
+        self.assertEqual(started.status_code, 201, started.text)
+        session_id = started.json()['session_id']
+
+        for state in ('waiting_nfc', 'pin_pending', 'processing'):
+            progress = self.client.post('/api/v2/cashier/nfc-registration/progress',
+                headers=headers, json={'session_id': session_id, 'status': state})
+            self.assertEqual(progress.status_code, 200, progress.text)
+        completed = self.client.post('/api/v2/cashier/nfc-registration/complete',
+            headers=headers, json={'session_id': session_id,
+                                   'card_uid': '04-NEW-REPLACEMENT-CARD', 'pin': '123456'})
+        self.assertEqual(completed.status_code, 200, completed.text)
+
+        db = self.main.connect(self.main.settings.database_path)
+        try:
+            old = db.execute("SELECT status FROM member_cards WHERE card_id=?",
+                             (old_card.json()['card_id'],)).fetchone()
+            new = db.execute("SELECT status FROM member_cards WHERE card_uid_hash=?",
+                             (self.main.card_hash('04-NEW-REPLACEMENT-CARD'),)).fetchone()
+            pin_row = db.execute("SELECT pin_hash FROM members WHERE member_id=?",
+                                 (member_id,)).fetchone()
+            self.assertEqual(old['status'], 'revoked')
+            self.assertEqual(new['status'], 'active')
+            self.assertTrue(self.main.verify_pin('123456', pin_row['pin_hash']))
+        finally:
+            db.close()
+
+        listed = self.client.get('/api/v2/members', headers=self.admin_headers())
+        self.assertEqual(listed.status_code, 200, listed.text)
+        member_row = next(x for x in listed.json()['items'] if x['member_id'] == member_id)
+        self.assertNotIn('pin_hash', member_row)
+        self.assertNotIn('123456', listed.text)
+
     def test_member_pin_lockout_prevents_cashier_payment_without_debit(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
             json={'display_name': 'PIN Lockout Member', 'pin': '123456'})
