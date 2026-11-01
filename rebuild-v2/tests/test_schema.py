@@ -49,6 +49,15 @@ class CleanInstallSchemaTests(unittest.TestCase):
             with self.subTest(table=table_name):
                 self.assertNotIn('device_id', self.columns(table_name))
 
+    def test_member_transaction_pin_verifier_and_lockout_schema_exist(self):
+        member_columns = self.columns('members')
+        self.assertIn('pin_hash', member_columns)
+        tables = {row[0] for row in self.connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        self.assertIn('member_pin_attempts', tables)
+        attempt_columns = self.columns('member_pin_attempts')
+        self.assertTrue({'card_hash', 'hardware_id', 'failed_attempts', 'locked_until'}.issubset(attempt_columns))
+
     def test_foreign_keys_are_enabled(self):
         enabled = self.connection.execute('PRAGMA foreign_keys').fetchone()[0]
         self.assertEqual(enabled, 1)
