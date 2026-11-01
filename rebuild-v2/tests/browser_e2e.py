@@ -39,10 +39,16 @@ with sync_playwright() as p:
     assert not errors, "JavaScript errors before top-up: " + "; ".join(errors)
     page.evaluate("""() => {
       window.__e2eConfirmMessages = [];
+      window.__e2eSubmitFired = false;
+      document.querySelector("#financialForm").addEventListener("submit", () => { window.__e2eSubmitFired = true; });
       window.confirm = (message) => { window.__e2eConfirmMessages.push(message); return false; };
     }""")
     page.locator("#financialForm button[type=submit]").click()
     messages = page.evaluate("window.__e2eConfirmMessages")
+    submit_fired = page.evaluate("window.__e2eSubmitFired")
+    result_text = page.locator("#financialResult").inner_text()
+    print("Top-up submit fired:", submit_fired, "account:", page.locator("#account").input_value(),
+          "amount:", page.locator("#amount").input_value(), "result:", result_text, "dialogs:", messages)
     assert messages and "KONFIRMASI TOP-UP SALDO" in messages[-1], "Top-up confirmation step did not run"
     assert "Top-up dibatalkan" in page.locator("#financialResult").inner_text()
     page.evaluate("""() => {
