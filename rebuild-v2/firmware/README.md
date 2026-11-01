@@ -21,16 +21,18 @@ HTTP is only appropriate on a trusted isolated LAN. HTTPS is rejected unless a t
 
 ## Cashier workflow
 
-- A: payment, enter amount, then tap the registered Member card. No PIN or top-up menu exists on Cashier.
-- Top-up is performed only by Admin from the server WebUI.
-- * removes the last digit; # confirms the current amount.
-- NFC enrollment sessions created by the admin WebUI are polled from /api/v2/cashier/nfc-registration. The selected Cashier advances the server-side session and submits only the scanned card UID to the completion endpoint.
-- Payment request_id and amount are persisted before submission. Raw card UID is never written to NVS or Serial. If a response is lost, the Member taps the card again to retry the exact request ID.
+- A: mulai pembayaran, masukkan nominal, lalu tempel kartu Member yang terdaftar.
+- Setelah kartu terbaca, Member memasukkan PIN transaksi 6–12 digit pada keypad 4x4. Tampilan PIN dimasking; angka diketik, `*` menghapus satu digit, dan `#` mengonfirmasi setelah minimal enam digit.
+- Cashier mengirim `request_id`, UID kartu, PIN, dan nominal ke `POST /api/v2/cashier/payments`. PIN hanya berada di RAM selama operasi dan tidak disimpan ke NVS atau Serial.
+- Top-up tidak tersedia di Cashier. Top-up hanya dilakukan Admin melalui WebUI Server setelah menerima uang dari Member.
+- NFC enrollment sessions dari WebUI Admin dipoll melalui `/api/v2/cashier/nfc-registration`. Cashier membaca kartu, meminta Member membuat/memasukkan PIN transaksi, lalu mengirim UID kartu dan PIN ke endpoint completion. Server menyimpan verifier PIN tersalt, bukan PIN mentah.
+- `request_id` dan nominal pembayaran dipersistenkan sebelum submit; PIN dan UID kartu tidak ikut disimpan. Jika respons hilang, Member tap kartu lagi dan memasukkan PIN lagi untuk mengulang request ID yang sama.
 
 ## Vending workflow
 
 - UP/DOWN selects a fixed slot; SELECT begins a purchase only while a valid live server catalog is available.
-- The registered Member card UID identifies the Member; no PIN entry is required.
+- Kartu NFC mengidentifikasi Member; setelah kartu terbaca, Member wajib memasukkan PIN transaksi 6–12 digit melalui tombol UP/DOWN/SELECT. PIN ditampilkan sebagai karakter `*` dan tidak disimpan ke Preferences.
+- Server memverifikasi PIN Member yang sama dengan PIN yang digunakan di Cashier sebelum mendebit saldo atau mengurangi stok.
 - The server verifies expected_amount_minor against its current catalog price before debiting. QRIS is rejected until a provider integration is implemented.
 - The firmware persists the request ID and amount before purchase submission. After the server creates a pending purchase, the transaction ID and dispensing stage are persisted before the servo moves.
 - The IR sensor must observe a blocked-then-clear transition within four seconds. A failed dispense is reported to the server for atomic refund and stock restoration.
