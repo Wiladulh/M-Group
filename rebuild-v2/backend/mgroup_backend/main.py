@@ -131,6 +131,7 @@ class MerchantAccountCreate(BaseModel):
 class CashierDeviceConfigure(BaseModel):
     operator_id: str = Field(min_length=1, max_length=128)
     operator_name: str = Field(min_length=1, max_length=120)
+    operator_pin: str = Field(min_length=6, max_length=12, pattern="^[0-9]{6,12}$")
     settlement_account_id: str = Field(min_length=1, max_length=128)
 
 
@@ -138,6 +139,14 @@ class CashierPaymentRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
     card_uid: str = Field(min_length=4, max_length=128)
     pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
+    amount_minor: int = Field(gt=0, le=100_000_000)
+
+
+class CashierTopUpRequest(BaseModel):
+    request_id: str = Field(min_length=8, max_length=128)
+    card_uid: str = Field(min_length=4, max_length=128)
+    operator_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
+    member_pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
     amount_minor: int = Field(gt=0, le=100_000_000)
 
 
@@ -663,14 +672,15 @@ def configure_cashier_device(registry_id: str, payload: CashierDeviceConfigure, 
             INSERT INTO cashier_device_config(
                 registry_id, operator_id, operator_name, operator_pin_hash,
                 settlement_account_id, failed_attempts, locked_until, updated_at
-            ) VALUES(?,?,?,'',?,0,NULL,CURRENT_TIMESTAMP)
+            ) VALUES(?,?,?,?,?,0,NULL,CURRENT_TIMESTAMP)
             ON CONFLICT(registry_id) DO UPDATE SET
                 operator_id=excluded.operator_id,
                 operator_name=excluded.operator_name,
-                operator_pin_hash='',
+                operator_pin_hash=excluded.operator_pin_hash,
                 settlement_account_id=excluded.settlement_account_id,
                 failed_attempts=0, locked_until=NULL, updated_at=CURRENT_TIMESTAMP
-        """, (registry_id, operator_id, operator_name, settlement['account_id']))
+        """, (registry_id, operator_id, operator_name, pin_hash(payload.operator_pin),
+              settlement['account_id']))
         audit(connection, 'cashier.device.configure', 'device', registry_id, detail={
             'operator_id': operator_id, 'settlement_account_id': settlement['account_id']
         })
@@ -728,13 +738,41 @@ def _cashier_member_with_valid_pin(connection: sqlite3.Connection, device, card_
     return digest, member
 
 
-def _cashier_operator_config(connection: sqlite3.Connection, device):
+def _cashier_operator_config(connection: sqlite3.Connection, device, operator_pin: str | None = None):
     config = connection.execute("""
-        SELECT operator_id,operator_name,settlement_account_id
+        SELECT operator_id,operator_name,operator_pin_hash,settlement_account_id,
+               failed_attempts,locked_until
         FROM cashier_device_config WHERE registry_id=?
     """, (device['registry_id'],)).fetchone()
     if not config:
         raise HTTPException(status_code=409, detail={'code': 'CASHIER_NOT_CONFIGURED'})
+    if operator_pin is None:
+        return config
+    error = None
+    with transaction(connection):
+        current = connection.execute(
+            'SELECT failed_attempts,locked_until,operator_pin_hash FROM cashier_device_config WHERE registry_id=?',
+            (device['registry_id'],)).fetchone()
+        locked = connection.execute(
+            "SELECT CASE WHEN ? IS NOT NULL AND julianday(?) > julianday('now') THEN 1 ELSE 0 END",
+            (current['locked_until'], current['locked_until'])).fetchone()[0]
+        if locked:
+            error = (429, 'CASHIER_OPERATOR_TEMPORARILY_LOCKED')
+        elif not verify_pin(operator_pin, current['operator_pin_hash']):
+            failures = current['failed_attempts'] + 1
+            connection.execute("""
+                UPDATE cashier_device_config
+                SET failed_attempts=?,locked_until=CASE WHEN ?>=5 THEN datetime('now','+5 minutes') ELSE NULL END,
+                    updated_at=CURRENT_TIMESTAMP WHERE registry_id=?
+            """, (failures, failures, device['registry_id']))
+            error = (429, 'CASHIER_OPERATOR_TEMPORARILY_LOCKED') if failures >= 5 else (401, 'INVALID_OPERATOR_PIN')
+        else:
+            connection.execute("""
+                UPDATE cashier_device_config SET failed_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP
+                WHERE registry_id=?
+            """, (device['registry_id'],))
+    if error:
+        raise HTTPException(status_code=error[0], detail={'code': error[1]})
     return config
 
 
@@ -799,6 +837,66 @@ def cashier_payment_v2(payload: CashierPaymentRequest, connection: DB,
                   {'hardware_id': device['hardware_id'], 'operator_id': config['operator_id'],
                    'settlement_account_id': settlement['account_id'], 'amount_minor': payload.amount_minor})
             balance_after = account['balance_minor'] - payload.amount_minor
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
+    return {'transaction_id': transaction_id, 'request_id': payload.request_id, 'status': 'succeeded',
+            'amount_minor': payload.amount_minor, 'balance_after_minor': balance_after, 'idempotent_replay': False}
+
+
+@app.post('/api/v2/cashier/top-ups', status_code=201)
+def cashier_top_up_v2(payload: CashierTopUpRequest, connection: DB,
+                      x_device_key: Annotated[str | None, Header()] = None):
+    device = authenticated_device(connection, x_device_key)
+    if device['device_type'] != 'cashier':
+        raise HTTPException(status_code=403, detail={'code': 'CASHIER_DEVICE_REQUIRED'})
+    config = _cashier_operator_config(connection, device, payload.operator_pin)
+    digest, member = _cashier_member_with_valid_pin(connection, device, payload.card_uid, payload.member_pin)
+    transaction_id = new_id('txn')
+    try:
+        with transaction(connection):
+            prior = connection.execute(
+                'SELECT transaction_id,member_id,amount_minor,transaction_type,hardware_id,status,metadata_json FROM transactions WHERE request_id=?',
+                (payload.request_id,)).fetchone()
+            if prior:
+                meta = json.loads(prior['metadata_json'] or '{}')
+                if (prior['transaction_type'] != 'top_up' or prior['hardware_id'] != device['hardware_id']
+                    or prior['member_id'] != member['member_id'] or prior['amount_minor'] != payload.amount_minor
+                    or meta.get('source') != 'cashier' or meta.get('card_hash') != digest
+                    or meta.get('operator_id') != config['operator_id'] or prior['status'] != 'succeeded'):
+                    raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'})
+                return {'transaction_id': prior['transaction_id'], 'request_id': payload.request_id,
+                        'status': prior['status'], 'amount_minor': prior['amount_minor'],
+                        'idempotent_replay': True}
+            account = connection.execute(
+                "SELECT account_id,balance_minor,status,currency FROM accounts WHERE member_id=? AND account_type='member'",
+                (member['member_id'],)).fetchone()
+            if not account or account['status'] != 'active':
+                raise HTTPException(status_code=409, detail={'code': 'ACCOUNT_NOT_ACTIVE'})
+            system_id = ensure_system_account(connection)
+            system = connection.execute("SELECT account_id,balance_minor,status,currency FROM accounts WHERE account_id=?",
+                                        (system_id,)).fetchone()
+            if system['status'] != 'active' or system['currency'] != account['currency']:
+                raise HTTPException(status_code=409, detail={'code': 'SYSTEM_ACCOUNT_NOT_ACTIVE'})
+            connection.execute("""
+                INSERT INTO transactions(transaction_id,request_id,hardware_id,member_id,transaction_type,
+                    amount_minor,currency,status,metadata_json,completed_at)
+                VALUES(?,?,?,?,?,?,?,'succeeded',?,CURRENT_TIMESTAMP)
+            """, (transaction_id, payload.request_id, device['hardware_id'], member['member_id'],
+                  'top_up', payload.amount_minor, account['currency'],
+                  json.dumps({'card_hash': digest, 'operator_id': config['operator_id'],
+                              'source': 'cashier'}, separators=(',', ':'))))
+            connection.execute('UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?',
+                               (payload.amount_minor, account['account_id']))
+            connection.execute('UPDATE accounts SET balance_minor=balance_minor+?,updated_at=CURRENT_TIMESTAMP WHERE account_id=?',
+                               (payload.amount_minor, system_id))
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'credit',?)",
+                               (new_id('led'), transaction_id, account['account_id'], payload.amount_minor))
+            connection.execute("INSERT INTO ledger_entries(entry_id,transaction_id,account_id,direction,amount_minor) VALUES(?,?,?,'debit',?)",
+                               (new_id('led'), transaction_id, system_id, payload.amount_minor))
+            audit(connection, 'cashier.top_up', 'transaction', transaction_id, payload.request_id,
+                  {'hardware_id': device['hardware_id'], 'operator_id': config['operator_id'],
+                   'amount_minor': payload.amount_minor})
+            balance_after = account['balance_minor'] + payload.amount_minor
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail={'code': 'IDEMPOTENCY_CONFLICT'}) from exc
     return {'transaction_id': transaction_id, 'request_id': payload.request_id, 'status': 'succeeded',
