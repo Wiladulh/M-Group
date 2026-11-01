@@ -437,6 +437,20 @@ class ServerApiTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_api_routes_are_unique_and_nfc_completion_requires_member_pin(self):
+        seen = set()
+        duplicates = []
+        for route in self.main.app.routes:
+            path = getattr(route, 'path', None)
+            methods = getattr(route, 'methods', set()) or set()
+            for method in methods:
+                key = (method, path)
+                if key in seen:
+                    duplicates.append(key)
+                seen.add(key)
+        self.assertEqual(duplicates, [])
+        self.assertIn('pin', self.main.NfcRegistrationComplete.model_fields)
+
     def test_nfc_card_replacement_preserves_member_transaction_pin(self):
         member = self.client.post('/api/v2/members', headers=self.admin_headers(),
             json={'display_name': 'Card Replacement PIN Member', 'pin': '123456'})
