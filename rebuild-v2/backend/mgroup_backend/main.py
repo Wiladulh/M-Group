@@ -135,7 +135,7 @@ class CashierPaymentRequest(BaseModel):
 
 class CardEnroll(BaseModel):
     card_uid: str = Field(min_length=4, max_length=128)
-    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}
+    pin: str = Field(min_length=6, max_length=12, pattern=r'^[0-9]{6,12}$')
 
 class NfcRegistrationStart(BaseModel):
     registry_id: str = Field(min_length=1, max_length=128)
