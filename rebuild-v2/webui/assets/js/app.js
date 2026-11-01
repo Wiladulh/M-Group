@@ -350,6 +350,7 @@
   async function loadCashierHistory() {
     try {
       let rows=await loadTransactions({period:$("cashierPeriod").value,source:"CASHIER",status:$("cashierStatus").value});
+      rows=rows.filter(r=>r.transaction_type==="cashier_payment");
       const hardware=$("cashierDevice").value,type=$("cashierType").value;
       if(hardware!=="ALL")rows=rows.filter(r=>r.hardware_id===hardware);
       if(type==="PAYMENT")rows=rows.filter(r=>r.transaction_type==="cashier_payment");
