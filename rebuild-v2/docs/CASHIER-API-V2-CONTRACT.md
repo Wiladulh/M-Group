@@ -1,107 +1,72 @@
 # Cashier API v2 — contract and implementation gate
 
-Status: read-only member-balance lookup, authenticated vending product catalog, cashier payment, and cashier top-up routes are now implemented in the v2 backend. The cashier routes bind only the settlement account to the authenticated device, validate member PINs with persisted lockout, and use atomic ledger transactions. The added cashier regression tests and full validation matrix still need to be run after the rebuild work is complete.
+Status: Cashier v2 supports member NFC payment and NFC/PIN enrollment only. Member balance top-up is an administrator-only operation in the Server WebUI. There is no Cashier top-up API or Cashier top-up flow.
 
 ## Shared rules
 
-- All routes require `X-Device-Key`; backend resolves authenticated `hardware_id` and `registry_id` from the key.
-- A cashier route rejects a device whose registered `device_type` is not `cashier`.
-- Never accept `device_id`, an arbitrary account ID, or a client-supplied hardware identity as authorization.
+- All device routes require `X-Device-Key`; the backend resolves the active device identity from the key.
+- Cashier routes reject devices whose registered type is not `cashier`; Vending routes reject non-vending devices.
 - Monetary values use positive integer `amount_minor` in IDR whole rupiah.
-- Mutating requests require a stable `request_id` (8–128 characters). Same key and same semantic request replays the original result; same key with changed member, amount, device, or operation returns `409 IDEMPOTENCY_CONFLICT`.
-- Card UIDs and PINs are never written to logs, audit detail, transaction metadata, or responses. Store only the peppered card hash and a salted PIN verifier.
-- Balance changes, transaction record, ledger entries, stock changes (where applicable), and audit event commit atomically.
-- Responses use `transaction_id`, `request_id`, `status`, and `idempotent_replay`; no v1 compatibility aliases.
+- Mutating requests require a stable `request_id`; same-key retries replay the original result and changed semantic requests conflict.
+- Raw card UIDs, raw PINs, and PIN verifiers are never returned or written to audit metadata.
+- PIN verifiers use salted PBKDF2. Five incorrect PIN attempts lock that card/device combination for five minutes.
+- Financial changes, transaction records, ledger entries, stock changes and audit events commit atomically.
 
-## Authenticated vending product catalog
+## Member transaction PIN
 
-`GET /api/v2/device/products`
-
-- Requires a valid active vending device key and returns only that device's five product slots.
-- Cashier devices and unauthenticated requests are rejected. Product reads do not require an admin bearer token.
-- Regression tests cover the returned catalog, device ownership, missing credentials, and wrong device type.
-
-## Authenticated vending product images
-
-`GET /api/v2/device/products/{product_id}/image`
-
-- Requires the active vending device's `X-Device-Key`; the server resolves the owning registry and serves only that registry's Product ID 1–5 image.
-- The catalog includes `image_sha256` and a device-scoped `image_url`. No admin bearer token or legacy `/api/v1` endpoint is used by firmware.
-- Admin uploads use `POST /api/v2/admin/vending/devices/{registry_id}/products/{product_id}/image`, accept PNG/JPEG/WebP source files up to 2 MiB, and normalize them to JPEG thumbnails no larger than 64 KiB.
-- The SHA-256 is computed over the exact JPEG bytes returned to the device. Vending downloads only changed hashes, verifies the bytes before writing, writes a temporary LittleFS file, and swaps it atomically while preserving the previous valid image on failure.
-- The v2 Vending OLED decodes the cached JPEG and renders it in monochrome. A missing/invalid image never blocks catalog use or a purchase.
-
-## Read-only member balance
-
-`POST /api/v2/devices/member-balance`
-
-Request:
-```json
-{"card_uid":"04A1B2C3"}
-```
-
-Response:
-```json
-{"member_id":"UID-00001","display_name":"Member","balance_minor":25000,"currency":"IDR"}
-```
-
-- Valid only for an active, authenticated cashier or vending device and active member/card/account.
-- Card UID alone is not payment authorization.
-- Must not create a transaction, debit, credit, or ledger entry. Regression tests verify the endpoint leaves transaction and ledger counts unchanged.
-- Unknown or inactive card returns a stable authorization error without revealing whether a card UID is enrolled.
+- Every Member must have an individual transaction PIN before using NFC payments.
+- The PIN can be set during Member creation through the authenticated Server API, or during NFC card registration at the Cashier keypad.
+- The NFC registration flow is: Admin starts a session; Cashier reads the new card; Member enters a 6–12 digit PIN; server stores only the salted verifier and binds the card.
+- Replacing an NFC card requires a PIN to be set/confirmed in the same enrollment flow. A valid PIN must never be silently cleared.
+- The same Member PIN is required for payments at Cashier and Vending.
+- PIN is never stored in firmware preferences, local cache, request recovery state, logs, or API responses.
 
 ## Cashier payment
 
 `POST /api/v2/cashier/payments`
-
-Implementation status: implemented in `rebuild-v2/backend/mgroup_backend/main.py`; regression coverage has been added but not yet run in the final full-suite pass.
 
 Request:
 ```json
 {"request_id":"cashier-payment-0001","card_uid":"04A1B2C3","pin":"123456","amount_minor":5000}
 ```
 
-- Verify member/card status and PIN with the same persisted throttling policy used by vending purchases.
-- Resolve the receiving merchant/settlement account from trusted server-side configuration associated with the authenticated cashier device. Never accept the receiving account from the client.
-- Atomically debit the member account and credit the configured merchant account; create one balanced transaction and audit event.
-- Return the balance after the committed transaction. Insufficient balance returns `409 INSUFFICIENT_BALANCE`.
-- Idempotent retries must not debit twice, even if the first HTTP response is lost.
+- Verify active member/card/account and the member transaction PIN before processing.
+- Resolve the merchant/settlement account from server-side Cashier configuration. The client cannot choose the receiving account.
+- Atomically debit the member account, credit the configured merchant account, and write the transaction, balanced ledger entries and audit event.
+- Idempotent retries must not debit twice; PIN verification still applies to a retry.
 
-## Cashier top-up
+## Vending payment
 
-`POST /api/v2/cashier/top-ups`
-
-Implementation status: implemented in `rebuild-v2/backend/mgroup_backend/main.py`; regression coverage has been added but not yet run in the final full-suite pass.
+`POST /api/v2/vending/purchases`
 
 Request:
 ```json
-{"request_id":"cashier-topup-0001","card_uid":"04A1B2C3","member_pin":"123456","amount_minor":10000}
+{"request_id":"vending-purchase-0001","card_uid":"04A1B2C3","pin":"123456","product_id":1,"payment_method":"nfc"}
 ```
 
-- Require an active, authenticated Cashier device.
-- Verify the Member PIN with persisted throttling. No operator identity or PIN exists.
-- Atomically credit the member account and the backing system account, create balanced ledger entries, transaction, and audit event.
-- Replays return the original transaction. Reusing the request ID with a changed amount/card/device returns a conflict.
-- The API uses only the server-side settlement-account assignment. Remaining release work is to connect the firmware/UI and run the final integration suite.
+- Verify the same Member transaction PIN before debiting the member balance or reserving stock.
+- Vending hardware uses its existing UP/DOWN/SELECT buttons to enter a masked numeric PIN: UP/DOWN changes the current digit, SELECT adds it, and holding SELECT confirms after at least six digits.
+- A wrong PIN must not debit the account or reduce stock.
+- The existing dispense-result flow remains responsible for exactly-once refund when dispensing fails.
 
-## Implementation controls and remaining gaps
+## Member balance top-up — Server WebUI only
 
-1. Cashier device-to-settlement-account binding is stored server-side; admin endpoints provision merchant settlement accounts and configure the cashier binding.
-2. Member PINs use salted PBKDF2 verifiers. Persisted failed-attempt counters apply a five-minute lock after five failures.
-3. Payment and top-up transactions write transaction rows, balanced ledger entries, balance changes, and audit events atomically; request IDs are scoped globally and conflicting payloads return `409`.
-4. Card UIDs are pepper-hashed before lookup and are not stored in transaction metadata or audit detail. PIN values are never written to logs or transaction metadata.
-5. Remaining: connect v2 firmware and WebUI, and complete clean-install/upgrade and end-to-end validation before release.
+- Member gives the money directly to Admin.
+- Admin selects the Member in Server WebUI, enters the amount received, and submits the top-up.
+- The authenticated Server API credits the member account and writes the corresponding system-account debit, transaction, balanced ledger entries and audit event atomically.
+- Top-up does not require a member PIN, operator PIN, NFC tap, Cashier, or Vending.
+- `POST /api/v2/finance/top-ups` is the only v2 top-up endpoint and requires an authenticated Admin session.
+- `POST /api/v2/cashier/top-ups` is intentionally not implemented and must return 404/405.
 
-## Required tests
+## Required regression tests
 
-- Wrong device type, missing/invalid/revoked device key, inactive member/card/account, invalid PIN, lockout, and invalid member PIN lockout.
-- Successful payment has exactly one member debit and one merchant credit; repeated request has no additional ledger entries.
-- Successful top-up has exactly one member credit and one system-account debit; repeated request has no additional entries.
-- Request ID reused with a changed amount, card, device, or operation is rejected.
-- Concurrent duplicate requests create one transaction and one financial mutation.
-- Balance lookup is read-only and does not expose raw card UID, PIN, or card enrollment status.
-- Audit events identify the authenticated device and server-resolved settlement account without recording secrets.
+- Member PIN set during member creation is stored only as a salted verifier.
+- NFC registration requires and stores a member PIN; card replacement cannot leave the member without a PIN.
+- Cashier and Vending reject missing/incorrect PINs without financial or stock mutation.
+- Five failed PIN attempts cause a persisted five-minute lockout; a valid PIN clears the counter after lockout expires.
+- Admin top-up is idempotent and creates balanced ledger entries; Cashier/Vending top-up endpoints do not exist.
+- Raw PIN and PIN verifier never appear in API responses, logs, or audit metadata.
 
 ## Release gate
 
-Do not switch the existing cashier firmware to v2 until these contracts are implemented, documented in OpenAPI, covered by tests, and the firmware request/recovery behavior is tested against them. Vending v2 and cashier v2 may be delivered as separate milestones, but the overall rebuild must not be described as end-to-end complete while the cashier path is missing.
+Do not mark Cashier or Vending v2 complete until the full backend test suite and both firmware builds pass. Physical acceptance must verify keypad PIN entry on Cashier, button-based PIN entry on Vending, RC522 card reads, NFC enrollment, payment, balance refresh, and failed-dispense refund behavior. Top-up acceptance is performed only through Server WebUI.
